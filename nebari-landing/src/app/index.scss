@@ -1,0 +1,83 @@
+/* Load your project settings */
+@forward "./uswds-theme";
+
+/* Compile USWDS */
+@forward 'uswds';
+
+/* App-wide defaults */
+@use "uswds-core" as *;
+
+html,
+body,
+#root {
+  width: 100%;
+  margin: 0;
+}
+
+.app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.app-shell {
+  --color-bg-page: #f3f5f6;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-muted: #f3f5f6;
+  --color-bg-elevated: #e7eaee;
+
+  --color-text-primary: #1b1b1b;
+  --color-text-secondary: #4e596a;
+  --color-text-muted: #65748a;
+
+  --color-border-default: #d0d5dd;
+  --color-border-strong: #dfe1e2;
+
+  --color-accent-primary: #9b3dcc;
+  --color-link: #005ea2;
+
+  --color-icon-on-accent: #ffffff;
+  --color-icon-default: #65748a;
+  --color-icon-active: #22282f;
+}
+
+// Light theme
+.app-shell--light {
+  --color-bg-page: #f3f5f6;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-muted: #f3f5f6;
+  --color-bg-elevated: #e7eaee;
+
+  --color-text-primary: #1b1b1b;
+  --color-text-secondary: #4e596a;
+  --color-text-muted: #65748a;
+
+  --color-border-default: #d0d5dd;
+  --color-border-strong: #dfe1e2;
+
+  --color-icon-on-accent: #ffffff;
+  --color-icon-default: #65748a;
+  --color-icon-active: #22282f;
+
+  background-color: var(--color-bg-surface);
+}
+
+// Dark theme
+.app-shell--dark {
+  --color-bg-page: #22282f;
+  --color-bg-surface: #111418;
+  --color-bg-surface-muted: #22282f;
+  --color-bg-elevated: #3d4553;
+
+  --color-text-primary: #f3f5f6;
+  --color-text-secondary: #b7c0cc;
+  --color-text-muted: #65748a;
+
+  --color-border-default: #3d4553;
+  --color-border-strong: #3a424c;
+
+  --color-icon-on-accent: #000000;
+  --color-icon-default: #65748a;
+  --color-icon-active: #e7eaee;
+
+  background-color: var(--color-bg-surface);
+}

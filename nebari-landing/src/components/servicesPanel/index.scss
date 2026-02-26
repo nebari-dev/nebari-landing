@@ -1,0 +1,23 @@
+.services-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+
+.services-section__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.services-section__search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.services-section__toggle {
+  flex: 0 0 auto;
+  margin-left: auto;
+}

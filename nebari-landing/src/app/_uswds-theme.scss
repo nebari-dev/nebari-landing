@@ -1,0 +1,6 @@
+@forward "uswds-core" with (
+  $theme-show-notifications: false,
+  $theme-image-path: "@uswds/uswds/img",
+  $theme-font-path: "@uswds/uswds/fonts",
+  $theme-hero-image: "@uswds/uswds/img/hero.jpg"
+);

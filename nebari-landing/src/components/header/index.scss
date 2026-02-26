@@ -1,0 +1,127 @@
+@use "../../app/uswds-theme" as *;
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+
+  height: 60px;
+  display: flex;
+  padding-left: 32px;
+  padding-right: 32px;
+  width: 100%;
+
+  border-bottom: 1px solid transparent;
+}
+
+.app-header {
+  background-color: var(--color-bg-page);
+  color: var(--color-text-secondary);
+  border-bottom-color: var(--color-border-default)
+}
+
+.app-header__row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-header__left {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.app-header__brand {
+  display: flex;
+  margin-right: 30px;
+  text-decoration: none;
+  min-width: 0;
+
+  &:focus {
+    outline: none;
+  }
+}
+
+.app-header__logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.app-header__nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.app-header__link {
+  display: flex;
+  align-items: center;
+  font-size: 15px;
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+  gap: 0.5rem;
+
+  &:visited,
+  &:hover,
+  &:active {
+    color: inherit;
+  }
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.app-header__right {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+/* Base theme toggle button */
+.app-header__themeButton.usa-button,
+.app-header__themeButton.usa-button--outline {
+  /* size */
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+
+  /* visual */
+  background: transparent;
+  border: 1px solid #d0d5dd !important;
+  border-radius: 8px;
+
+  // USWDS default style overwrites
+  box-shadow: none !important;
+  outline: none !important;
+  color: #d0d5dd !important;
+}
+
+/* Light theme */
+.app-shell--light .app-header__themeButton.usa-button,
+.app-shell--light .app-header__themeButton.usa-button--outline {
+  border-color: #d0d5dd !important;
+  color: #65748A !important;
+}
+
+// Dark theme
+.app-shell--dark .app-header__themeButton.usa-button,
+.app-shell--dark .app-header__themeButton.usa-button--outline {
+  border-color: #3d4553 !important;
+  color: #A1ABBA !important;
+}
+
+// Icon inherits currentColor
+.app-header__buttonIcon {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  color: currentColor;
+  flex: 0 0 auto;
+}

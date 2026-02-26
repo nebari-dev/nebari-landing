@@ -1,0 +1,20 @@
+@use "../../app/uswds-theme" as *;
+
+.app-avatar-image,
+.app-avatar-imagePlaceholder {
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.app-avatar-image {
+  display: block;
+  object-fit: cover;
+}
+
+.app-avatar-imagePlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
