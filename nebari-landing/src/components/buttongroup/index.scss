@@ -1,102 +1,67 @@
 @use "../../app/uswds-theme" as *;
 
 .app-view-toggle {
-  display: inline-flex;
-  align-items: center;
-  height: 46px;
-  padding: 4px;
+  padding-right: 8px;
+  padding-left: 4px;
   border-radius: 8px;
   background: var(--color-bg-page);
-  box-sizing: border-box;
 }
 
-/* Group should not add spacing/dividers */
-.app-view-toggle__group {
-  margin: 0 !important;
-  padding: 0 !important;
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  height: 100%;
-}
-
-/* Remove USWDS segmented wrappers/borders/dividers */
-.app-view-toggle .usa-button-group__item {
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-}
-
-.app-view-toggle .usa-button-group__item + .usa-button-group__item {
-  margin-left: 0 !important;
-}
-
-.app-view-toggle .usa-button-group__item::before,
-.app-view-toggle .usa-button-group__item::after {
-  content: none !important;
-  display: none !important;
-}
-
-/* Button: 36x36 */
 .app-view-toggle button.app-view-toggle__button {
-  width: 36px !important;
-  height: 36px !important;
-  min-width: 36px !important;
-  min-height: 36px !important;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
 
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  box-shadow: none !important;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
 
   display: inline-flex;
   align-items: center;
   justify-content: center;
 
   border-radius: 6px;
-  background: var(--color-bg-page) !important;
-  color: var(--color-icon-default) !important;
+  background: var(--color-bg-page);
+  color: var(--color-icon-default);
 
   line-height: 1;
 }
 
-.app-view-toggle .usa-button-group--segmented .usa-button-group__item:not(:last-child) .usa-button::before {
-  content: none !important;
-  display: none !important;
-  border-right: 0 !important;
-}
-
-.app-view-toggle .usa-button-group--segmented .usa-button-group__item:first-child > .usa-button,
-.app-view-toggle .usa-button-group--segmented .usa-button-group__item:last-child > .usa-button {
-  border-radius: 6px !important;
-  margin-right: 0 !important;
-  margin-left: 0 !important;
-}
-
-/* Optional: also normalize any middle buttons if styles change later */
-.app-view-toggle .usa-button-group__item > .app-view-toggle__button {
-  border-radius: 6px !important;
-}
-
-/* Keep inactive stable on hover/focus */
 .app-view-toggle button.app-view-toggle__button:hover,
-.app-view-toggle button.app-view-toggle__button:active,
-.app-view-toggle button.app-view-toggle__button:focus,
+.app-view-toggle button.app-view-toggle__button:active {
+  background: var(--color-bg-page);
+  color: var(--color-icon-default);
+  box-shadow: none;
+}
+
+/* Accessible keyboard focus */
+.app-view-toggle button.app-view-toggle__button:focus {
+  outline: none;
+}
+
 .app-view-toggle button.app-view-toggle__button:focus-visible {
-  background: var(--toggle-bg) !important;
-  color: var(--toggle-icon) !important;
-  box-shadow: none !important;
-  outline: none !important;
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 2px;
 }
 
 /* Active state */
 .app-view-toggle button.app-view-toggle__button.is-active,
 .app-view-toggle button.app-view-toggle__button.is-active:hover,
-.app-view-toggle button.app-view-toggle__button.is-active:active,
-.app-view-toggle button.app-view-toggle__button.is-active:focus,
+.app-view-toggle button.app-view-toggle__button.is-active:active {
+  background: var(--color-bg-elevated);
+  color: var(--color-icon-active);
+}
+
+/* Keep focus visible on active button too */
+.app-view-toggle button.app-view-toggle__button.is-active:focus {
+  outline: none;
+}
+
 .app-view-toggle button.app-view-toggle__button.is-active:focus-visible {
-  background: var(--color-bg-elevated) !important;
-  color: var(--color-icon-active) !important;
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 2px;
 }
 
 .app-view-toggle__icon {

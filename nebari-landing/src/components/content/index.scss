@@ -5,16 +5,14 @@
   height: 100%;
   @include u-padding-x(6);
   @include u-padding-y(3);
-}
 
-.usa-header + .usa-section,
-.usa-header + main {
-  border-top: none !important;
-}
-
-.app-content {
   background-color: var(--color-bg-surface);
-  color: var(--color-text-primary)
+  color: var(--color-text-primary);
+}
+
+.app-shell .usa-header + main,
+.app-shell .usa-header + .usa-section {
+  border-top: 0;
 }
 
 .launchpad-title {

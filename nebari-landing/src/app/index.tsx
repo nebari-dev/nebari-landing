@@ -1,5 +1,5 @@
 import {
-  useState
+  useState, useEffect
 } from "react";
 
 import
@@ -10,18 +10,35 @@ import
   Content
 from "../components/content";
 
-function App() {
+import { initKeycloak, signIn, keycloak } from "../auth/keycloak";
+
+export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+
+  useEffect(() => {
+    initKeycloak()
+      .catch((err) => {
+        console.error("Keycloak init failed", err);
+      })
+      .finally(() => {
+        setIsAuthReady(true);
+      });
+  }, []);
+
+  if (!isAuthReady) {
+    return null;
+  }
 
   return (
     <div className={isDarkMode ? "app-shell app-shell--dark" : "app-shell app-shell--light"}>
       <Header
         isDarkMode={isDarkMode}
         onToggleTheme={() => setIsDarkMode((prev) => !prev)}
+        onSignIn={signIn}
+        signInLabel={keycloak.authenticated ? "Signed in" : "Sign in"}
       />
       <Content />
     </div>
   )
 }
-
-export default App

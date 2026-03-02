@@ -6,36 +6,40 @@
   border: 1px solid var(--color-border-default);
   color: var(--color-text-primary);
   overflow: hidden;
+  background-color: var(--color-bg-surface);
 }
 
 /* USWDS table chrome */
 .app-table .usa-table {
   width: 100%;
-  background-color: var(--color-bg-surface);
-  color: var(--color-text-primary);
   margin: 0;
+  background-color: transparent;
+  color: var(--color-text-primary);
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .app-table .usa-table caption {
   color: var(--color-text-primary);
 }
 
+/* Header */
 .app-table .usa-table thead tr {
   height: 54px;
 }
 
 .app-table .usa-table thead th {
-  /* Header background per theme */
-  background-color: var(--color-bg-surface-muted) !important;
-  color: var(--color-text-primary) !important;
+  background-color: var(--color-bg-surface-muted);
+  color: var(--color-text-primary);
 
-  /* no vertical header separators */
-  border-left: none !important;
-  border-right: none !important;
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 1px solid var(--color-border-default);
 
-  /* keep bottom divider only */
-  border-top: none !important;
-  border-bottom: 1px solid var(--color-border-default) !important;
+  height: 54px;
+  min-height: 54px;
+  vertical-align: middle;
 }
 
 .app-table .usa-table thead th:first-child {
@@ -52,10 +56,10 @@
   background-color: var(--color-bg-surface);
   color: var(--color-text-primary);
 
-  border-left: none !important;
-  border-right: none !important;
-  border-top: none !important;
-  border-bottom: 1px solid var(--color-border-default) !important;
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 /* Service cell layout */
@@ -71,8 +75,7 @@
   height: 48px;
 }
 
-
-// TODO: remove the image associated classes relocate it to the image component
+/* TODO: move fully into image component */
 .app-table__image,
 .app-table__imagePlaceholder {
   width: 48px;
@@ -88,7 +91,6 @@
 
 .app-table__imagePlaceholder {
   color: var(--color-text-primary);
-
   display: flex;
   align-items: center;
   justify-content: center;
@@ -128,12 +130,11 @@
   border-radius: 8px;
 }
 
-// TODO: update this to match the status styling
-// (create a separate component that hanles status)
+/* TODO: replace with dedicated status component */
 .app-table__status {
   white-space: nowrap;
-  background-color: var(--color-bg-page) !important;
-  color: #4d4d4d !important;
+  background-color: var(--color-bg-page);
+  color: #4d4d4d;
 }
 
 /* Action */
@@ -147,6 +148,29 @@
   vertical-align: middle;
 }
 
-.usa-button--unstyled:focus {
+.app-table__pinButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  border-radius: 4px;
+}
+
+/* Keep focus visible for keyboard users */
+.app-table__pinButton:focus {
   outline: none;
+}
+
+.app-table__pinButton:focus-visible {
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 2px;
+}
+
+.app-table__pinIcon {
+  width: 16px;
+  height: 16px;
+  display: block;
 }

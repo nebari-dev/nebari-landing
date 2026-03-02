@@ -171,7 +171,7 @@ export default function AppAccordion(props: AppAccordion.Props): ReactNode {
 
   return (
     <section className="app-accordion">
-      <Accordion bordered multiselectable items={accordionItems} />
+      <Accordion multiselectable items={accordionItems} />
     </section>
   );
 }

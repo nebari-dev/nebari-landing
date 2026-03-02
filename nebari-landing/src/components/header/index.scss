@@ -9,15 +9,10 @@
   display: flex;
   padding-left: 32px;
   padding-right: 32px;
-  width: 100%;
 
-  border-bottom: 1px solid transparent;
-}
-
-.app-header {
   background-color: var(--color-bg-page);
   color: var(--color-text-secondary);
-  border-bottom-color: var(--color-border-default)
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .app-header__row {
@@ -39,6 +34,7 @@
   margin-right: 30px;
   text-decoration: none;
   min-width: 0;
+  color: inherit;
 
   &:focus {
     outline: none;
@@ -61,11 +57,12 @@
 .app-header__link {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
+
   font-size: 15px;
-  color: inherit;
   text-align: center;
   text-decoration: none;
-  gap: 0.5rem;
+  color: inherit;
 
   &:visited,
   &:hover,
@@ -81,47 +78,32 @@
 .app-header__right {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
   flex: 0 0 auto;
 }
 
-/* Base theme toggle button */
-.app-header__themeButton.usa-button,
-.app-header__themeButton.usa-button--outline {
-  /* size */
+.app-header__themeButton {
   width: 36px;
   min-width: 36px;
   height: 36px;
+  padding: 0;
+  margin: 0;
 
-  /* visual */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
   background: transparent;
-  border: 1px solid #d0d5dd !important;
+  border: 1px solid var(--color-border-default);
   border-radius: 8px;
-
-  // USWDS default style overwrites
-  box-shadow: none !important;
-  outline: none !important;
-  color: #d0d5dd !important;
+  color: var(--color-icon-default);
+  text-decoration: none;
 }
 
-/* Light theme */
-.app-shell--light .app-header__themeButton.usa-button,
-.app-shell--light .app-header__themeButton.usa-button--outline {
-  border-color: #d0d5dd !important;
-  color: #65748A !important;
-}
-
-// Dark theme
-.app-shell--dark .app-header__themeButton.usa-button,
-.app-shell--dark .app-header__themeButton.usa-button--outline {
-  border-color: #3d4553 !important;
-  color: #A1ABBA !important;
-}
-
-// Icon inherits currentColor
 .app-header__buttonIcon {
   width: 16px;
   height: 16px;
   margin: 0;
   color: currentColor;
   flex: 0 0 auto;
-}
+} 

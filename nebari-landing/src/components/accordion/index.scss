@@ -7,11 +7,11 @@
 
 /* Remove horizontal padding (keep vertical) */
 .app-accordion .usa-accordion__button {
-  padding: 1rem 0 !important;
+  padding: 1rem 0;
 }
 
 .app-accordion .usa-accordion__content {
-  padding: 1rem 0 calc(1rem - 0.25rem) 0 !important;
+  padding: 1rem 0 calc(1rem - 0.25rem) 0;
 }
 
 /* No hover/active background, no default icon */
@@ -20,32 +20,38 @@
 .app-accordion .usa-accordion__button:active,
 .app-accordion .usa-accordion__button[aria-expanded="true"],
 .app-accordion .usa-accordion__button[aria-expanded="false"] {
-  background-color: transparent !important;
-  background-image: none !important;
-  color: var(--color-text-primary) !important;
+  background-color: transparent;
+  background-image: none;
+  color: var(--color-text-primary);
 }
 
-.app-accordion .usa-accordion__button:focus,
+/* Keep keyboard accessibility: visible focus */
+.app-accordion .usa-accordion__button:focus {
+  outline: none;
+}
+
 .app-accordion .usa-accordion__button:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
+/* Hide USWDS default icon */
 .app-accordion .usa-accordion__button::before,
 .app-accordion .usa-accordion__button::after {
-  display: none !important;
-  content: none !important;
+  display: none;
+  content: none;
 }
 
 /* Accordion content panel */
 .app-accordion .usa-accordion__content {
   background-color: transparent;
   color: var(--color-text-primary);
-  border: none !important;
+  border: none;
 }
 
 .app-accordion .usa-accordion--bordered {
-  border: none !important;
+  border: none;
 }
 
 /* Custom left chevron + stacked title */
@@ -64,8 +70,7 @@
   margin-top: 0.125rem;
   transition: transform 150ms ease;
   transform: rotate(180deg);
-
-  color: currentColor; 
+  color: currentColor;
 }
 
 .app-accordion__chevron.is-open {

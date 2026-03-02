@@ -26,10 +26,9 @@ export default function AppViewToggle(props: AppViewToggle.Props): ReactNode {
       role="radiogroup"
       aria-label="View mode"
     >
-      <ButtonGroup type="segmented" className="app-view-toggle__group">
+      <ButtonGroup>
         <Button
           type="button"
-          unstyled
           role="radio"
           onClick={() => onChange("list")}
           className={cn("app-view-toggle__button", isList && "is-active")}
@@ -39,7 +38,6 @@ export default function AppViewToggle(props: AppViewToggle.Props): ReactNode {
 
         <Button
           type="button"
-          unstyled
           role="radio"
           onClick={() => onChange("grid")}
           className={cn("app-view-toggle__button", isGrid && "is-active")}
