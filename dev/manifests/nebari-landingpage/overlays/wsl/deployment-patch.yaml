@@ -1,0 +1,102 @@
+# Strategic merge patch — adds oauth2-proxy sidecar for WSL mode.
+#
+# Key differences vs overlays/dev/deployment-patch.yaml:
+#
+#   --oidc-issuer-url points to the cluster-internal Keycloak service so that
+#   the oauth2-proxy pod can reach Keycloak for OIDC discovery (back-channel).
+#   The standard dev overlay points to the MetalLB IP, which is unreachable
+#   from the Windows host browser in WSL.
+#
+#   --skip-oidc-issuer-verification is required because KC_HOSTNAME_URL is
+#   set to http://localhost:8180/auth in values-wsl.yaml. Keycloak therefore
+#   embeds that URL as the `issuer` in every JWT and in the discovery doc —
+#   even when the discovery doc is fetched via the cluster-internal hostname.
+#   oauth2-proxy normally rejects a mismatch between --oidc-issuer-url and the
+#   issuer field in the discovery doc, so we bypass that check here.
+#
+#   --redirect-url uses localhost:8080, which is the port-forwarded landing
+#   page address accessible from the Windows host via WSL2 auto-forwarding.
+#
+#   KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true (set in values-wsl.yaml) ensures the
+#   token_endpoint and jwks_uri in the discovery doc also use the cluster-
+#   internal hostname, so oauth2-proxy's token-exchange back-channel calls work.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nebari-landingpage
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+          args:
+            - --provider=oidc
+            - --http-address=0.0.0.0:4180
+            - --upstream=http://localhost:8080
+            # Back-channel OIDC discovery via cluster-internal KC service.
+            # KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true makes the returned endpoints
+            # (token_endpoint, jwks_uri) also use this hostname.
+            - --oidc-issuer-url=http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth/realms/nebari
+            # The discovery doc's issuer field will say http://localhost:8180/auth/realms/nebari
+            # (KC_HOSTNAME_URL). Skip verification so oauth2-proxy doesn't reject
+            # the mismatch with --oidc-issuer-url above.
+            - --skip-oidc-issuer-verification=true
+            # Browser-visible callback URL — routed via WSL2 localhost forwarding.
+            - --redirect-url=http://localhost:8080/oauth2/callback
+            - --email-domain=*
+            - --scope=openid profile email
+            - --cookie-secure=false
+            - --cookie-samesite=lax
+            - --cookie-name=_nebari_session
+            - --pass-access-token=true
+            - --pass-authorization-header=true
+            - --set-xauthrequest=true
+            - --skip-provider-button=true
+            - --silence-ping-logging=true
+          ports:
+            - name: proxy
+              containerPort: 4180
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: nebari-landingpage-oidc-client
+                  key: client-id
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nebari-landingpage-oidc-client
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: cookie-secret
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: proxy
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: proxy
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]

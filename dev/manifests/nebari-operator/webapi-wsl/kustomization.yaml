@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# WSL variant of the webapi kustomization.
+# Identical to webapi/ except:
+#   - deployment-patch uses localhost:8180 as the OIDC issuer (matching the
+#     KC_HOSTNAME_URL in values-wsl.yaml) and the cluster-internal Keycloak
+#     URL for network-level access.
+#   - service-patch exposes a NodePort instead of a MetalLB LoadBalancer.
+#
+# Apply with:  kubectl apply -k dev/manifests/nebari-operator/webapi-wsl
+
+namespace: nebari-system
+
+resources:
+  - https://raw.githubusercontent.com/nebari-dev/nebari-operator/feature/landing-page-service-discovery/deploy/webapi/manifest.yaml
+
+images:
+  - name: quay.io/nebari/nebari-webapi
+    newTag: feature-landing-page-service-discovery
+
+patches:
+  - path: deployment-patch.yaml
+    target:
+      kind: Deployment
+      name: webapi
+
+  - path: service-patch.yaml
+    target:
+      kind: Service
+      name: webapi

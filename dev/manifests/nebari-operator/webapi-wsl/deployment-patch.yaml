@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapi
+  namespace: nebari-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: ENABLE_AUTH
+              value: "true"
+            # KEYCLOAK_URL is used for network-level calls (JWKS fetch, admin API).
+            # We point it at the cluster-internal Keycloak service so that the
+            # webapi pod can reach it without going through the port-forward.
+            # KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true in values-wsl.yaml makes
+            # Keycloak return cluster-internal endpoint URLs when accessed via
+            # this cluster-internal hostname.
+            - name: KEYCLOAK_URL
+              value: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth"
+            # KEYCLOAK_ISSUER_URL is compared against the `iss` claim in incoming
+            # JWTs. Because KC_HOSTNAME_URL is set to localhost:8180 in values-wsl.yaml,
+            # Keycloak embeds http://localhost:8180/auth/realms/nebari as the issuer
+            # in all tokens. This value must match that claim exactly.
+            #
+            # If the webapi derives the JWKS URL from KEYCLOAK_ISSUER_URL (as some
+            # OIDC libraries do), it will fail to reach localhost:8180 from inside
+            # the pod. In that case, set KEYCLOAK_ISSUER_URL to the cluster-internal
+            # URL and rely on `--skip-oidc-issuer-verification` on the oauth2-proxy
+            # sidecar to prevent a mismatch at the frontend. Adjust as needed once
+            # the webapi's OIDC library behaviour is confirmed.
+            - name: KEYCLOAK_ISSUER_URL
+              value: "http://localhost:8180/auth"
+            - name: KEYCLOAK_REALM
+              value: "nebari"
+            - name: KEYCLOAK_ADMIN_SECRET_NAME
+              value: "keycloak-admin-credentials"
+            - name: KEYCLOAK_ADMIN_SECRET_NAMESPACE
+              value: "keycloak"
+            - name: ADMIN_GROUP
+              value: admin
+            - name: ACCESS_REQUESTS_DB_PATH
+              value: /data/access_requests.db
+            - name: NOTIFICATIONS_DB_PATH
+              value: /data/notifications.db
+            - name: PINS_DB_PATH
+              value: /data/pins.db

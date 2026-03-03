@@ -1,0 +1,18 @@
+# NodePort service for the webapi in WSL mode.
+# No MetalLB LoadBalancer IP needed — traffic is port-forwarded from
+# localhost:PORT_WEBAPI (default 8090) via `make port-forward`.
+#
+# Fixed NodePort 30090 keeps the node-level port stable across restarts and
+# also allows direct access via `minikube service webapi -n nebari-system --url`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapi
+  namespace: nebari-system
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 30090

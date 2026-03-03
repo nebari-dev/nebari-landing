@@ -62,6 +62,18 @@ LB_IP_KEYCLOAK  ?= 192.168.49.100
 LB_IP_WEBAPI    ?= 192.168.49.101
 LB_IP_LANDING   ?= 192.168.49.102
 
+# ── WSL / port-forward mode ──────────────────────────────────────────────────
+# In WSL2, MetalLB L2 IPs (192.168.49.x) are not reachable from the Windows
+# host.  Use `make wsl-setup` instead of `make setup`: it skips MetalLB,
+# deploys NodePort services, and runs kubectl port-forward so that
+# http://localhost:PORT reaches each service from Windows.
+#
+# WSL2 automatically forwards localhost:<PORT> to the Windows host.
+PORT_KEYCLOAK  ?= 8180
+PORT_WEBAPI    ?= 8090
+PORT_LANDING   ?= 8080
+OVERLAY_WSL    ?= wsl
+
 OVERLAY            ?= dev
 
 # ── Detect OS / Arch ────────────────────────────────────────────────────────
@@ -91,6 +103,9 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
         operator-install operator-uninstall \
         test-apps \
         argocd-apps install uninstall info \
+        wsl-setup keycloak-wsl keycloak-install-wsl \
+        operator-install-wsl install-wsl frontend-client-wsl \
+        port-forward stop-port-forward info-wsl \
         deps-check _minikube
 
 OVERLAY_PATH := dev/manifests/nebari-landingpage/overlays/$(OVERLAY)
@@ -371,6 +386,124 @@ info:
 	@echo "║    python3 dev/webapi_test.py \\"
 	@echo "║      --webapi-url http://$(LB_IP_WEBAPI):8080 \\"
 	@echo "║      --keycloak-url http://$(LB_IP_KEYCLOAK)/auth \\"
+	@echo "║      -u admin -p $(REALM_ADMIN_PASSWORD)"
+	@echo "╚══════════════════════════════════════════════════════════════╝"
+	@echo ""
+
+# ── WSL / no-MetalLB mode ────────────────────────────────────────────────────
+
+## wsl-setup: full end-to-end setup for WSL2 (skips MetalLB, uses localhost port-forwards)
+## Equivalent to `make setup` but without the metallb step and using WSL-specific
+## Keycloak / oauth2-proxy / webapi configs so all URLs use localhost:<PORT>.
+wsl-setup: _minikube cluster-start image-build cert-manager \
+           keycloak-wsl keycloak-client frontend-client-wsl \
+           operator-install-wsl install-wsl test-apps port-forward info-wsl
+	@echo ""
+	@echo "✅  WSL setup complete. Run 'make port-forward' at any time to restart port-forwards."
+
+## keycloak-wsl: install PostgreSQL + Keycloak with WSL-friendly config (localhost URLs, NodePort)
+keycloak-wsl: postgresql keycloak-install-wsl keycloak-realm
+	@echo "✔  Keycloak (WSL mode) ready with realm 'nebari'"
+
+keycloak-install-wsl:
+	@echo "→  Installing Keycloak (WSL mode — no MetalLB, localhost:$(PORT_KEYCLOAK)) …"
+	kubectl create namespace $(NAMESPACE_KC) --dry-run=client -o yaml | kubectl apply -f -
+	helm repo add codecentric $(KEYCLOAK_CHART) --force-update
+	helm upgrade --install $(HELM_RELEASE_KC) codecentric/$(KEYCLOAK_CHART_NAME) \
+	  --version $(KEYCLOAK_VERSION) \
+	  --namespace $(NAMESPACE_KC) \
+	  --values dev/keycloak/values.yaml \
+	  --values dev/keycloak/values-wsl.yaml \
+	  --wait --timeout 10m
+	@echo "✔  Keycloak (WSL) deployed"
+
+## frontend-client-wsl: create the nebari-landingpage OIDC client for WSL mode
+## Same as frontend-client but configures the Keycloak redirect URI to
+## localhost:$(PORT_LANDING) instead of the MetalLB IP.
+frontend-client-wsl:
+	@echo "→  Creating nebari-landingpage Keycloak client (WSL dev fallback) …"
+	kubectl delete job keycloak-frontend-client-setup -n $(NAMESPACE_KC) --ignore-not-found
+	sed 's/192\.168\.49\.102/localhost:$(PORT_LANDING)/g' \
+	    dev/keycloak/frontend-client-job.yaml | kubectl apply -f -
+	kubectl wait --for=condition=complete job/keycloak-frontend-client-setup \
+	  -n $(NAMESPACE_KC) --timeout=3m
+	@echo "→  Writing nebari-landingpage-oidc-client Secret …"
+	kubectl create namespace $(NAMESPACE_APP) --dry-run=client -o yaml | kubectl apply -f -
+	kubectl create secret generic nebari-landingpage-oidc-client \
+	  --namespace $(NAMESPACE_APP) \
+	  --from-literal=client-id=nebari-landingpage \
+	  --from-literal=client-secret=nebari-frontend-dev-secret \
+	  --dry-run=client -o yaml | kubectl apply -f -
+	@echo "✔  Keycloak nebari-landingpage client (WSL) ready"
+
+## operator-install-wsl: deploy operator + webapi using WSL/localhost config
+operator-install-wsl:
+	@echo "→  Deploying nebari-operator (WSL mode) …"
+	kubectl create namespace $(NAMESPACE_OPERATOR) --dry-run=client -o yaml | kubectl apply -f -
+	kubectl create namespace $(NAMESPACE_APP)      --dry-run=client -o yaml | kubectl apply -f -
+	kubectl label namespace $(NAMESPACE_APP) nebari.dev/managed=true --overwrite
+	kubectl apply -k dev/manifests/nebari-operator/operator
+	kubectl apply -k dev/manifests/nebari-operator/webapi-wsl
+	kubectl rollout status deployment/nebari-operator-controller-manager -n $(NAMESPACE_OPERATOR) --timeout=5m
+	kubectl rollout status deployment/webapi                             -n $(NAMESPACE_APP)      --timeout=5m
+	@echo "✔  nebari-operator + webapi (WSL mode) deployed"
+
+## install-wsl: deploy nebari-landingpage using the WSL kustomize overlay
+install-wsl:
+	@echo "→  Applying kustomize WSL overlay …"
+	kubectl create namespace $(NAMESPACE_APP) --dry-run=client -o yaml | kubectl apply -f -
+	kubectl apply -k dev/manifests/nebari-landingpage/overlays/$(OVERLAY_WSL)
+	kubectl rollout status deployment/nebari-landingpage -n $(NAMESPACE_APP) --timeout=3m
+	@echo "✔  nebari-landingpage (WSL mode) deployed"
+
+## port-forward: forward Keycloak, WebAPI, and landing page to localhost
+## Runs three kubectl port-forward processes in the background.
+## Kill them with: make stop-port-forward
+port-forward:
+	@echo "→  (Re)starting port-forwards in the background …"
+	@pkill -f "kubectl.*port-forward.*keycloak-keycloakx-http" 2>/dev/null || true
+	@pkill -f "kubectl.*port-forward.*svc/webapi" 2>/dev/null || true
+	@pkill -f "kubectl.*port-forward.*nebari-landingpage" 2>/dev/null || true
+	@kubectl -n $(NAMESPACE_KC)  port-forward svc/keycloak-keycloakx-http $(PORT_KEYCLOAK):80  > /tmp/pf-keycloak.log 2>&1 &
+	@kubectl -n $(NAMESPACE_APP) port-forward svc/webapi                  $(PORT_WEBAPI):8080  > /tmp/pf-webapi.log 2>&1 &
+	@kubectl -n $(NAMESPACE_APP) port-forward svc/nebari-landingpage       $(PORT_LANDING):80   > /tmp/pf-landing.log 2>&1 &
+	@sleep 2
+	@echo "✔  Port-forwards active (logs: /tmp/pf-*.log):"
+	@echo "     Keycloak   : http://localhost:$(PORT_KEYCLOAK)/auth"
+	@echo "     WebAPI     : http://localhost:$(PORT_WEBAPI)/api/v1/services"
+	@echo "     Landing    : http://localhost:$(PORT_LANDING)/"
+
+## stop-port-forward: kill all background kubectl port-forward processes
+stop-port-forward:
+	@pkill -f "kubectl.*port-forward.*keycloak-keycloakx-http" 2>/dev/null && echo "✔  Killed Keycloak port-forward" || true
+	@pkill -f "kubectl.*port-forward.*svc/webapi" 2>/dev/null && echo "✔  Killed WebAPI port-forward" || true
+	@pkill -f "kubectl.*port-forward.*nebari-landingpage" 2>/dev/null && echo "✔  Killed landing port-forward" || true
+
+## info-wsl: print localhost URLs and credentials for WSL mode
+info-wsl:
+	@echo ""
+	@echo "╔══════════════════════════════════════════════════════════════╗"
+	@echo "║          Nebari Local Cluster – WSL Quick Info               ║"
+	@echo "╠══════════════════════════════════════════════════════════════╣"
+	@echo "║  Services port-forwarded to localhost (run 'make port-forward'):"
+	@echo "║"
+	@echo "║  Landing page + oauth2-proxy:"
+	@echo "║    http://localhost:$(PORT_LANDING)/"
+	@echo "║    Login is handled automatically via Keycloak OIDC redirect."
+	@echo "║    SPA token endpoint: http://localhost:$(PORT_LANDING)/auth-token"
+	@echo "║"
+	@echo "║  WebAPI:"
+	@echo "║    http://localhost:$(PORT_WEBAPI)/api/v1/services"
+	@echo "║    http://localhost:$(PORT_WEBAPI)/api/v1/health"
+	@echo "║"
+	@echo "║  Keycloak admin console:"
+	@echo "║    http://localhost:$(PORT_KEYCLOAK)/auth/admin  (admin / $(KEYCLOAK_ADMIN_PASSWORD))"
+	@echo "║    Realm: $(KEYCLOAK_REALM)  /  test user: admin / $(REALM_ADMIN_PASSWORD)"
+	@echo "║"
+	@echo "║  Integration tests:"
+	@echo "║    python3 dev/webapi_test.py \\"
+	@echo "║      --webapi-url http://localhost:$(PORT_WEBAPI) \\"
+	@echo "║      --keycloak-url http://localhost:$(PORT_KEYCLOAK)/auth \\"
 	@echo "║      -u admin -p $(REALM_ADMIN_PASSWORD)"
 	@echo "╚══════════════════════════════════════════════════════════════╝"
 	@echo ""
