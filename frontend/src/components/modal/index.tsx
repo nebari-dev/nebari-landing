@@ -1,11 +1,10 @@
 import { useRef, type ReactNode } from "react";
+import type { ModalRef } from "@trussworks/react-uswds";
 import {
   Modal,
-  ModalRef,
   ModalHeading,
   ModalFooter,
   ModalToggleButton,
-  ModalCloseButton,
 } from "@trussworks/react-uswds";
 
 export default function AppModal(): ReactNode {
@@ -27,8 +26,6 @@ export default function AppModal(): ReactNode {
             Close
           </ModalToggleButton>
         </ModalFooter>
-
-        <ModalCloseButton handleClose={() => modalRef.current?.toggleModal(undefined, false)} />
       </Modal>
     </>
   );

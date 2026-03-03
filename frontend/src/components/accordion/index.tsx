@@ -30,8 +30,8 @@ export default function AppAccordion(props: AppAccordion.Props): ReactNode {
   // Accordion open/close state (keep your existing behavior)
   const [expandedIds, setExpandedIds] = useState<string[]>(["pinned", "services"]);
 
-  const [view, setView] = useState<"grid" | "list">("list");
-  const [search, setSearch] = useState("");
+  const [view, _setView] = useState<"grid" | "list">("list");
+  const [search, _setSearch] = useState("");
 
   const [servicesState, setServicesState] = useState<AppAccordion.Service[]>([]);
 
