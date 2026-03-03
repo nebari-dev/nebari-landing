@@ -1,5 +1,5 @@
 import {
-  useMemo, useState, useEffect
+  useMemo, useState
 } from "react";
 
 import type {
@@ -16,37 +16,40 @@ import {
 
 import "./index.scss";
 
-
 import AppGrid from "../grid";
 import ServicesPanel from "../servicesPanel";
 import { SimpleCard } from "../card";
 
+export type AppAccordionService = {
+  id: string;
+  image: string;
+  name: string;
+  status: string;
+  description: string;
+  category: string[];
+  pinned: boolean;
+};
 
-export default function AppAccordion(props: AppAccordion.Props): ReactNode {
-  
-  // Extract props
+export type AppAccordionProps = {
+  pinnedServices: AppAccordionService[];
+  services: AppAccordionService[];
+};
+
+export default function AppAccordion(props: AppAccordionProps): ReactNode {
+
   const { pinnedServices, services } = props;
 
-  // Accordion open/close state (keep your existing behavior)
   const [expandedIds, setExpandedIds] = useState<string[]>(["pinned", "services"]);
 
-  const [view, setView] = useState<"grid" | "list">("list");
-  const [search, setSearch] = useState("");
-
-  const [servicesState, setServicesState] = useState<AppAccordion.Service[]>([]);
-
-  // Sync local state from incoming props
-  useEffect(() => {
+  // Initialise from props once; pin toggling is purely local interaction.
+  // Using a lazy initializer avoids the useEffect-setState anti-pattern.
+  const [servicesState, setServicesState] = useState<AppAccordionService[]>(() => {
     const pinnedIds = new Set(pinnedServices.map((s) => s.id));
-
-    setServicesState(
-      services.map((service) => ({
-        ...service,
-        pinned: pinnedIds.has(service.id) || !!service.pinned,
-      }))
-    );
-  }, [services, pinnedServices]);
-
+    return services.map((service) => ({
+      ...service,
+      pinned: pinnedIds.has(service.id) || !!service.pinned,
+    }));
+  });
   const toggleAccordion = (id: string) => {
     setExpandedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -68,29 +71,11 @@ export default function AppAccordion(props: AppAccordion.Props): ReactNode {
     );
   };
 
-  // Derived lists
+  // Derived pinned list
   const pinnedList = useMemo(
     () => servicesState.filter((s) => s.pinned),
     [servicesState]
   );
-
-  const filteredServices = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return servicesState;
-
-    return servicesState.filter((s) => {
-      const haystack = [
-        s.name,
-        s.status,
-        s.description,
-        ...(s.category ?? []),
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      return haystack.includes(q);
-    });
-  }, [servicesState, search]);
 
   const accordionItems = useMemo(
     () => [
@@ -101,9 +86,8 @@ export default function AppAccordion(props: AppAccordion.Props): ReactNode {
         title: (
           <span className="app-accordion__trigger">
             <span
-              className={`app-accordion__chevron ${
-                expandedIds.includes("pinned") ? "is-open" : ""
-              }`}
+              className={`app-accordion__chevron ${expandedIds.includes("pinned") ? "is-open" : ""
+                }`}
               aria-hidden="true"
             >
               <ChevronDown size={16} />
@@ -144,9 +128,8 @@ export default function AppAccordion(props: AppAccordion.Props): ReactNode {
         title: (
           <span className="app-accordion__trigger">
             <span
-              className={`app-accordion__chevron ${
-                expandedIds.includes("services") ? "is-open" : ""
-              }`}
+              className={`app-accordion__chevron ${expandedIds.includes("services") ? "is-open" : ""
+                }`}
               aria-hidden="true"
             >
               <ChevronDown size={16} />
@@ -166,7 +149,7 @@ export default function AppAccordion(props: AppAccordion.Props): ReactNode {
         handleToggle: () => toggleAccordion("services"),
       },
     ],
-    [expandedIds, pinnedList, filteredServices, view, search]
+    [expandedIds, pinnedList, servicesState]
   );
 
   return (
@@ -176,19 +159,4 @@ export default function AppAccordion(props: AppAccordion.Props): ReactNode {
   );
 }
 
-export namespace AppAccordion {
-  export type Service = {
-    id: string;
-    image: string;
-    name: string;
-    status: string;
-    description: string;
-    category: string[];
-    pinned: boolean;
-  };
 
-  export type Props = {
-    pinnedServices: Service[];
-    services: Service[];
-  };
-}

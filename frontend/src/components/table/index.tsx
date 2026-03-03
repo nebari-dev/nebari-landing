@@ -22,7 +22,7 @@ import {
 
 import "./index.scss";
 
-export default function AppTable(props: AppTable.Props): ReactNode {
+export default function AppTable(props: AppTableProps): ReactNode {
   
   const {
     className,
@@ -142,29 +142,24 @@ export default function AppTable(props: AppTable.Props): ReactNode {
   );
 }
 
-export namespace AppTable {
+export type AppTableRow = {
+  id: string;
+  title: string;
+  description: string;
+  image: string;
+  imageAlt?: string;
+  categories: string[];
+  status: string;
+  pinned: boolean;
+};
 
-  export type AppTableRow = {
-    id: string;
-    title: string;
-    description: string;
-    image: string;
-    imageAlt?: string;
-    categories: string[];
-    status: string;
-    pinned: boolean;
-  };
-
-  export
-  type Props = {
-    className?: string;
-    caption?: ReactNode;
-    rows: AppTableRow[];
-    responsive?: "stacked-header" | "stacked" | "scrollable" | "none";
-    bordered?: boolean;
-    striped?: boolean;
-    compact?: boolean;
-
-    onTogglePin?: (rowId: string, nextPinned: boolean) => void;
-  }
-}
+export type AppTableProps = {
+  className?: string;
+  caption?: ReactNode;
+  rows: AppTableRow[];
+  responsive?: "stacked-header" | "stacked" | "scrollable" | "none";
+  bordered?: boolean;
+  striped?: boolean;
+  compact?: boolean;
+  onTogglePin?: (rowId: string, nextPinned: boolean) => void;
+};
