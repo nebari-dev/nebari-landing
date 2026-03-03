@@ -9,7 +9,7 @@ import pinIconUrl from "../../assets/pin.svg";
 import unpinIconUrl from "../../assets/unpin.svg";
 import "./index.scss";
 
-export function DetailedCard(props: DetailedCard.Props): ReactNode {
+export function DetailedCard(props: DetailedCardProps): ReactNode {
   // Expand the props
   const {
     className,
@@ -72,15 +72,13 @@ export function DetailedCard(props: DetailedCard.Props): ReactNode {
   );
 }
 
-export namespace DetailedCard {
-  export type Props = {
-    className?: string;
-    image: string;
-    status: string;
-    name: string;
-    description: string;
-    category: string[];
-    pinned: boolean;
-    onTogglePin: (nextPinned: boolean) => void;
-  };
-}
+export type DetailedCardProps = {
+  className?: string;
+  image: string;
+  status: string;
+  name: string;
+  description: string;
+  category: string[];
+  pinned: boolean;
+  onTogglePin: (nextPinned: boolean) => void;
+};

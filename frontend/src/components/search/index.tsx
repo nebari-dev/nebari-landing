@@ -12,7 +12,7 @@ import {
 
 import "./index.scss";
 
-export default function AppSearchBar(props: AppSearchBar.Props): ReactNode {
+export default function AppSearchBar(props: AppSearchBarProps): ReactNode {
   const { className, onSubmit } = props;
 
   return (
@@ -32,9 +32,7 @@ export default function AppSearchBar(props: AppSearchBar.Props): ReactNode {
   );
 }
 
-export namespace AppSearchBar {
-  export type Props = {
-    className?: string;
-    onSubmit?: (value: string) => void;
-  };
-}
+export type AppSearchBarProps = {
+  className?: string;
+  onSubmit?: (value: string) => void;
+};

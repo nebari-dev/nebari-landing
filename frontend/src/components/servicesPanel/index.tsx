@@ -9,7 +9,7 @@ import { DetailedCard } from "../card";
 
 import "./index.scss";
 
-export default function ServicesPanel(props: ServicesPanel.Props): ReactNode {
+export default function ServicesPanel(props: ServicesPanelProps): ReactNode {
   const { services, onTogglePin } = props;
 
   const [view, setView] = useState<"grid" | "list">("list");
@@ -82,19 +82,17 @@ export default function ServicesPanel(props: ServicesPanel.Props): ReactNode {
   );
 }
 
-export namespace ServicesPanel {
-  export type Service = {
-    id: string;
-    image: string;
-    name: string;
-    status: string;
-    description: string;
-    category: string[];
-    pinned: boolean;
-  };
+export type ServicesPanelService = {
+  id: string;
+  image: string;
+  name: string;
+  status: string;
+  description: string;
+  category: string[];
+  pinned: boolean;
+};
 
-  export type Props = {
-    services: Service[];
-    onTogglePin: (serviceId: string) => void;
-  };
-}
+export type ServicesPanelProps = {
+  services: ServicesPanelService[];
+  onTogglePin: (serviceId: string) => void;
+};

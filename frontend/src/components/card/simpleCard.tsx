@@ -16,8 +16,7 @@ import {
 
 import "./index.scss";
 
-export
-function SimpleCard(props: SimpleCard.Props): ReactNode {
+export function SimpleCard(props: SimpleCardProps): ReactNode {
   
   // Extract the props
   const { className, image, name, status } = props;
@@ -42,13 +41,9 @@ function SimpleCard(props: SimpleCard.Props): ReactNode {
   );
 }
 
-export namespace SimpleCard {
-
-  export
-  type Props = {
-    className?: string;
-    image: string;
-    name: string;
-    status: string;
-  }
-}
+export type SimpleCardProps = {
+  className?: string;
+  image: string;
+  name: string;
+  status: string;
+};

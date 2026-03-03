@@ -20,7 +20,7 @@ import {
 
 import "./index.scss";
 
-export default function Header(props: Header.Props): ReactNode {
+export default function Header(props: HeaderProps): ReactNode {
 
   const {
     homeHref = "/",
@@ -96,16 +96,12 @@ export default function Header(props: Header.Props): ReactNode {
   );
 }
 
-export namespace Header {
-
-  export
-  type Props = {
-    homeHref?: string;
-    docsHref?: string;
-    githubHref?: string;
-    onSignIn?: () => void;
-    signInLabel?: string;
-    isDarkMode?: boolean;
-    onToggleTheme?: () => void;
-  }
-}
+export type HeaderProps = {
+  homeHref?: string;
+  docsHref?: string;
+  githubHref?: string;
+  onSignIn?: () => void;
+  signInLabel?: string;
+  isDarkMode?: boolean;
+  onToggleTheme?: () => void;
+};

@@ -14,7 +14,7 @@ import {
 
 import "./index.scss";
 
-export default function AppViewToggle(props: AppViewToggle.Props): ReactNode {
+export default function AppViewToggle(props: AppViewToggleProps): ReactNode {
 
   const { className, value, onChange } = props
   const isGrid = value === "grid";
@@ -49,14 +49,12 @@ export default function AppViewToggle(props: AppViewToggle.Props): ReactNode {
   );
 }
 
-export namespace AppViewToggle {
-  export type Value = "grid" | "list";
+export type AppViewToggleValue = "grid" | "list";
 
-  export type Props = {
-    className?: string;
-    value: Value;
-    onChange: (next: Value) => void;
-    gridLabel?: string;
-    listLabel?: string;
-  };
-}
+export type AppViewToggleProps = {
+  className?: string;
+  value: AppViewToggleValue;
+  onChange: (next: AppViewToggleValue) => void;
+  gridLabel?: string;
+  listLabel?: string;
+};
