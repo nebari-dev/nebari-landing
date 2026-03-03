@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/internal/cache"
+	"github.com/nebari-dev/nebari-landing/internal/cache"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 

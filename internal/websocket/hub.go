@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	landingcache "github.com/nebari-dev/nebari-landing/nebari-webapi/internal/cache"
+	landingcache "github.com/nebari-dev/nebari-landing/internal/cache"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 

@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	sdapp "github.com/nebari-dev/nebari-landing/nebari-webapi/internal/app"
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/internal/cache"
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/internal/pins"
+	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
+	"github.com/nebari-dev/nebari-landing/internal/cache"
+	"github.com/nebari-dev/nebari-landing/internal/pins"
 )
 
 // newPinStore creates a temp-dir-backed PinStore for tests.

@@ -8,13 +8,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/internal/accessrequests"
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/internal/auth"
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/internal/cache"
-	webkeycloak "github.com/nebari-dev/nebari-landing/nebari-webapi/internal/keycloak"
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/internal/notifications"
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/internal/pins"
-	wshub "github.com/nebari-dev/nebari-landing/nebari-webapi/internal/websocket"
+	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
+	"github.com/nebari-dev/nebari-landing/internal/auth"
+	"github.com/nebari-dev/nebari-landing/internal/cache"
+	webkeycloak "github.com/nebari-dev/nebari-landing/internal/keycloak"
+	"github.com/nebari-dev/nebari-landing/internal/notifications"
+	"github.com/nebari-dev/nebari-landing/internal/pins"
+	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 

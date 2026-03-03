@@ -1,7 +1,7 @@
 # Nebari WebAPI — CI/CD
 #
 # Triggers:
-#   - push / PR touching nebari-webapi/**
+#   - push / PR touching webapi source (cmd/**, internal/**, etc.)
 #   - manual dispatch (workflow_dispatch)
 #
 # Jobs:
@@ -9,23 +9,33 @@
 #   build    — build binary to verify compilation
 #   docker   — build & push image to quay.io (on push to main only)
 
-name: nebari-webapi
+name: webapi
 
 on:
   push:
     branches: [main]
     paths:
-      - nebari-webapi/**
+      - cmd/**
+      - internal/**
+      - test/**
+      - deploy/**
+      - go.mod
+      - go.sum
+      - Dockerfile
+      - Makefile
       - .github/workflows/webapi.yml
   pull_request:
     paths:
-      - nebari-webapi/**
+      - cmd/**
+      - internal/**
+      - test/**
+      - deploy/**
+      - go.mod
+      - go.sum
+      - Dockerfile
+      - Makefile
       - .github/workflows/webapi.yml
   workflow_dispatch:
-
-defaults:
-  run:
-    working-directory: nebari-webapi
 
 env:
   IMAGE: quay.io/nebari/nebari-webapi
@@ -40,8 +50,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: nebari-webapi/go.mod
-          cache-dependency-path: nebari-webapi/go.sum
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
 
       - name: go vet
         run: go vet ./...
@@ -56,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage
-          path: nebari-webapi/coverage.out
+          path: coverage.out
 
   # ── Build binary ──────────────────────────────────────────────────────────
   build:
@@ -68,8 +78,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: nebari-webapi/go.mod
-          cache-dependency-path: nebari-webapi/go.sum
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
 
       - name: Build binary (linux/amd64)
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /tmp/webapi ./cmd
@@ -127,8 +137,8 @@ jobs:
         id: push
         uses: docker/build-push-action@v6
         with:
-          context: nebari-webapi
-          file: nebari-webapi/Dockerfile
+          context: .
+          file: Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: true
           # Push under a per-arch tag; overwritten on every run — that's fine

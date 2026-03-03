@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	sdapp "github.com/nebari-dev/nebari-landing/nebari-webapi/internal/app"
+	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
 )
 
 // ServiceInfo represents a service that appears on the landing page

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	landingcache "github.com/nebari-dev/nebari-landing/nebari-webapi/internal/cache"
-	wshub "github.com/nebari-dev/nebari-landing/nebari-webapi/internal/websocket"
+	landingcache "github.com/nebari-dev/nebari-landing/internal/cache"
+	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
 )
 
 // dialWS connects to a test WebSocket server and returns the connection.

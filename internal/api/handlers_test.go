@@ -9,8 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	sdapp "github.com/nebari-dev/nebari-landing/nebari-webapi/internal/app"
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/internal/cache"
+	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
+	"github.com/nebari-dev/nebari-landing/internal/cache"
 )
 
 // --- helpers ---

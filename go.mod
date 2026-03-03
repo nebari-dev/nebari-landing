@@ -1,4 +1,4 @@
-module github.com/nebari-dev/nebari-landing/nebari-webapi
+module github.com/nebari-dev/nebari-landing
 
 go 1.25.5
 

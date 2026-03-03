@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/internal/accessrequests"
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/internal/cache"
+	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
+	"github.com/nebari-dev/nebari-landing/internal/cache"
 )
 
 // newARStore creates a temporary access request store for tests.

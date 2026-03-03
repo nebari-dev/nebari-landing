@@ -20,7 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/test/utils"
+	"github.com/nebari-dev/nebari-landing/test/utils"
 )
 
 var (
@@ -57,8 +57,8 @@ var (
 // TestE2E is the Ginkgo test runner registered for `go test -tags=e2e`.
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	_, _ = fmt.Fprintf(GinkgoWriter, "Starting nebari-webapi e2e test suite\n")
-	RunSpecs(t, "nebari-webapi e2e suite")
+	_, _ = fmt.Fprintf(GinkgoWriter, "Starting nebari-landing e2e test suite\n")
+	RunSpecs(t, "nebari-landing e2e suite")
 }
 
 var _ = BeforeSuite(func() {

@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/nebari-dev/nebari-landing/nebari-webapi/test/utils"
+	"github.com/nebari-dev/nebari-landing/test/utils"
 )
 
 // nebariAppGVK is the GroupVersionKind for NebariApp resources.

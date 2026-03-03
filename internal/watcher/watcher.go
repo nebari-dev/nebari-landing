@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	sdapp "github.com/nebari-dev/nebari-landing/nebari-webapi/internal/app"
-	landingcache "github.com/nebari-dev/nebari-landing/nebari-webapi/internal/cache"
+	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
+	landingcache "github.com/nebari-dev/nebari-landing/internal/cache"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
