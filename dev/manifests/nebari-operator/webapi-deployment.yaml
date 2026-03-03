@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapi
+  namespace: nebari-system
+  labels:
+    app.kubernetes.io/name: nebari-operator
+    app.kubernetes.io/component: webapi
+    app.kubernetes.io/part-of: nebari-foundational
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: webapi
+      app.kubernetes.io/name: nebari-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: webapi
+        app.kubernetes.io/name: nebari-operator
+    spec:
+      serviceAccountName: webapi
+      containers:
+        - name: api
+          image: {{ .WebAPIImage }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            # JWT validation
+            - name: ENABLE_AUTH
+              value: "true"
+            - name: KEYCLOAK_URL
+              value: "{{ .KeycloakAuthURL }}"
+            - name: KEYCLOAK_ISSUER_URL
+              value: "{{ .KeycloakIssuerURL }}"
+            - name: KEYCLOAK_REALM
+              value: "{{ .KeycloakRealm }}"
+            # Keycloak admin credentials — read from the secret directly
+            - name: KEYCLOAK_ADMIN_SECRET_NAME
+              value: "{{ .KeycloakAdminSecretName }}"
+            - name: KEYCLOAK_ADMIN_SECRET_NAMESPACE
+              value: "{{ .KeycloakAdminSecretNamespace }}"
+            # Admin access-control
+            - name: ADMIN_GROUP
+              value: admin
+            # Persistent stores (bbolt)
+            - name: ACCESS_REQUESTS_DB_PATH
+              value: /data/access_requests.db
+            - name: NOTIFICATIONS_DB_PATH
+              value: /data/notifications.db
+            - name: PINS_DB_PATH
+              value: /data/pins.db
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webapi
+  namespace: nebari-system
+  labels:
+    app.kubernetes.io/name: nebari-operator
+    app.kubernetes.io/component: webapi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapi
+  namespace: nebari-system
+  labels:
+    app.kubernetes.io/name: nebari-operator
+    app.kubernetes.io/component: webapi
+spec:
+  selector:
+    app.kubernetes.io/component: webapi
+    app.kubernetes.io/name: nebari-operator
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

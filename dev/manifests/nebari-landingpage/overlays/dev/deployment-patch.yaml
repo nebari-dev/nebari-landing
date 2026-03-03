@@ -1,0 +1,95 @@
+# Strategic merge patch — adds oauth2-proxy as a sidecar to the landing page pod.
+# oauth2-proxy listens on :4180, proxies authenticated requests to localhost:8080 (nginx),
+# and injects Authorization: Bearer <token> so nginx can serve it at /auth-token.
+#
+# Client credentials are read from the Secret 'nebari-landingpage-oidc-client'.
+# In production that Secret is created by the nebari-operator when it reconciles
+# spec.auth on the 'nebari-landingpage' NebariApp.
+# In dev it is created by: make frontend-client
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nebari-landingpage
+spec:
+  template:
+    spec:
+      # oauth2-proxy may run as any UID; keep overall non-root policy but relax per container
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+          args:
+            - --provider=oidc
+            - --http-address=0.0.0.0:4180
+            - --upstream=http://localhost:8080
+            # Keycloak realm discovery endpoint
+            - --oidc-issuer-url=http://192.168.49.100/auth/realms/nebari
+            # --client-id is NOT set here; oauth2-proxy reads OAUTH2_PROXY_CLIENT_ID from env.
+            # This keeps the arg list free of client-specific values and lets the
+            # operator-managed Secret (nebari-landingpage-oidc-client) be the single
+            # source of truth for credentials.
+            - --redirect-url=http://192.168.49.102/oauth2/callback
+            # Allow all email domains (Keycloak users have no "real" email requirement)
+            - --email-domain=*
+            # groups is added via a client-level protocol mapper, NOT a Keycloak scope.
+            # Requesting it as a scope causes `invalid_scope`; openid/profile/email are sufficient.
+            - --scope=openid profile email
+            # Cookie settings — no HTTPS in local dev
+            - --cookie-secure=false
+            - --cookie-samesite=lax
+            - --cookie-name=_nebari_session
+            # Token passthrough to upstream nginx
+            - --pass-access-token=true
+            - --pass-authorization-header=true
+            - --set-xauthrequest=true
+            # UX
+            - --skip-provider-button=true
+            - --silence-ping-logging=true
+          ports:
+            - name: proxy
+              containerPort: 4180
+          env:
+            # These two vars come from the operator-managed Secret (or the dev fallback created
+            # by `make frontend-client`). The Secret name follows the operator convention:
+            #   <nebariapp-name>-oidc-client
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: nebari-landingpage-oidc-client
+                  key: client-id
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nebari-landingpage-oidc-client
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: cookie-secret
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: proxy
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: proxy
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534   # nobody
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]

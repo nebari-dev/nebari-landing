@@ -1,0 +1,5 @@
+nebari-landing/node_modules
+nebari-landing/dist
+nebari-landing/.env*
+.git
+dev/

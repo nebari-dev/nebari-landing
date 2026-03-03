@@ -1,0 +1,20 @@
+# MetalLB v0.9.x (minikube addon) uses a ConfigMap for address pool configuration.
+# This replaces the newer IPAddressPool + L2Advertisement CRDs used in v0.13+.
+#
+# IPs are on minikube's docker bridge (192.168.49.0/24), reachable from the host
+# and from within cluster pods.  Pinned assignments (via service annotations):
+#   192.168.49.100 → Keycloak
+#   192.168.49.101 → WebAPI
+#   192.168.49.102 → nebari-landingpage (via oauth2-proxy)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: metallb-system
+  name: config
+data:
+  config: |
+    address-pools:
+    - name: nebari-local
+      protocol: layer2
+      addresses:
+      - 192.168.49.100-192.168.49.150

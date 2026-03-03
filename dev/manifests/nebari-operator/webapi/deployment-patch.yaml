@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapi
+  namespace: nebari-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: ENABLE_AUTH
+              value: "true"
+            - name: KEYCLOAK_URL
+              value: "http://192.168.49.100/auth"
+            - name: KEYCLOAK_ISSUER_URL
+              value: "http://192.168.49.100/auth"
+            - name: KEYCLOAK_REALM
+              value: "nebari"
+            - name: KEYCLOAK_ADMIN_SECRET_NAME
+              value: "keycloak-admin-credentials"
+            - name: KEYCLOAK_ADMIN_SECRET_NAMESPACE
+              value: "keycloak"
+            - name: ADMIN_GROUP
+              value: admin
+            - name: ACCESS_REQUESTS_DB_PATH
+              value: /data/access_requests.db
+            - name: NOTIFICATIONS_DB_PATH
+              value: /data/notifications.db
+            - name: PINS_DB_PATH
+              value: /data/pins.db

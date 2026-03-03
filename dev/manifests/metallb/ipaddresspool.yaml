@@ -1,0 +1,10 @@
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: nebari-local
+  namespace: metallb-system
+spec:
+  # IPs within minikube's docker bridge subnet (192.168.49.0/24).
+  # Accessible from the host machine and from cluster pods.
+  addresses:
+    - 192.168.49.100-192.168.49.150

@@ -1,0 +1,108 @@
+---
+# Public service — visible to everyone, no auth required
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: docs
+  namespace: nebari-system
+spec:
+  hostname: docs.nebari.local
+  service:
+    name: nebari-landingpage
+    port: 80
+  landingPage:
+    enabled: true
+    displayName: "Documentation"
+    description: "Nebari platform documentation and guides"
+    icon: "kubernetes"
+    category: "Platform"
+    priority: 10
+    visibility: public
+    healthCheck:
+      enabled: true
+      path: "/healthz"
+      intervalSeconds: 30
+      timeoutSeconds: 5
+---
+# Authenticated service — requires valid JWT
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: jupyterhub
+  namespace: nebari-system
+spec:
+  hostname: jupyter.nebari.local
+  service:
+    name: nebari-landingpage
+    port: 80
+  landingPage:
+    enabled: true
+    displayName: "JupyterHub"
+    description: "Interactive Python notebooks for data science"
+    icon: "jupyter"
+    category: "Data Science"
+    priority: 1
+    visibility: authenticated
+    healthCheck:
+      enabled: true
+      path: "/healthz"
+      intervalSeconds: 30
+      timeoutSeconds: 5
+---
+# Authenticated service — second card in same category
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: grafana
+  namespace: nebari-system
+spec:
+  hostname: grafana.nebari.local
+  service:
+    name: nebari-landingpage
+    port: 80
+  landingPage:
+    enabled: true
+    displayName: "Grafana"
+    description: "Platform metrics and dashboards"
+    icon: "grafana"
+    category: "Monitoring"
+    priority: 20
+    visibility: authenticated
+---
+# Private service — requires JWT + admin group membership
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: admin-panel
+  namespace: nebari-system
+spec:
+  hostname: admin.nebari.local
+  service:
+    name: nebari-landingpage
+    port: 80
+  landingPage:
+    enabled: true
+    displayName: "Admin Panel"
+    description: "Cluster administration — restricted access"
+    icon: "keycloak"
+    category: "Platform"
+    priority: 999
+    visibility: private
+    requiredGroups:
+      - "admin"
+---
+# Disabled app — should NOT appear in /api/v1/services
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: disabled-app
+  namespace: nebari-system
+spec:
+  hostname: disabled.nebari.local
+  service:
+    name: nebari-landingpage
+    port: 80
+  landingPage:
+    enabled: false
+    displayName: "Disabled App"
+    category: "Platform"
