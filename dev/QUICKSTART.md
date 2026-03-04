@@ -102,6 +102,126 @@ populates the webapi's in-memory service cache. The webapi then serves that cach
 
 
 
+## Running on WSL2 (Windows)
+
+MetalLB uses L2/ARP to advertise the `192.168.49.x` IP pool. In default WSL2
+networking, that ARP traffic never crosses the Hyper-V VM boundary, so the
+MetalLB IPs are unreachable from the Windows host browser.
+
+There are three ways to fix this, in order of recommendation:
+
+---
+
+### Option A — WSL2 mirrored networking (Windows 11 24H2+, recommended)
+
+Mirrored mode bridges the WSL2 VM NIC directly to the Windows host network stack.
+MetalLB ARP replies reach Windows, so the `192.168.49.x` IPs are accessible in
+the browser exactly as documented. **No changes to the Makefile or manifests
+are needed** — just run the normal `make setup`.
+
+**One-time Windows setup:**
+
+1. Check your Windows build: `winver` → must show build ≥ 26100 (24H2).
+
+2. Create or edit `%USERPROFILE%\.wslconfig`:
+
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+
+   [experimental]
+   # Required for mirrored mode to expose non-loopback interfaces to the host.
+   hostAddressLoopback=true
+   ```
+
+3. Restart WSL2 from PowerShell (Admin):
+
+   ```powershell
+   wsl --shutdown
+   # wait ~2 s, then reopen your WSL terminal
+   ```
+
+4. Verify the minikube bridge is visible from Windows. From PowerShell:
+
+   ```powershell
+   # After `make setup` has run and MetalLB is configured:
+   curl http://192.168.49.100/auth/admin
+   # Should get a 200 / redirect — not a timeout
+   ```
+
+   If you get a timeout, check that Windows Defender Firewall is not blocking
+   inbound traffic on the `192.168.49.0/24` subnet (add an inbound rule for
+   that range or add a `[firewall]` block to `.wslconfig` — see Microsoft docs).
+
+Then proceed with the normal quick-start:
+
+```sh
+make -f dev/Makefile setup
+```
+
+---
+
+### Option B — Docker Desktop (any Windows version)
+
+Docker Desktop routes container networks through `vpnkit`, making the minikube
+docker bridge accessible from Windows regardless of WSL2 networking mode.
+
+1. Install [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/).
+2. In Docker Desktop → Settings → Resources → WSL Integration: enable your WSL2 distro.
+3. **Run `make setup` from a Windows terminal (PowerShell/CMD)**, not from WSL2 —
+   minikube must target the Windows Docker daemon, not the WSL2 one.
+   ```powershell
+   cd \path\to\nebari-landing
+   make -f dev/Makefile setup
+   ```
+
+   Alternatively, from WSL2 point Docker at the Windows socket:
+   ```sh
+   export DOCKER_HOST=npipe:////./pipe/docker_engine
+   make -f dev/Makefile setup
+   ```
+
+---
+
+### Option C — port-forward mode (any Windows version, no extra software)
+
+If neither option above is available, use the WSL-specific targets that skip
+MetalLB entirely and expose services via `kubectl port-forward` on `localhost`.
+WSL2 automatically forwards `localhost:<PORT>` to `127.0.0.1` on the Windows host.
+
+```sh
+make -f dev/Makefile wsl-setup
+```
+
+**Service URLs in port-forward mode:**
+
+| Service | URL |
+|---------|-----|
+| Landing page | `http://localhost:8080/` |
+| WebAPI | `http://localhost:8090/api/v1/` |
+| Keycloak admin | `http://localhost:8180/auth/admin` |
+
+The port-forwards run in the background. Restart them at any time with:
+
+```sh
+make -f dev/Makefile port-forward     # start / restart
+make -f dev/Makefile stop-port-forward # stop
+```
+
+**How it differs from the MetalLB setup** (see `dev/keycloak/values-wsl.yaml`
+and `dev/manifests/nebari-landingpage/overlays/wsl/`):
+- Keycloak `KC_HOSTNAME_URL=http://localhost:8180/auth` (the JWT `iss` matches
+  the Windows-visible URL).
+- `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` — pods fetch Keycloak discovery via the
+  cluster-internal service name; the returned `token_endpoint` / `jwks_uri` use
+  that same internal hostname so back-channel calls never go through the forward.
+- `proxy.mode=none` — `kubectl port-forward` injects no `X-Forwarded-*` headers;
+  `xforwarded` mode (the default) would cause the admin console to hang.
+- oauth2-proxy `--oidc-issuer-url` points to the cluster-internal Keycloak
+  service; `--skip-oidc-issuer-verification` suppresses the issuer-URL mismatch.
+
+---
+
 ## Quick-start (all-in-one)
 
 ```sh
@@ -204,6 +324,8 @@ dev/
 ├── keycloak/
 │   ├── values.yaml                 ← Helm values for keycloakx chart
 │   │                                  (LoadBalancer, KC_HOSTNAME_URL)
+│   ├── values-wsl.yaml             ← Overlay for WSL port-forward mode
+│   │                                  (NodePort, localhost URLs, proxy.mode=none)
 │   ├── postgresql-values.yaml      ← Helm values for PostgreSQL chart
 │   ├── realm-setup-job.yaml        ← Job: creates realm, users, groups via kcadm
 │   ├── webapi-client-job.yaml      ← Job: creates 'webapi' public OIDC client
@@ -223,15 +345,22 @@ dev/
     │
     ├── nebari-landingpage/
     │   ├── base/                   ← Deployment + Service + ServiceAccount + NebariApp CR
-    │   └── overlays/dev/
-    │       ├── kustomization.yaml
-    │       ├── deployment-patch.yaml  ← Adds oauth2-proxy sidecar container
-    │       ├── service-patch.yaml     ← Changes service to LoadBalancer (LB_IP_LANDING)
-    │       └── oauth2proxy-secret.yaml ← cookie-secret only (client creds in nebari-landingpage-oidc-client)
+    │   └── overlays/
+    │       ├── dev/                ← MetalLB LoadBalancer overlay (default)
+    │       │   ├── kustomization.yaml
+    │       │   ├── deployment-patch.yaml  ← Adds oauth2-proxy sidecar container
+    │       │   ├── service-patch.yaml     ← Changes service to LoadBalancer (LB_IP_LANDING)
+    │       │   └── oauth2proxy-secret.yaml
+    │       └── wsl/                ← NodePort + localhost overlay (make wsl-setup)
+    │           ├── kustomization.yaml
+    │           ├── deployment-patch.yaml  ← oauth2-proxy with cluster-internal KC URL
+    │           ├── service-patch.yaml     ← NodePort 30080
+    │           └── oauth2proxy-secret.yaml
     │
     ├── nebari-operator/
     │   ├── operator/               ← Pulls from nebari-operator repo (kustomize remote)
-    │   └── webapi/                 ← Pulls webapi manifest; patches env + service type
+    │   ├── webapi/                 ← Pulls webapi manifest; patches env + service type (LoadBalancer)
+    │   └── webapi-wsl/             ← Same but NodePort + localhost OIDC URLs (make wsl-setup)
     │
     └── argocd/                     ← ArgoCD Application CRs (for GitOps; use envsubst)
 ```
