@@ -25,11 +25,12 @@ spec:
             - --upstream=http://localhost:8080
             # Keycloak realm discovery endpoint
             - --oidc-issuer-url=http://192.168.49.100/auth/realms/nebari
+            - --insecure-oidc-skip-issuer-verification=true
             # --client-id is NOT set here; oauth2-proxy reads OAUTH2_PROXY_CLIENT_ID from env.
             # This keeps the arg list free of client-specific values and lets the
             # operator-managed Secret (nebari-landingpage-oidc-client) be the single
             # source of truth for credentials.
-            - --redirect-url=http://192.168.49.102/oauth2/callback
+            - --redirect-url=http://localhost:8082/oauth2/callback
             # Allow all email domains (Keycloak users have no "real" email requirement)
             - --email-domain=*
             # groups is added via a client-level protocol mapper, NOT a Keycloak scope.

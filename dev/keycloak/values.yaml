@@ -33,13 +33,17 @@ extraEnv: |
   # Expose Keycloak at the MetalLB LoadBalancer IP (192.168.49.100:80).
   # This URL is reachable from both the host browser and from within the cluster
   # (via the node IP), so the JWT issuer matches everywhere — no port-forward needed.
-  - name: KC_HOSTNAME_URL
-    value: http://192.168.49.100/auth
+  - name: KC_HOSTNAME
+    value: localhost
+  - name: KC_HTTP_RELATIVE_PATH
+    value: /auth
   - name: KC_HOSTNAME_STRICT
     value: "false"
+  - name: KC_HOSTNAME_DEBUG
+    value: "true"
 
 proxy:
-  mode: xforwarded
+  enabled: false
 
 livenessProbe: |
   httpGet:
