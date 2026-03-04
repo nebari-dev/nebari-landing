@@ -1,5 +1,5 @@
 import {
-  useMemo, useState
+  useEffect, useMemo, useState
 } from "react";
 
 import type {
@@ -37,19 +37,25 @@ export type AppAccordionProps = {
 
 export default function AppAccordion(props: AppAccordionProps): ReactNode {
 
+  // Extract props
   const { pinnedServices, services } = props;
 
   const [expandedIds, setExpandedIds] = useState<string[]>(["pinned", "services"]);
 
-  // Initialise from props once; pin toggling is purely local interaction.
-  // Using a lazy initializer avoids the useEffect-setState anti-pattern.
-  const [servicesState, setServicesState] = useState<AppAccordionService[]>(() => {
+  const [_view] = useState<"grid" | "list">("list");
+  const [_search] = useState("");
+
+  const [servicesState, setServicesState] = useState<AppAccordionService[]>([]);
+
+  // Sync local state from incoming props
+  useEffect(() => {
     const pinnedIds = new Set(pinnedServices.map((s) => s.id));
-    return services.map((service) => ({
+    setServicesState(services.map((service) => ({
       ...service,
       pinned: pinnedIds.has(service.id) || !!service.pinned,
-    }));
-  });
+    })));
+  }, [pinnedServices, services]);
+
   const toggleAccordion = (id: string) => {
     setExpandedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]

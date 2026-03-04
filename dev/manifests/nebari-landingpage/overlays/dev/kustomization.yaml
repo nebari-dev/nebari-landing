@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: nebari-system
+
+resources:
+  - ../../base
+  - oauth2proxy-secret.yaml
+
+# Override the image tag built locally into minikube
+images:
+  - name: nebari-landing
+    newTag: dev
+
+patches:
+  # Never pull from a registry — use image already loaded into minikube
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+    target:
+      kind: Deployment
+      name: nebari-landingpage
+
+  # Add oauth2-proxy sidecar container
+  - path: deployment-patch.yaml
+    target:
+      kind: Deployment
+      name: nebari-landingpage
+
+  # Expose via MetalLB LoadBalancer (192.168.49.102:80 → oauth2-proxy:4180)
+  - path: service-patch.yaml
+    target:
+      kind: Service
+      name: nebari-landingpage

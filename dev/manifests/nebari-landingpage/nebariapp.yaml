@@ -1,0 +1,41 @@
+---
+# NebariApp for the landing page itself.
+#
+# spec.auth tells the operator to provision a confidential OIDC client in
+# Keycloak and store the credentials in a Secret named:
+#   nebari-landingpage-oidc-client
+# (key: client-id, key: client-secret)
+#
+# enforceAtGateway: false means the operator does NOT create an Envoy Gateway
+# SecurityPolicy — oauth2-proxy (the sidecar) handles the OIDC flow instead.
+# This is the documented pattern for "application-managed" auth.
+#
+# NOTE (dev constraint): the operator currently exits the reconcile loop early
+# at the TLS step because envoy-gateway-system does not exist in the local
+# minikube cluster. Auth provisioning is sequenced after TLS, so the Secret
+# is not created automatically in dev. The `make frontend-client` target (see
+# dev/keycloak/frontend-client-job.yaml) creates the same Secret as a dev
+# fallback. Remove the fallback job once envoy-gateway is available.
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: nebari-landingpage
+  namespace: nebari-system
+spec:
+  hostname: landing.nebari.local
+  service:
+    name: nebari-landingpage
+    port: 80
+  auth:
+    enabled: true
+    enforceAtGateway: false     # oauth2-proxy sidecar handles OIDC, not the gateway
+    provisionClient: true        # operator creates OIDC client in Keycloak + writes Secret
+    provider: keycloak
+    redirectURI: /oauth2/callback
+    scopes:
+      - openid
+      - profile
+      - email
+      - groups
+  landingPage:
+    enabled: false              # the landing page is not a card on itself

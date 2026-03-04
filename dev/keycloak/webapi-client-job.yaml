@@ -1,0 +1,87 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-webapi-client-setup
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/part-of: nebari-foundational
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: client-setup
+          image: quay.io/keycloak/keycloak:24.0
+          env:
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin-credentials
+                  key: admin-password
+            - name: KEYCLOAK_URL
+              value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              KCADM="/opt/keycloak/bin/kcadm.sh"
+
+              echo "Authenticating to Keycloak..."
+              $KCADM config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user admin \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              REALM="nebari"
+
+              # Create webapi public client (password grant, no secret required)
+              echo "Creating 'webapi' public client in realm '$REALM'..."
+              CLIENT_ID=$($KCADM get clients -r "$REALM" --fields id,clientId \
+                | tr -d ' \n' \
+                | grep -o '"id":"[^"]*","clientId":"webapi"' \
+                | grep -o '"id":"[^"]*"' \
+                | cut -d'"' -f4)
+
+              if [ -n "$CLIENT_ID" ]; then
+                echo "Client 'webapi' already exists (id=$CLIENT_ID), updating..."
+                $KCADM update clients/"$CLIENT_ID" -r "$REALM" \
+                  -s enabled=true \
+                  -s publicClient=true \
+                  -s directAccessGrantsEnabled=true \
+                  -s standardFlowEnabled=true \
+                  -s 'redirectUris=["http://localhost:*","http://127.0.0.1:*"]' \
+                  -s 'webOrigins=["*"]'
+              else
+                echo "Creating client 'webapi'..."
+                $KCADM create clients -r "$REALM" \
+                  -s clientId=webapi \
+                  -s enabled=true \
+                  -s publicClient=true \
+                  -s directAccessGrantsEnabled=true \
+                  -s standardFlowEnabled=true \
+                  -s 'redirectUris=["http://localhost:*","http://127.0.0.1:*"]' \
+                  -s 'webOrigins=["*"]'
+                CLIENT_ID=$($KCADM get clients -r "$REALM" --fields id,clientId \
+                  | grep -A1 '"clientId" : "webapi"' | grep '"id"' | sed 's/.*: "\(.*\)".*/\1/')
+              fi
+
+              echo "Client ID resolved: $CLIENT_ID"
+
+              # Add groups protocol mapper so JWT includes 'groups' claim
+              echo "Adding groups claim mapper..."
+              $KCADM create clients/"$CLIENT_ID"/protocol-mappers/models -r "$REALM" \
+                -s name=groups \
+                -s protocol=openid-connect \
+                -s protocolMapper=oidc-group-membership-mapper \
+                -s 'config."full.path"=false' \
+                -s 'config."id.token.claim"=true' \
+                -s 'config."access.token.claim"=true' \
+                -s 'config."userinfo.token.claim"=true' \
+                -s 'config."claim.name"=groups' \
+                || echo "Groups mapper may already exist, skipping"
+
+              echo "Keycloak webapi client setup complete!"

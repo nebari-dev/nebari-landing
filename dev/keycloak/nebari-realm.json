@@ -1,0 +1,85 @@
+{
+  "realm": "nebari",
+  "enabled": true,
+  "displayName": "Nebari",
+  "displayNameHtml": "<strong>Nebari</strong>",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 30,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Nebari administrator role"
+      },
+      {
+        "name": "user",
+        "description": "Standard Nebari user role"
+      }
+    ]
+  },
+  "groups": [
+    {
+      "name": "admin",
+      "path": "/admin",
+      "realmRoles": ["admin"]
+    },
+    {
+      "name": "users",
+      "path": "/users",
+      "realmRoles": ["user"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "nebari-landingpage",
+      "name": "Nebari Landing Page",
+      "description": "Frontend SPA for the Nebari landing page",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:*",
+        "https://nebari.example.com/*"
+      ],
+      "webOrigins": [
+        "http://localhost:*",
+        "https://nebari.example.com"
+      ],
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ]
+    }
+  ],
+  "smtpServer": {},
+  "eventsEnabled": false,
+  "adminEventsEnabled": false,
+  "adminEventsDetailsEnabled": false,
+  "internationalizationEnabled": false,
+  "supportedLocales": ["en"],
+  "defaultLocale": "en",
+  "accessTokenLifespan": 300,
+  "refreshTokenMaxReuse": 0,
+  "offlineSessionMaxLifespanEnabled": false,
+  "accessCodeLifespan": 60
+}

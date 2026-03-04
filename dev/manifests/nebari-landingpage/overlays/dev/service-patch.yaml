@@ -1,0 +1,13 @@
+# Expose the landing page via MetalLB LoadBalancer at 192.168.49.102.
+# Traffic flows:  browser:80 → LB → pod:4180 (oauth2-proxy) → pod:8080 (nginx)
+apiVersion: v1
+kind: Service
+metadata:
+  name: nebari-landingpage
+spec:
+  type: LoadBalancer
+  loadBalancerIP: "192.168.49.102"
+  ports:
+    - name: http
+      port: 80
+      targetPort: proxy   # oauth2-proxy named port (4180)

@@ -1,0 +1,268 @@
+---
+# Dev fallback for NebariApp auth provisioning.
+#
+# In production, the nebari-operator reconciles spec.auth on the
+# 'nebari-landingpage' NebariApp and creates a Secret named
+# 'nebari-landingpage-oidc-client' (keys: client-id, client-secret).
+#
+# In local dev the operator exits early at the TLS step (envoy-gateway-system
+# missing), so auth provisioning never runs. This Job creates the Keycloak
+# client using the same client-id the operator would use (NebariApp name).
+# The Makefile 'frontend-client' target then writes the matching k8s Secret.
+#
+# Delete this job once the full operator stack (including envoy-gateway) is
+# available in the dev cluster.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-frontend-client-setup
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/part-of: nebari-foundational
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: client-setup
+          image: quay.io/keycloak/keycloak:24.0
+          env:
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin-credentials
+                  key: admin-password
+            - name: KEYCLOAK_URL
+              value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth
+            # Static dev secret — safe only for local minikube.
+            # The operator generates a random secret; this value is written
+            # to the k8s Secret by the Makefile after this job completes.
+            - name: CLIENT_SECRET
+              value: "nebari-frontend-dev-secret"
+            # MetalLB pinned IP for the landing page service
+            - name: LANDING_IP
+              value: "192.168.49.102"
+            # Localhost port used by 'make port-forward' — must match PORT_LANDING (default 8080).
+            - name: LOCALHOST_PORT
+              value: "${PORT_LANDING}"
+            # Production domain (e.g. nebari.example.com) — leave empty for dev-only installs.
+            # Set via: make frontend-client LANDING_HOST=nebari.example.com
+            - name: LANDING_HOST
+              value: "${LANDING_HOST}"
+            # Must match the NebariApp name — that's the convention the operator uses.
+            - name: CLIENT_ID
+              value: "nebari-landingpage"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              KCADM="/opt/keycloak/bin/kcadm.sh"
+              REALM="nebari"
+
+              echo "Authenticating to Keycloak..."
+              $KCADM config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user admin \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              # ── Resolve existing client ID (if any) ─────────────────────────
+              KC_CLIENT_UUID=$($KCADM get clients -r "$REALM" --fields id,clientId \
+                | tr -d ' \n' \
+                | grep -o "\"id\":\"[^\"]*\",\"clientId\":\"${CLIENT_ID}\"" \
+                | grep -o '"id":"[^"]*"' \
+                | cut -d'"' -f4)
+
+              # Build allowed redirect URI and web origin lists.
+              # Always register both port-forward (localhost) and MetalLB IP variants so
+              # either dev mode works without re-running this job.
+              # Also register the production domain if LANDING_HOST is set.
+              REDIRECT_URIS="[\"http://localhost:${LOCALHOST_PORT}/oauth2/callback\",\"http://${LANDING_IP}/oauth2/callback\""
+              WEB_ORIGINS="[\"http://localhost:${LOCALHOST_PORT}\",\"http://${LANDING_IP}\""
+              if [ -n "${LANDING_HOST}" ]; then
+                REDIRECT_URIS="${REDIRECT_URIS},\"https://${LANDING_HOST}/oauth2/callback\""
+                WEB_ORIGINS="${WEB_ORIGINS},\"https://${LANDING_HOST}\""
+              fi
+              REDIRECT_URIS="${REDIRECT_URIS}]"
+              WEB_ORIGINS="${WEB_ORIGINS}]"
+
+              if [ -n "$KC_CLIENT_UUID" ]; then
+                echo "Client '${CLIENT_ID}' already exists (uuid=${KC_CLIENT_UUID}), updating..."
+                $KCADM update clients/"$KC_CLIENT_UUID" -r "$REALM" \
+                  -s enabled=true \
+                  -s publicClient=false \
+                  -s clientAuthenticatorType=client-secret \
+                  -s secret="$CLIENT_SECRET" \
+                  -s standardFlowEnabled=true \
+                  -s directAccessGrantsEnabled=false \
+                  -s "redirectUris=$REDIRECT_URIS" \
+                  -s "webOrigins=$WEB_ORIGINS"
+              else
+                echo "Creating confidential client '${CLIENT_ID}'..."
+                $KCADM create clients -r "$REALM" \
+                  -s clientId="$CLIENT_ID" \
+                  -s enabled=true \
+                  -s publicClient=false \
+                  -s clientAuthenticatorType=client-secret \
+                  -s secret="$CLIENT_SECRET" \
+                  -s standardFlowEnabled=true \
+                  -s directAccessGrantsEnabled=false \
+                  -s "redirectUris=$REDIRECT_URIS" \
+                  -s "webOrigins=$WEB_ORIGINS"
+
+                KC_CLIENT_UUID=$($KCADM get clients -r "$REALM" --fields id,clientId \
+                  | tr -d ' \n' \
+                  | grep -o "\"id\":\"[^\"]*\",\"clientId\":\"${CLIENT_ID}\"" \
+                  | grep -o '"id":"[^"]*"' \
+                  | cut -d'"' -f4)
+              fi
+
+              echo "Keycloak client UUID: $KC_CLIENT_UUID"
+
+              # ── Groups mapper ─────────────────────────────────────────────────
+              $KCADM create clients/"$KC_CLIENT_UUID"/protocol-mappers/models -r "$REALM" \
+                -s name=groups \
+                -s protocol=openid-connect \
+                -s protocolMapper=oidc-group-membership-mapper \
+                -s 'config."full.path"=false' \
+                -s 'config."id.token.claim"=true' \
+                -s 'config."access.token.claim"=true' \
+                -s 'config."userinfo.token.claim"=true' \
+                -s 'config."claim.name"=groups' \
+                || echo "Groups mapper may already exist, skipping"
+
+              # ── Audience mapper ───────────────────────────────────────────────
+              # Adds the client ID to the 'aud' claim so resource servers can
+              # verify the token was intended for this client.
+              $KCADM create clients/"$KC_CLIENT_UUID"/protocol-mappers/models -r "$REALM" \
+                -s name=audience \
+                -s protocol=openid-connect \
+                -s protocolMapper=oidc-audience-mapper \
+                -s 'config."included.client.audience"=nebari-landingpage' \
+                -s 'config."id.token.claim"=false' \
+                -s 'config."access.token.claim"=true' \
+                || echo "Audience mapper may already exist, skipping"
+
+              echo "Keycloak nebari-landingpage client setup complete!"
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: client-setup
+          image: quay.io/keycloak/keycloak:24.0
+          env:
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin-credentials
+                  key: admin-password
+            - name: KEYCLOAK_URL
+              value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth
+            # Static dev secret — safe only for local minikube
+            - name: CLIENT_SECRET
+              value: "nebari-frontend-dev-secret"
+            # MetalLB pinned IP for the landing page service
+            - name: LANDING_IP
+              value: "192.168.49.102"
+            # Localhost port used by 'make port-forward' — must match PORT_LANDING (default 8080).
+            - name: LOCALHOST_PORT
+              value: "${PORT_LANDING}"
+            # Production domain (e.g. nebari.example.com) — leave empty for dev-only installs.
+            # Set via: make frontend-client LANDING_HOST=nebari.example.com
+            - name: LANDING_HOST
+              value: "${LANDING_HOST}"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              KCADM="/opt/keycloak/bin/kcadm.sh"
+              REALM="nebari"
+
+              echo "Authenticating to Keycloak..."
+              $KCADM config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user admin \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              # ── Resolve existing client ID (if any) ─────────────────────────
+              CLIENT_ID=$($KCADM get clients -r "$REALM" --fields id,clientId \
+                | tr -d ' \n' \
+                | grep -o '"id":"[^"]*","clientId":"nebari-landingpage"' \
+                | grep -o '"id":"[^"]*"' \
+                | cut -d'"' -f4)
+
+              # Build allowed redirect URI and web origin lists.
+              # Always register both port-forward (localhost) and MetalLB IP variants so
+              # either dev mode works without re-running this job.
+              # Also register the production domain if LANDING_HOST is set.
+              REDIRECT_URIS="[\"http://localhost:${LOCALHOST_PORT}/oauth2/callback\",\"http://${LANDING_IP}/oauth2/callback\""
+              WEB_ORIGINS="[\"http://localhost:${LOCALHOST_PORT}\",\"http://${LANDING_IP}\""
+              if [ -n "${LANDING_HOST}" ]; then
+                REDIRECT_URIS="${REDIRECT_URIS},\"https://${LANDING_HOST}/oauth2/callback\""
+                WEB_ORIGINS="${WEB_ORIGINS},\"https://${LANDING_HOST}\""
+              fi
+              REDIRECT_URIS="${REDIRECT_URIS}]"
+              WEB_ORIGINS="${WEB_ORIGINS}]"
+
+              if [ -n "$CLIENT_ID" ]; then
+                echo "Client 'nebari-landingpage' already exists (id=$CLIENT_ID), updating..."
+                $KCADM update clients/"$CLIENT_ID" -r "$REALM" \
+                  -s enabled=true \
+                  -s publicClient=false \
+                  -s clientAuthenticatorType=client-secret \
+                  -s secret="$CLIENT_SECRET" \
+                  -s standardFlowEnabled=true \
+                  -s directAccessGrantsEnabled=false \
+                  -s "redirectUris=$REDIRECT_URIS" \
+                  -s "webOrigins=$WEB_ORIGINS"
+              else
+                echo "Creating confidential client 'nebari-landingpage'..."
+                $KCADM create clients -r "$REALM" \
+                  -s clientId=nebari-landingpage \
+                  -s enabled=true \
+                  -s publicClient=false \
+                  -s clientAuthenticatorType=client-secret \
+                  -s secret="$CLIENT_SECRET" \
+                  -s standardFlowEnabled=true \
+                  -s directAccessGrantsEnabled=false \
+                  -s "redirectUris=$REDIRECT_URIS" \
+                  -s "webOrigins=$WEB_ORIGINS"
+
+                CLIENT_ID=$($KCADM get clients -r "$REALM" --fields id,clientId \
+                  | tr -d ' \n' \
+                  | grep -o '"id":"[^"]*","clientId":"nebari-landingpage"' \
+                  | grep -o '"id":"[^"]*"' \
+                  | cut -d'"' -f4)
+              fi
+
+              echo "Frontend client ID: $CLIENT_ID"
+
+              # ── Groups mapper ────────────────────────────────────────────────
+              $KCADM create clients/"$CLIENT_ID"/protocol-mappers/models -r "$REALM" \
+                -s name=groups \
+                -s protocol=openid-connect \
+                -s protocolMapper=oidc-group-membership-mapper \
+                -s 'config."full.path"=false' \
+                -s 'config."id.token.claim"=true' \
+                -s 'config."access.token.claim"=true' \
+                -s 'config."userinfo.token.claim"=true' \
+                -s 'config."claim.name"=groups' \
+                || echo "Groups mapper may already exist, skipping"
+
+              # ── Audience mapper ───────────────────────────────────────────────
+              $KCADM create clients/"$CLIENT_ID"/protocol-mappers/models -r "$REALM" \
+                -s name=audience \
+                -s protocol=openid-connect \
+                -s protocolMapper=oidc-audience-mapper \
+                -s 'config."included.client.audience"=nebari-landingpage' \
+                -s 'config."id.token.claim"=false' \
+                -s 'config."access.token.claim"=true' \
+                || echo "Audience mapper may already exist, skipping"
+
+              echo "Keycloak nebari-landingpage client setup complete!"

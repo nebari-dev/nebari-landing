@@ -1,0 +1,101 @@
+args:
+  - start-dev
+  - --cache=local
+
+image:
+  repository: quay.io/keycloak/keycloak
+  tag: "24.0"
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+extraEnv: |
+  - name: KEYCLOAK_ADMIN
+    value: admin
+  - name: KEYCLOAK_ADMIN_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: keycloak-admin-credentials
+        key: admin-password
+  - name: KC_DB
+    value: postgres
+  - name: KC_DB_URL_HOST
+    value: postgresql.keycloak.svc.cluster.local
+  - name: KC_DB_URL_DATABASE
+    value: keycloak
+  - name: KC_DB_USERNAME
+    value: keycloak
+  - name: KC_DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: keycloak-postgresql-credentials
+        key: password
+  # KC_HOSTNAME_URL sets the full public-facing base URL that Keycloak embeds in
+  # its OIDC discovery doc (issuer, authorization_endpoint, token_endpoint, etc.)
+  # and in every redirect. Must match what the browser actually hits.
+  # With 'make port-forward' that is http://localhost:8180/auth.
+  - name: KC_HOSTNAME_URL
+    value: http://localhost:8180/auth
+  # Back-channel OIDC calls (token endpoint, jwks) from oauth2-proxy go directly
+  # to the cluster-internal service via --oidc-issuer-url in the sidecar args,
+  # so KC_HOSTNAME_ADMIN_URL is intentionally omitted — setting it to the internal
+  # service URL would redirect the browser-based admin console there too.
+  - name: KC_HTTP_RELATIVE_PATH
+    value: /auth
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_HOSTNAME_DEBUG
+    value: "true"
+
+proxy:
+  enabled: false
+
+livenessProbe: |
+  httpGet:
+    path: /auth/health/live
+    port: 8080
+  initialDelaySeconds: 90
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+readinessProbe: |
+  httpGet:
+    path: /auth/health/ready
+    port: 8080
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+startupProbe: |
+  httpGet:
+    path: /auth/health
+    port: 8080
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 60
+
+service:
+  # MetalLB LoadBalancer — pinned to 192.168.49.100, exposed on port 80
+  type: LoadBalancer
+  httpPort: 80
+  loadBalancerIP: "192.168.49.100"
+
+ingress:
+  enabled: false
+
+postgresql:
+  enabled: false
+
+cache:
+  stack: tcp
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1536Mi
+  limits:
+    cpu: 2000m
+    memory: 3Gi

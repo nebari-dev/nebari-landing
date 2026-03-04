@@ -1,0 +1,22 @@
+auth:
+  username: keycloak
+  database: keycloak
+  # Secret must exist before install; created by the Makefile postgresql-secrets target
+  existingSecret: keycloak-postgresql-credentials
+  secretKeys:
+    userPasswordKey: password
+
+primary:
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+metrics:
+  enabled: false
