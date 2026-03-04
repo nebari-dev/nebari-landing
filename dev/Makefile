@@ -75,6 +75,9 @@ LB_IP_LANDING   ?= 192.168.49.102
 PORT_KEYCLOAK  ?= 8180
 PORT_WEBAPI    ?= 8090
 PORT_LANDING   ?= 8080
+# Optional production domain (e.g. nebari.example.com) — leave empty for local-only installs.
+# Set via: make frontend-client LANDING_HOST=nebari.example.com
+LANDING_HOST   ?=
 
 OVERLAY            ?= dev
 
@@ -288,7 +291,7 @@ keycloak-client:
 frontend-client:
 	@echo "→  Creating nebari-landingpage Keycloak client (dev fallback) …"
 	kubectl delete job keycloak-frontend-client-setup -n $(NAMESPACE_KC) --ignore-not-found
-	kubectl apply -f dev/keycloak/frontend-client-job.yaml
+	PORT_LANDING=$(PORT_LANDING) LANDING_HOST=$(LANDING_HOST) envsubst '$${PORT_LANDING} $${LANDING_HOST}' < dev/keycloak/frontend-client-job.yaml | kubectl apply -f -
 	kubectl wait --for=condition=complete job/keycloak-frontend-client-setup \
 	  -n $(NAMESPACE_KC) --timeout=3m
 	@echo "→  Writing nebari-landingpage-oidc-client Secret (mirrors operator output) …"

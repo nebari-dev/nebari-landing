@@ -30,7 +30,8 @@ spec:
             # This keeps the arg list free of client-specific values and lets the
             # operator-managed Secret (nebari-landingpage-oidc-client) be the single
             # source of truth for credentials.
-            - --redirect-url=http://localhost:8082/oauth2/callback
+            # Browser-visible callback URL — reached via 'make port-forward' on PORT_LANDING (default 8080).
+            - --redirect-url=http://localhost:8080/oauth2/callback
             # Allow all email domains (Keycloak users have no "real" email requirement)
             - --email-domain=*
             # groups is added via a client-level protocol mapper, NOT a Keycloak scope.
