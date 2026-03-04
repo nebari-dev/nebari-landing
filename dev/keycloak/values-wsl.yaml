@@ -58,6 +58,19 @@ extraEnv: |
   # port-forward. (Keycloak 24 / Quarkus distribution only.)
   - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
     value: "true"
+  # Explicitly disable HTTPS requirement — we run plain HTTP in local dev.
+  - name: KC_HOSTNAME_STRICT_HTTPS
+    value: "false"
+
+# kubectl port-forward is a raw TCP tunnel — no HTTP proxy, no X-Forwarded-*
+# headers are injected. The base values.yaml sets proxy.mode=xforwarded which
+# causes Keycloak to try to reconstruct its base URL from absent headers and
+# ends up computing a URL that doesn't match KC_HOSTNAME_URL. The result is
+# that the admin console SPA hangs on load (the internal OIDC discovery call
+# from the SPA never completes because Keycloak redirects to a wrong base URL).
+# Setting mode=none makes Keycloak use KC_HOSTNAME_URL exclusively.
+proxy:
+  mode: none
 
 service:
   # NodePort — no MetalLB LoadBalancer needed.
