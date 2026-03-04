@@ -413,12 +413,12 @@ info:
 ## Kill them with: make stop-port-forward
 port-forward:
 	@echo "→  (Re)starting port-forwards in the background …"
-	@pkill -f "kubectl.*port-forward.*keycloak-keycloakx-http" 2>/dev/null || true
-	@pkill -f "kubectl.*port-forward.*svc/webapi" 2>/dev/null || true
-	@pkill -f "kubectl.*port-forward.*nebari-landingpage" 2>/dev/null || true
-	@kubectl -n $(NAMESPACE_KC)  port-forward svc/keycloak-keycloakx-http $(PORT_KEYCLOAK):80  > /tmp/pf-keycloak.log 2>&1 &
-	@kubectl -n $(NAMESPACE_APP) port-forward svc/webapi                  $(PORT_WEBAPI):8080  > /tmp/pf-webapi.log 2>&1 &
-	@kubectl -n $(NAMESPACE_APP) port-forward svc/nebari-landingpage       $(PORT_LANDING):80   > /tmp/pf-landing.log 2>&1 &
+	@pkill -f "kubect[l].*port-forward.*keycloak-keycloakx-http" 2>/dev/null || true
+	@pkill -f "kubect[l].*port-forward.*svc/webapi" 2>/dev/null || true
+	@pkill -f "kubect[l].*port-forward.*nebari-landingpage" 2>/dev/null || true
+	@nohup kubectl -n $(NAMESPACE_KC)  port-forward svc/keycloak-keycloakx-http $(PORT_KEYCLOAK):80  > /tmp/pf-keycloak.log 2>&1 &
+	@nohup kubectl -n $(NAMESPACE_APP) port-forward svc/webapi                  $(PORT_WEBAPI):8080  > /tmp/pf-webapi.log 2>&1 &
+	@nohup kubectl -n $(NAMESPACE_APP) port-forward svc/nebari-landingpage       $(PORT_LANDING):80   > /tmp/pf-landing.log 2>&1 &
 	@sleep 2
 	@echo "✔  Port-forwards active (logs: /tmp/pf-*.log):"
 	@echo "     Keycloak   : http://localhost:$(PORT_KEYCLOAK)/auth"
@@ -427,9 +427,9 @@ port-forward:
 
 ## stop-port-forward: kill all background kubectl port-forward processes
 stop-port-forward:
-	@pkill -f "kubectl.*port-forward.*keycloak-keycloakx-http" 2>/dev/null && echo "✔  Killed Keycloak port-forward" || true
-	@pkill -f "kubectl.*port-forward.*svc/webapi" 2>/dev/null && echo "✔  Killed WebAPI port-forward" || true
-	@pkill -f "kubectl.*port-forward.*nebari-landingpage" 2>/dev/null && echo "✔  Killed landing port-forward" || true
+	@pkill -f "kubect[l].*port-forward.*keycloak-keycloakx-http" 2>/dev/null && echo "✔  Killed Keycloak port-forward" || true
+	@pkill -f "kubect[l].*port-forward.*svc/webapi" 2>/dev/null && echo "✔  Killed WebAPI port-forward" || true
+	@pkill -f "kubect[l].*port-forward.*nebari-landingpage" 2>/dev/null && echo "✔  Killed landing port-forward" || true
 
 ## minikube-tunnel: run 'minikube tunnel' in the background (needed on WSL2 mirrored mode)
 ## 'minikube tunnel' injects host routes for LoadBalancer IPs into the Linux kernel.

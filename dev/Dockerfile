@@ -4,11 +4,11 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Install dependencies first (cache layer)
-COPY nebari-landing/package.json nebari-landing/package-lock.json* ./
+COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci --ignore-scripts
 
 # Copy source and build
-COPY nebari-landing/ .
+COPY frontend/ .
 RUN npm run build
 
 # ── Stage 2: serve ────────────────────────────────────────────────────────────
