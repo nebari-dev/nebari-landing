@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: nebari-system
+
+# Build on top of the full dev overlay (oauth2-proxy sidecar, service, secret, imagePullPolicy=Never patch).
+# Only the nebari-landingpage container is swapped; oauth2-proxy is unchanged because
+# Vite dev is forced to the same port (8080) as nginx.
+resources:
+  - ../dev
+
+patches:
+  - path: deployment-patch.yaml
+    target:
+      kind: Deployment
+      name: nebari-landingpage

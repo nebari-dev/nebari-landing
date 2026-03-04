@@ -1,0 +1,99 @@
+# Strategic merge patch — swaps the nginx landing page container for a Vite HMR dev server.
+#
+# The local frontend/ directory is made available inside the minikube VM via
+# 'minikube mount frontend/:/mnt/nebari-frontend' (started by 'make dev-watch') and
+# mounted into the pod as a hostPath volume.
+#
+# Vite detects file changes in the mount and hot-reloads the browser with no pod restart.
+# oauth2-proxy is unchanged — Vite is forced to listen on the same port (8080) as nginx.
+#
+# Apply : make -f dev/Makefile dev-watch
+# Revert: make -f dev/Makefile stop-dev-watch
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nebari-landingpage
+spec:
+  template:
+    spec:
+      # node:22-alpine defaults to root; relax the pod-level non-root requirement.
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+        fsGroup: 0
+      initContainers:
+        # Wait for the minikube mount to be established before starting Vite.
+        # Without this, the main container starts before /mnt/nebari-frontend is populated
+        # and npm fails with ENOENT on package.json.
+        - name: wait-for-mount
+          image: node:22-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for /app/package.json (minikube mount must be running)…"
+              until [ -f /app/package.json ]; do
+                sleep 1
+              done
+              echo "Mount ready — package.json found."
+          volumeMounts:
+            - name: frontend-src
+              mountPath: /app
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+      containers:
+        - name: nebari-landingpage
+          image: node:22-alpine
+          # Override the imagePullPolicy:Never inherited from the parent dev overlay.
+          # node:22-alpine must be pulled from the registry; it is not loaded into minikube.
+          imagePullPolicy: IfNotPresent
+          # npm install is a no-op when node_modules is already present (fast).
+          # Vite listens on port 8080 so oauth2-proxy upstream is unchanged.
+          command:
+            - sh
+            - -c
+            - "npm install && exec npm run dev -- --host 0.0.0.0 --port 8080"
+          workingDir: /app
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: frontend-src
+              mountPath: /app
+          # Vite takes time to start (npm install + vite startup); use generous delays.
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: []
+      volumes:
+        - name: frontend-src
+          hostPath:
+            # Path inside the minikube VM populated by:
+            #   minikube -p <cluster> mount <repo>/frontend:/mnt/nebari-frontend
+            path: /mnt/nebari-frontend
+            type: DirectoryOrCreate

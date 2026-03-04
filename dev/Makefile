@@ -107,7 +107,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
         keycloak keycloak-install keycloak-realm keycloak-client frontend-client \
         operator-install operator-uninstall \
         test-apps \
-        argocd-apps install uninstall info \
+        argocd-apps install uninstall dev-watch stop-dev-watch info \
         port-forward stop-port-forward \
         minikube-tunnel stop-minikube-tunnel \
         deps-check _minikube
@@ -368,6 +368,45 @@ uninstall: operator-uninstall
 	-kubectl delete job keycloak-realm-setup -n $(NAMESPACE_KC) --ignore-not-found
 	-helm uninstall $(HELM_RELEASE_KC) -n $(NAMESPACE_KC)
 	-helm uninstall postgresql           -n $(NAMESPACE_KC)
+
+## dev-watch: swap the landing page to a Vite HMR dev server with local frontend/ mounted
+## File changes on the host are picked up immediately via minikube mount → Vite HMR.
+## The browser hot-reloads without a pod restart.
+## Requires a running cluster ('make setup'). Stop with: make -f dev/Makefile stop-dev-watch
+dev-watch:
+	@echo "→  Starting minikube mount in a new terminal …"
+	@pkill -f "minikub[e].*mount.*nebari-frontend" 2>/dev/null || true
+	@sleep 1
+	# Open a dedicated terminal for the mount process — it must stay alive.
+	# Uses nohup + setsid to fully detach from the current process group.
+	@setsid nohup $(MINIKUBE_BIN) -p $(CLUSTER_NAME) mount \
+	  "$(CURDIR)/frontend:/mnt/nebari-frontend" \
+	  > /tmp/minikube-mount-frontend.log 2>&1 < /dev/null &
+	@echo "   Mount PID written to /tmp/minikube-mount-frontend.pid"
+	@echo $$! > /tmp/minikube-mount-frontend.pid
+	@echo "   Waiting for mount to establish …"
+	@for i in $$(seq 1 15); do \
+	  if grep -q "Watching" /tmp/minikube-mount-frontend.log 2>/dev/null; then \
+	    echo "✔  minikube mount active (log: /tmp/minikube-mount-frontend.log)"; break; \
+	  fi; \
+	  sleep 1; \
+	done
+	@echo "→  Applying dev-watch overlay (Vite HMR + hostPath volume) …"
+	$(MAKE) -f dev/Makefile install OVERLAY=dev-watch
+	$(MAKE) -f dev/Makefile port-forward
+	@echo ""
+	@echo "✔  Dev-watch active. Edit files in frontend/ — Vite HMR reloads the browser."
+	@echo "   Landing  : http://localhost:$(PORT_LANDING)/"
+	@echo "   Mount log: /tmp/minikube-mount-frontend.log"
+	@echo "   Stop     : make -f dev/Makefile stop-dev-watch"
+
+## stop-dev-watch: restore the prebuilt nginx image and stop the minikube mount
+stop-dev-watch:
+	@echo "→  Restoring standard dev overlay (nginx + prebuilt image) …"
+	$(MAKE) -f dev/Makefile install OVERLAY=dev
+	$(MAKE) -f dev/Makefile port-forward
+	@pkill -f "minikub[e].*mount.*nebari-frontend" 2>/dev/null && echo "✔  minikube mount stopped" || true
+	@echo "✔  dev-watch stopped — run 'make -f dev/Makefile image-build' to rebuild the image"
 
 # ── Info / convenience ────────────────────────────────────────────────────────
 
