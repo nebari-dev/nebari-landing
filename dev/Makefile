@@ -121,7 +121,7 @@ OVERLAY_PATH := dev/manifests/nebari-landingpage/overlays/$(OVERLAY)
 # ── Main entry point ─────────────────────────────────────────────────────────
 
 ## setup: full end-to-end setup (cluster + image + keycloak + app)
-setup: _minikube cluster-start image-build cert-manager metallb keycloak keycloak-client frontend-client operator-install install test-apps info
+setup: _minikube cluster-start image-build cert-manager metallb keycloak keycloak-client frontend-client operator-install install test-apps port-forward info
 	@echo ""
 	@echo "✅  Setup complete. Run 'make info' at any time for URLs."
 
