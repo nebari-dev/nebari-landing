@@ -114,10 +114,12 @@ There are three ways to fix this, in order of recommendation:
 
 ### Option A — WSL2 mirrored networking (Windows 11 24H2+, recommended)
 
-Mirrored mode bridges the WSL2 VM NIC directly to the Windows host network stack.
-MetalLB ARP replies reach Windows, so the `192.168.49.x` IPs are accessible in
-the browser exactly as documented. **No changes to the Makefile or manifests
-are needed** — just run the normal `make setup`.
+Mirrored mode bridges the WSL2 VM NIC to the Windows host network stack.
+However, the minikube docker bridge (`192.168.49.0/24`) is an *internal* Linux
+bridge — it is not automatically exposed to Windows by mirrored mode alone.
+You also need `minikube tunnel`, which injects host routes into the Linux kernel;
+in mirrored mode those routes propagate to the Windows routing table, making the
+MetalLB IPs reachable from the Windows browser.
 
 **One-time Windows setup:**
 
@@ -130,7 +132,7 @@ are needed** — just run the normal `make setup`.
    networkingMode=mirrored
 
    [experimental]
-   # Required for mirrored mode to expose non-loopback interfaces to the host.
+   # Required for mirrored mode to propagate internal routes to the Windows host.
    hostAddressLoopback=true
    ```
 
@@ -141,23 +143,41 @@ are needed** — just run the normal `make setup`.
    # wait ~2 s, then reopen your WSL terminal
    ```
 
-4. Verify the minikube bridge is visible from Windows. From PowerShell:
-
-   ```powershell
-   # After `make setup` has run and MetalLB is configured:
-   curl http://192.168.49.100/auth/admin
-   # Should get a 200 / redirect — not a timeout
-   ```
-
-   If you get a timeout, check that Windows Defender Firewall is not blocking
-   inbound traffic on the `192.168.49.0/24` subnet (add an inbound rule for
-   that range or add a `[firewall]` block to `.wslconfig` — see Microsoft docs).
-
-Then proceed with the normal quick-start:
+**dev session setup (run once per session):**
 
 ```sh
+# 1. Full cluster bootstrap
 make -f dev/Makefile setup
+
+# 2. Inject routes so MetalLB IPs reach Windows (keep this running)
+make -f dev/Makefile minikube-tunnel
 ```
+
+`minikube tunnel` must stay running for the duration of the session. It may
+prompt for `sudo` (it modifies the kernel routing table). If it does, run it
+in a separate terminal directly:
+
+```sh
+sudo minikube tunnel -p nebari-local
+```
+
+Note on IP pool: the `metallb` target auto-detects the subnet from `minikube ip`
+at runtime (it no longer uses the hardcoded `dev/manifests/metallb/config.yaml`).
+The pool will always be `.100–.150` within whatever subnet minikube assigned.
+With the docker driver and the `nebari-local` profile name, minikube consistently
+uses `192.168.49.0/24`, so the IPs in this guide stay valid. If you rename the
+cluster via `CLUSTER_NAME=…`, the pool re-calculates automatically.
+
+**Verify connectivity from Windows** (after `minikube tunnel` is running):
+
+```powershell
+# From PowerShell on Windows:
+curl http://192.168.49.100/auth/admin
+# Should return a redirect (302) — not a timeout
+```
+
+If you still get a timeout, add a Windows Defender Firewall inbound rule allowing
+TCP traffic from `192.168.49.0/24`.
 
 ---
 

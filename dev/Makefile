@@ -10,7 +10,8 @@
 #   make cluster-start  – start/create the minikube cluster
 #   make image-build    – build & load the container image into minikube
 #   make cert-manager   – install cert-manager + selfsigned ClusterIssuer
-#   make metallb        – enable MetalLB + configure IP pool (eliminates port-forwards)
+#   make metallb        – enable MetalLB + auto-detect IP pool (eliminates port-forwards)
+#   make minikube-tunnel – (WSL2 mirrored mode) inject routes so MetalLB IPs reach Windows
 #   make keycloak       – install Keycloak with the nebari realm
 #   make keycloak-client – create webapi + frontend OIDC clients in Keycloak
 # make frontend-client – create the nebari-landingpage confidential OIDC client + k8s Secret
@@ -57,7 +58,13 @@ KEYCLOAK_ADMIN_PASSWORD ?= nebari-admin-secret
 KEYCLOAK_DB_PASSWORD    ?= keycloak-db-secret
 REALM_ADMIN_PASSWORD    ?= nebari-realm-admin
 
-# MetalLB pinned IPs — must fall within dev/manifests/metallb/ipaddresspool.yaml range
+# MetalLB pinned IPs.
+# These default to the standard minikube docker-driver subnet for the 'nebari-local'
+# profile.  The 'metallb' target auto-detects the actual subnet at runtime via
+# 'minikube ip', so these variables are used only for the 'info' output and for
+# the optional service annotations wired into Helm/kustomize overlays.
+# If you rename the cluster via CLUSTER_NAME the auto-detection handles it;
+# only override these manually if you use a non-docker minikube driver.
 LB_IP_KEYCLOAK  ?= 192.168.49.100
 LB_IP_WEBAPI    ?= 192.168.49.101
 LB_IP_LANDING   ?= 192.168.49.102
@@ -106,6 +113,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
         wsl-setup keycloak-wsl keycloak-install-wsl \
         operator-install-wsl install-wsl frontend-client-wsl \
         port-forward stop-port-forward info-wsl \
+        minikube-tunnel stop-minikube-tunnel \
         deps-check _minikube
 
 OVERLAY_PATH := dev/manifests/nebari-landingpage/overlays/$(OVERLAY)
@@ -192,19 +200,31 @@ cert-manager:
 # ── MetalLB ───────────────────────────────────────────────────────────────────
 
 ## metallb: enable MetalLB minikube addon and configure the local IP pool
-## Assigns LoadBalancer IPs from 192.168.49.100-150 (minikube docker bridge).
-## After this, no kubectl port-forward is needed - use the IPs directly.
+## Auto-detects the minikube node subnet from 'minikube ip' at runtime so the
+## pool is always valid regardless of CLUSTER_NAME or driver-assigned subnet.
+## On WSL2 (mirrored mode) also run 'make minikube-tunnel' so Windows gets routes.
 metallb:
 	@echo "→  Enabling MetalLB addon …"
 	$(MINIKUBE_BIN) addons enable metallb -p $(CLUSTER_NAME)
 	@echo "→  Waiting for MetalLB controller to become ready …"
 	kubectl rollout status deployment/controller -n metallb-system --timeout=3m
-	@echo "→  Configuring IP address pool ($(LB_IP_KEYCLOAK)-$(LB_IP_LANDING)) …"
-	kubectl apply -f dev/manifests/metallb/config.yaml
-	@echo "✔  MetalLB ready. Pinned IPs:"
-	@echo "     Keycloak : $(LB_IP_KEYCLOAK)"
-	@echo "     WebAPI   : $(LB_IP_WEBAPI)"
-	@echo "     Landing  : $(LB_IP_LANDING)"
+	@MINIKUBE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME)); \
+	 SUBNET=$$(echo "$$MINIKUBE_IP" | sed 's/\.[0-9]*$$//'); \
+	 POOL_START=$${SUBNET}.100; \
+	 POOL_END=$${SUBNET}.150; \
+	 echo "→  Detected minikube subnet: $${SUBNET}.0/24"; \
+	 echo "→  Configuring IP pool $${POOL_START}-$${POOL_END} …"; \
+	 printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  namespace: metallb-system\n  name: config\ndata:\n  config: |\n    address-pools:\n    - name: nebari-local\n      protocol: layer2\n      addresses:\n      - %s-%s\n' \
+	   "$${POOL_START}" "$${POOL_END}" | kubectl apply -f -; \
+	 echo "✔  MetalLB ready. Pinned IPs:"; \
+	 echo "     Keycloak : $${SUBNET}.100 (override: LB_IP_KEYCLOAK)"; \
+	 echo "     WebAPI   : $${SUBNET}.101 (override: LB_IP_WEBAPI)"; \
+	 echo "     Landing  : $${SUBNET}.102 (override: LB_IP_LANDING)"; \
+	 echo ""; \
+	 echo "     NOTE (WSL2 mirrored mode): the docker bridge is not automatically"; \
+	 echo "     routable from Windows even in mirrored mode. Run:"; \
+	 echo "       make -f dev/Makefile minikube-tunnel"; \
+	 echo "     to inject routes into the Windows networking stack."
 
 ## keycloak: install PostgreSQL + Keycloak and configure the nebari realm
 keycloak: postgresql keycloak-install keycloak-realm
@@ -362,31 +382,36 @@ info:
 	@echo "║              Nebari Local Cluster – Quick Info               ║"
 	@echo "╠══════════════════════════════════════════════════════════════╣"
 	@echo "║  Cluster profile : $(CLUSTER_NAME)"
-	@MINIKUBE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME) 2>/dev/null || echo "<run 'minikube ip'>"); \
-	 echo "║  Cluster IP      : $$MINIKUBE_IP (ingress controller)"
-	@echo "║"
-	@echo "║  MetalLB LoadBalancer IPs (direct access, no port-forward needed):"
-	@echo "║"
-	@echo "║  Landing page + oauth2-proxy:"
-	@echo "║    http://$(LB_IP_LANDING)/"
-	@echo "║    Login is handled automatically via Keycloak OIDC redirect."
-	@echo "║    SPA token endpoint: http://$(LB_IP_LANDING)/auth-token"
-	@echo "║"
-	@echo "║  WebAPI:"
-	@echo "║    http://$(LB_IP_WEBAPI):8080/api/v1/services"
-	@echo "║    http://$(LB_IP_WEBAPI):8080/api/v1/health"
-	@echo "║"
-	@echo "║  Keycloak admin console:"
-	@echo "║    http://$(LB_IP_KEYCLOAK)/auth/admin  (admin / $(KEYCLOAK_ADMIN_PASSWORD))"
-	@echo "║    Realm: $(KEYCLOAK_REALM)  /  test user: admin / $(REALM_ADMIN_PASSWORD)"
-	@echo "║"
-	@echo "║  Operator namespace : $(NAMESPACE_OPERATOR)"
-	@echo "║"
-	@echo "║  Integration tests:"
-	@echo "║    python3 dev/webapi_test.py \\"
-	@echo "║      --webapi-url http://$(LB_IP_WEBAPI):8080 \\"
-	@echo "║      --keycloak-url http://$(LB_IP_KEYCLOAK)/auth \\"
-	@echo "║      -u admin -p $(REALM_ADMIN_PASSWORD)"
+	@MINIKUBE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME) 2>/dev/null || echo ""); \
+	 SUBNET=$$(echo "$$MINIKUBE_IP" | sed 's/\.[0-9]*$$//'); \
+	 KC_IP=$${SUBNET:-192.168.49}.100; \
+	 API_IP=$${SUBNET:-192.168.49}.101; \
+	 LAND_IP=$${SUBNET:-192.168.49}.102; \
+	 echo "║  Cluster IP      : $$MINIKUBE_IP"; \
+	 echo "║  MetalLB subnet   : $${SUBNET:-192.168.49}.0/24 (pool .100–.150)"; \
+	 echo "║"; \
+	 echo "║  MetalLB LoadBalancer IPs:"; \
+	 echo "║    (WSL2: also run 'make minikube-tunnel' for Windows access)"; \
+	 echo "║"; \
+	 echo "║  Landing page + oauth2-proxy:"; \
+	 echo "║    http://$${LAND_IP}/"; \
+	 echo "║    SPA token endpoint: http://$${LAND_IP}/auth-token"; \
+	 echo "║"; \
+	 echo "║  WebAPI:"; \
+	 echo "║    http://$${API_IP}:8080/api/v1/services"; \
+	 echo "║    http://$${API_IP}:8080/api/v1/health"; \
+	 echo "║"; \
+	 echo "║  Keycloak admin console:"; \
+	 echo "║    http://$${KC_IP}/auth/admin  (admin / $(KEYCLOAK_ADMIN_PASSWORD))"; \
+	 echo "║    Realm: $(KEYCLOAK_REALM)  /  test user: admin / $(REALM_ADMIN_PASSWORD)"; \
+	 echo "║"; \
+	 echo "║  Operator namespace : $(NAMESPACE_OPERATOR)"; \
+	 echo "║"; \
+	 echo "║  Integration tests:"; \
+	 echo "║    python3 dev/webapi_test.py \\\""; \
+	 echo "║      --webapi-url http://$${API_IP}:8080 \\\""; \
+	 echo "║      --keycloak-url http://$${KC_IP}/auth \\\""; \
+	 echo "║      -u admin -p $(REALM_ADMIN_PASSWORD)"
 	@echo "╚══════════════════════════════════════════════════════════════╝"
 	@echo ""
 
@@ -478,6 +503,24 @@ stop-port-forward:
 	@pkill -f "kubectl.*port-forward.*keycloak-keycloakx-http" 2>/dev/null && echo "✔  Killed Keycloak port-forward" || true
 	@pkill -f "kubectl.*port-forward.*svc/webapi" 2>/dev/null && echo "✔  Killed WebAPI port-forward" || true
 	@pkill -f "kubectl.*port-forward.*nebari-landingpage" 2>/dev/null && echo "✔  Killed landing port-forward" || true
+
+## minikube-tunnel: run 'minikube tunnel' in the background (needed on WSL2 mirrored mode)
+## 'minikube tunnel' injects host routes for LoadBalancer IPs into the Linux kernel.
+## In WSL2 mirrored networking mode those routes propagate to Windows, making
+## 192.168.49.100-102 reachable from the Windows browser without port-forwarding.
+## Must be left running for the duration of the dev session (sudo may be required).
+minikube-tunnel:
+	@echo "→  Starting minikube tunnel in the background …"
+	@pkill -f "minikube.*tunnel" 2>/dev/null || true
+	@$(MINIKUBE_BIN) tunnel -p $(CLUSTER_NAME) > /tmp/minikube-tunnel.log 2>&1 &
+	@sleep 2
+	@echo "✔  minikube tunnel running (log: /tmp/minikube-tunnel.log)"
+	@echo "     If prompted for sudo password, run in a separate terminal:"
+	@echo "       sudo $(MINIKUBE_BIN) tunnel -p $(CLUSTER_NAME)"
+
+## stop-minikube-tunnel: kill the background minikube tunnel process
+stop-minikube-tunnel:
+	@pkill -f "minikube.*tunnel" 2>/dev/null && echo "✔  Killed minikube tunnel" || echo "minikube tunnel was not running"
 
 ## info-wsl: print localhost URLs and credentials for WSL mode
 info-wsl:
