@@ -1,5 +1,5 @@
 import {
-  useEffect, useMemo, useState
+  useCallback, useMemo, useState
 } from "react";
 
 import type {
@@ -42,40 +42,33 @@ export default function AppAccordion(props: AppAccordionProps): ReactNode {
 
   const [expandedIds, setExpandedIds] = useState<string[]>(["pinned", "services"]);
 
-  const [_view] = useState<"grid" | "list">("list");
-  const [_search] = useState("");
+  // Track locally toggled pin states before the server round-trip updates props.
+  const [localPinOverrides, setLocalPinOverrides] = useState<Record<string, boolean>>({});
 
-  const [servicesState, setServicesState] = useState<AppAccordionService[]>([]);
-
-  // Sync local state from incoming props
-  useEffect(() => {
+  // Derive services list from props + local overrides — no useEffect needed.
+  const servicesState = useMemo(() => {
     const pinnedIds = new Set(pinnedServices.map((s) => s.id));
-    setServicesState(services.map((service) => ({
+    return services.map((service) => ({
       ...service,
-      pinned: pinnedIds.has(service.id) || !!service.pinned,
-    })));
-  }, [pinnedServices, services]);
+      pinned:
+        service.id in localPinOverrides
+          ? localPinOverrides[service.id]
+          : pinnedIds.has(service.id) || !!service.pinned,
+    }));
+  }, [services, pinnedServices, localPinOverrides]);
 
-  const toggleAccordion = (id: string) => {
+  const toggleAccordion = useCallback((id: string) => {
     setExpandedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
-  };
+  }, []);
 
-  /**
-   * Toggle pin state for a service.
-   * You asked for pinService(serviceId), so this toggles.
-   * (If you want explicit set behavior later, add a second param.)
-   */
-  const pinService = (serviceId: string) => {
-    setServicesState((prev) =>
-      prev.map((service) =>
-        service.id === serviceId
-          ? { ...service, pinned: !service.pinned }
-          : service
-      )
-    );
-  };
+  /** Toggle pin state for a service optimistically until props refresh. */
+  const pinService = useCallback((serviceId: string) => {
+    const currentlyPinned =
+      servicesState.find((s) => s.id === serviceId)?.pinned ?? false;
+    setLocalPinOverrides((prev) => ({ ...prev, [serviceId]: !currentlyPinned }));
+  }, [servicesState]);
 
   // Derived pinned list
   const pinnedList = useMemo(
@@ -155,7 +148,7 @@ export default function AppAccordion(props: AppAccordionProps): ReactNode {
         handleToggle: () => toggleAccordion("services"),
       },
     ],
-    [expandedIds, pinnedList, servicesState]
+    [expandedIds, pinnedList, servicesState, toggleAccordion, pinService]
   );
 
   return (
