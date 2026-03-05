@@ -312,3 +312,12 @@ jobs:
               repo:         context.repo.repo,
               body: `### frontend Docker image built\n\nImage pushed to Quay.io for branch \`${tag}\`:\n- \`${image}\` (linux/amd64 + linux/arm64)\n\nTo test this PR:\n\`\`\`bash\nhelm upgrade nebari-landing charts/nebari-landing \\\n  --set frontend.image.repository=${{ env.REGISTRY }}/nebari/nebari-frontend \\\n  --set frontend.image.tag=${tag}\n\`\`\``,
             });
+
+      - name: Build summary
+        if: steps.login.outcome == 'success'
+        run: |
+          echo "### Build Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Branch**: ${{ steps.branch.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Image**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.branch.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Platforms**: linux/amd64, linux/arm64" >> "$GITHUB_STEP_SUMMARY"
