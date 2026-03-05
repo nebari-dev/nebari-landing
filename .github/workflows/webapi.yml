@@ -1,13 +1,13 @@
-# Nebari WebAPI — CI/CD
+# webapi — CI/CD
 #
 # Triggers:
-#   - push / PR touching webapi source (cmd/**, internal/**, etc.)
-#   - manual dispatch (workflow_dispatch)
+#   push to main        → lint → test → build → multi-arch push (:latest + :<sha>)
+#                         chart-lint → (gates docker)
+#   pull_request        → same gates → multi-arch push (:<branch>) → PR comment
+#   workflow_dispatch   → same as push to main
 #
-# Jobs:
-#   test     — go vet + unit tests
-#   build    — build binary to verify compilation
-#   docker   — build & push image to quay.io (on push to main only)
+# Images are pushed to quay.io/nebari/nebari-webapi
+# For semver-tagged releases see .github/workflows/release.yml
 
 name: webapi
 
@@ -25,6 +25,7 @@ on:
       - Makefile
       - .github/workflows/webapi.yml
   pull_request:
+    branches: [main]
     paths:
       - cmd/**
       - internal/**
@@ -37,14 +38,47 @@ on:
       - .github/workflows/webapi.yml
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+
 env:
-  IMAGE: quay.io/nebari/nebari-webapi
+  REGISTRY: quay.io
+  IMAGE_NAME: nebari/nebari-webapi
 
 jobs:
-  # ── Unit tests ────────────────────────────────────────────────────────────
+  # ── Lint ─────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        run: |
+          make fmt
+          git diff --exit-code || (echo "Code is not formatted. Run 'make fmt'" && exit 1)
+
+      - name: Run linter
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+
+  # ── Unit tests ─────────────────────────────────────────────────────────────
   test:
     name: Test
     runs-on: ubuntu-latest
+    needs: lint
     steps:
       - uses: actions/checkout@v4
 
@@ -68,7 +102,20 @@ jobs:
           name: coverage
           path: coverage.out
 
-  # ── Build binary ──────────────────────────────────────────────────────────
+  # ── Helm chart lint ────────────────────────────────────────────────────────
+  chart-lint:
+    name: Helm chart lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint Helm chart
+        run: helm lint charts/nebari-landing
+
+  # ── Build binary ───────────────────────────────────────────────────────────
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -87,81 +134,132 @@ jobs:
       - name: Build binary (linux/arm64)
         run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/webapi-arm64 ./cmd
 
-  # ── Container image (native-runner matrix, one job per arch) ─────────────
+  # ── Container image — one native-runner job per arch ──────────────────────
   #
-  # Each leg runs on a real machine of the target architecture — no QEMU
-  # emulation. After both legs succeed a final job stitches them into a
-  # multi-arch manifest and pushes the combined :latest / :<sha> tags.
+  # Runs on push-to-main AND pull_request.
+  # Quay login uses continue-on-error so fork PRs (no secrets) still pass —
+  # the image is built but not pushed in that case.
   docker:
-    name: Docker build & push (${{ matrix.arch }})
-    needs: build
-    # Only push on pushes to main (not PRs)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
+    name: Docker (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    needs: [build, chart-lint]
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest        # GitHub-hosted x86-64
+            runner: ubuntu-latest
           - arch: arm64
-            runner: ubuntu-24.04-arm     # GitHub-hosted native arm64
-    runs-on: ${{ matrix.runner }}
-    outputs:
-      # Each leg exposes its digest so the manifest job can reference them.
-      digest-amd64: ${{ matrix.arch == 'amd64' && steps.push.outputs.digest || '' }}
-      digest-arm64: ${{ matrix.arch == 'arm64' && steps.push.outputs.digest || '' }}
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
-
-      - name: Log in to Quay.io
-        uses: docker/login-action@v3
-        with:
-          registry: quay.io
-          username: ${{ secrets.QUAY_USERNAME }}
-          password: ${{ secrets.QUAY_PASSWORD }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Derive short SHA
-        id: tag
-        run: |
-          SHA="${{ github.sha }}"
-          echo "sha=${SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: Log in to Quay.io
+        id: login
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
 
-      # Build a single-arch image and push it under an arch-specific tag.
-      # The manifest job will turn these into a combined multi-arch image.
-      - name: Build and push arch image
-        id: push
+      - name: Extract branch / tag name
+        id: branch
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          TAG=$(echo "$BRANCH" | sed 's/\//-/g' | sed 's/[^a-zA-Z0-9._-]//g')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # push to main: build by digest → manifest job creates :latest / :<sha> ─
+      - name: Build and push by digest (main)
+        id: build-main
+        if: >-
+          steps.login.outcome == 'success' &&
+          github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: true
-          # Push under a per-arch tag; overwritten on every run — that's fine
-          # because the manifest job will create the real consumer-facing tags.
-          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.sha }}-${{ matrix.arch }}
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          cache-from: type=gha,scope=webapi-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=webapi-${{ matrix.arch }}
+          provenance: false
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
-  # ── Combine arch images into a multi-arch manifest ────────────────────────
+      - name: Export digest (main)
+        if: steps.build-main.outcome == 'success'
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build-main.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest (main)
+        if: steps.build-main.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: webapi-digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+      # pull_request: push with branch tag so reviewers can pull the image ────
+      - name: Build and push (PR branch tag)
+        if: >-
+          steps.login.outcome == 'success' &&
+          github.event_name == 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.branch.outputs.tag }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=webapi-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=webapi-${{ matrix.arch }}
+          provenance: false
+
+      # Build-only fallback when Quay secrets are absent (fork PRs) ──────────
+      - name: Build image (no push)
+        if: steps.login.outcome != 'success'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.branch.outputs.tag }}
+          cache-from: type=gha,scope=webapi-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=webapi-${{ matrix.arch }}
+          provenance: false
+
+  # ── Stitch arch images → multi-arch manifest (push to main) ───────────────
   manifest:
     name: Publish multi-arch manifest
     runs-on: ubuntu-latest
     needs: docker
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
+    if: github.event_name != 'pull_request'
     steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Log in to Quay.io
         uses: docker/login-action@v3
         with:
-          registry: quay.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: webapi-digest-*
+          merge-multiple: true
 
       - name: Derive short SHA
         id: tag
@@ -169,16 +267,75 @@ jobs:
           SHA="${{ github.sha }}"
           echo "sha=${SHA::7}" >> "$GITHUB_OUTPUT"
 
-      # docker manifest create stitches the two arch-specific images into a
-      # single manifest list that clients resolve based on their platform.
-      - name: Create and push manifest
+      - name: Create and push manifest list
         run: |
-          SHA_TAG="${{ steps.tag.outputs.sha }}"
-          AMD="${{ env.IMAGE }}:${SHA_TAG}-amd64"
-          ARM="${{ env.IMAGE }}:${SHA_TAG}-arm64"
+          cd "${{ runner.temp }}/digests"
+          docker buildx imagetools create \
+            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" \
+            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.sha }}" \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-          docker manifest create "${{ env.IMAGE }}:${SHA_TAG}" "$AMD" "$ARM"
-          docker manifest push "${{ env.IMAGE }}:${SHA_TAG}"
+      - name: Inspect manifest
+        run: |
+          docker buildx imagetools inspect \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
 
-          docker manifest create "${{ env.IMAGE }}:latest" "$AMD" "$ARM"
-          docker manifest push "${{ env.IMAGE }}:latest"
+      - name: Build summary
+        run: |
+          echo "### webapi image published" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | Image |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| \`latest\` | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| \`${{ steps.tag.outputs.sha }}\` | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Platforms**: linux/amd64, linux/arm64" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Stitch arch images → multi-arch manifest (PR) + PR comment ────────────
+  manifest-pr:
+    name: Publish multi-arch manifest (PR)
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Quay.io
+        id: login
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Extract branch / tag name
+        id: branch
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          TAG=$(echo "$BRANCH" | sed 's/\//-/g' | sed 's/[^a-zA-Z0-9._-]//g')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create multi-arch manifest (PR)
+        if: steps.login.outcome == 'success'
+        run: |
+          TAG="${{ steps.branch.outputs.tag }}"
+          docker buildx imagetools create \
+            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}-amd64" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}-arm64"
+
+      - name: Comment on PR
+        if: steps.login.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag   = '${{ steps.branch.outputs.tag }}';
+            const image = `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              body: `### webapi Docker image built\n\nImage pushed to Quay.io for branch \`${tag}\`:\n- \`${image}\` (linux/amd64 + linux/arm64)\n\nTo test this PR:\n\`\`\`bash\nhelm upgrade nebari-landing charts/nebari-landing \\\n  --set webapi.image.repository=${{ env.REGISTRY }}/nebari/nebari-webapi \\\n  --set webapi.image.tag=${tag}\n\`\`\``,
+            });
