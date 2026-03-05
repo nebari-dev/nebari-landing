@@ -45,7 +45,7 @@ webapi:
 frontend:
   image:
     # Image loaded into minikube by 'make image-build'
-    repository: nebari-landing/frontend
+    repository: nebari-landing/nebari-landing
     tag: dev
     pullPolicy: Never
 

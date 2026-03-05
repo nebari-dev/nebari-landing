@@ -6,7 +6,7 @@
 #   pull_request        → same gates → multi-arch push (:<branch>) → PR comment
 #   workflow_dispatch   → same as push to main
 #
-# Images are pushed to quay.io/nebari/nebari-frontend
+# Images are pushed to quay.io/nebari/nebari-landing
 # For semver-tagged releases see .github/workflows/release.yml
 
 name: frontend
@@ -39,7 +39,7 @@ permissions:
 
 env:
   REGISTRY: quay.io
-  IMAGE_NAME: nebari/nebari-frontend
+  IMAGE_NAME: nebari/nebari-landing
 
 jobs:
   # ── Lint ──────────────────────────────────────────────────────────────────
@@ -310,7 +310,7 @@ jobs:
               issue_number: context.issue.number,
               owner:        context.repo.owner,
               repo:         context.repo.repo,
-              body: `### frontend Docker image built\n\nImage pushed to Quay.io for branch \`${tag}\`:\n- \`${image}\` (linux/amd64 + linux/arm64)\n\nTo test this PR:\n\`\`\`bash\nhelm upgrade nebari-landing charts/nebari-landing \\\n  --set frontend.image.repository=${{ env.REGISTRY }}/nebari/nebari-frontend \\\n  --set frontend.image.tag=${tag}\n\`\`\``,
+              body: `### frontend Docker image built\n\nImage pushed to Quay.io for branch \`${tag}\`:\n- \`${image}\` (linux/amd64 + linux/arm64)\n\nTo test this PR:\n\`\`\`bash\nhelm upgrade nebari-landing charts/nebari-landing \\\n  --set frontend.image.repository=${{ env.REGISTRY }}/nebari/nebari-landing \\\n  --set frontend.image.tag=${tag}\n\`\`\``,
             });
 
       - name: Build summary

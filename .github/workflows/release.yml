@@ -28,7 +28,7 @@ permissions:
 env:
   REGISTRY: quay.io
   WEBAPI_IMAGE: nebari/nebari-webapi
-  FRONTEND_IMAGE: nebari/nebari-frontend
+  FRONTEND_IMAGE: nebari/nebari-landing
 
 jobs:
   # ── Validate webapi ────────────────────────────────────────────────────────
