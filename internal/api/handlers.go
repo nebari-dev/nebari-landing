@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
@@ -112,25 +111,12 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/v1/admin/access-requests/", h.handleAdminAccessRequestSub)
 	mux.HandleFunc("/api/v1/admin/notifications", h.handleAdminCreateNotification)
 
-	// Static file serving — only registered when /web/static is present (i.e. frontend
-	// assets were built and included in the image). When running the API-only image
-	// the root path simply returns 404 so API clients are unaffected.
-	const staticDir = "/web/static"
-	if _, err := os.Stat(staticDir); err == nil {
-		fs := http.FileServer(http.Dir(staticDir))
-		mux.Handle("/static/", http.StripPrefix("/static/", fs))
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/" || r.URL.Path == "/index.html" {
-				http.ServeFile(w, r, staticDir+"/index.html")
-			} else {
-				http.NotFound(w, r)
-			}
-		})
-	} else {
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "frontend not deployed", http.StatusNotFound)
-		})
-	}
+	// Static content is served by the dedicated frontend pod; the webapi never
+	// handles bare "/" requests. Return 404 for any unmatched root path so API
+	// clients get a clear signal rather than an unexpected HTML page.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
 
 	return corsMiddleware(mux)
 }

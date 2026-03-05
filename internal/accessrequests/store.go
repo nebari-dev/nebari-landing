@@ -1,32 +1,42 @@
 // Copyright 2026, OpenTeams.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package accessrequests provides a bbolt-backed store for service access
+// Package accessrequests provides a Redis-backed store for service access
 // requests submitted by users. Access requests flow through these endpoints:
 //
 //	POST /api/v1/services/{id}/request_access
-//	  → Create() — status: pending; deduplicates per (userID, serviceUID)
+//	  → Create() — status: pending; O(1) dedup via SET NX
 //
 //	GET  /api/v1/admin/access-requests          → ListAll() / ListPending()
 //	PUT  /api/v1/admin/access-requests/{id}/approve → UpdateStatus(id, Approved, by)
 //	PUT  /api/v1/admin/access-requests/{id}/deny    → UpdateStatus(id, Denied,   by)
 //
-// Approving via the API currently only updates the record's status; adding the
-// user to the Keycloak group (Phase 2) requires an admin service-account integration.
+// Redis data model:
+//
+//	nebari:ar:{id}                Hash  — all AccessRequest fields
+//	nebari:ar:all                 Sorted Set — score=unix-ms, member=id
+//	nebari:ar:pending             Sorted Set — score=unix-ms, member=id (pending only)
+//	nebari:ar:user:{userID}       Sorted Set — score=unix-ms, member=id (per-user)
+//	nebari:ar:dedup:{userID}:{svcUID}  String key (SET NX) — O(1) pending dedup
 package accessrequests
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/google/uuid"
-	bbolt "go.etcd.io/bbolt"
+	"github.com/redis/go-redis/v9"
 )
 
-const bucketName = "access_requests"
+const (
+	arHashPrefix  = "nebari:ar:"
+	arAllKey      = "nebari:ar:all"
+	arPendingKey  = "nebari:ar:pending"
+	arUserPrefix  = "nebari:ar:user:"
+	arDedupPrefix = "nebari:ar:dedup:"
+)
 
 // Status represents the lifecycle state of an AccessRequest.
 type Status string
@@ -71,39 +81,26 @@ var (
 	ErrNotFound = errors.New("access request not found")
 )
 
-// Store is a bbolt-backed persistent store for AccessRequest records.
+// Store is a Redis-backed persistent store for AccessRequest records.
 type Store struct {
-	db *bbolt.DB
+	rdb *redis.Client
 }
 
-// NewStore opens (or creates) the bbolt database at dbPath and returns a
-// ready-to-use Store. The caller must call Close() when done.
-func NewStore(dbPath string) (*Store, error) {
-	db, err := bbolt.Open(dbPath, 0o600, nil)
-	if err != nil {
-		return nil, fmt.Errorf("opening access request store at %q: %w", dbPath, err)
-	}
-	err = db.Update(func(tx *bbolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
-		return err
-	})
-	if err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("creating access_requests bucket: %w", err)
-	}
-	return &Store{db: db}, nil
+// NewStore returns a Store backed by the given Redis client.
+// The client must already be configured; no connection is verified here.
+func NewStore(rdb *redis.Client) *Store {
+	return &Store{rdb: rdb}
 }
 
-// Close releases the underlying database file.
-func (s *Store) Close() error {
-	return s.db.Close()
-}
+// Close is a no-op; the Redis client lifetime is managed by the caller.
+func (s *Store) Close() error { return nil }
 
 // Create stores a new pending access request.
 //
 // Returns ErrDuplicatePending without writing if a pending request already
-// exists for the same (userID, serviceUID) pair — prevents admin-queue spam.
+// exists for the same (userID, serviceUID) pair — O(1) via SET NX.
 func (s *Store) Create(serviceUID, serviceName, userID, userEmail, message string) (*AccessRequest, error) {
+	ctx := context.Background()
 	req := &AccessRequest{
 		ID:          uuid.NewString(),
 		ServiceUID:  serviceUID,
@@ -114,29 +111,38 @@ func (s *Store) Create(serviceUID, serviceName, userID, userEmail, message strin
 		Status:      StatusPending,
 		RequestedAt: time.Now().UTC(),
 	}
-	err := s.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(bucketName))
-		// Deduplication scan — O(n) over existing requests; acceptable for this scale.
-		cur := b.Cursor()
-		for k, v := cur.First(); k != nil; k, v = cur.Next() {
-			var existing AccessRequest
-			if err := json.Unmarshal(v, &existing); err != nil {
-				continue // skip corrupt entry
-			}
-			if existing.UserID == userID &&
-				existing.ServiceUID == serviceUID &&
-				existing.Status == StatusPending {
-				return ErrDuplicatePending
-			}
-		}
-		data, err := json.Marshal(req)
-		if err != nil {
-			return err
-		}
-		return b.Put([]byte(req.ID), data)
+	dedupKey := arDedupKey(userID, serviceUID)
+	// Atomic dedup: SET NX returns true only if the key did not exist.
+	set, err := s.rdb.SetNX(ctx, dedupKey, req.ID, 0).Result()
+	if err != nil {
+		return nil, fmt.Errorf("accessrequests.Create dedup: %w", err)
+	}
+	if !set {
+		return nil, ErrDuplicatePending
+	}
+	score := float64(req.RequestedAt.UnixMilli())
+	ts := req.RequestedAt.Format(time.RFC3339Nano)
+	_, err = s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.HSet(ctx, arKey(req.ID),
+			"id", req.ID,
+			"serviceUID", req.ServiceUID,
+			"serviceName", req.ServiceName,
+			"userID", req.UserID,
+			"userEmail", req.UserEmail,
+			"message", req.Message,
+			"status", string(req.Status),
+			"requestedAt", ts,
+		)
+		z := redis.Z{Score: score, Member: req.ID}
+		pipe.ZAdd(ctx, arAllKey, z)
+		pipe.ZAdd(ctx, arPendingKey, z)
+		pipe.ZAdd(ctx, arUserKey(userID), z)
+		return nil
 	})
 	if err != nil {
-		return nil, err
+		// Best-effort cleanup of the dedup key so the user can retry.
+		_ = s.rdb.Del(ctx, dedupKey)
+		return nil, fmt.Errorf("accessrequests.Create write: %w", err)
 	}
 	return req, nil
 }
@@ -144,55 +150,62 @@ func (s *Store) Create(serviceUID, serviceName, userID, userEmail, message strin
 // Get retrieves a single access request by ID.
 // Returns ErrNotFound when the ID does not exist.
 func (s *Store) Get(id string) (*AccessRequest, error) {
-	var req AccessRequest
-	err := s.db.View(func(tx *bbolt.Tx) error {
-		v := tx.Bucket([]byte(bucketName)).Get([]byte(id))
-		if v == nil {
-			return ErrNotFound
-		}
-		return json.Unmarshal(v, &req)
-	})
+	fields, err := s.rdb.HGetAll(context.Background(), arKey(id)).Result()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("accessrequests.Get %q: %w", id, err)
 	}
-	return &req, nil
+	if len(fields) == 0 {
+		return nil, ErrNotFound
+	}
+	return arFromHash(fields)
 }
 
 // ListAll returns every stored access request, newest first.
 func (s *Store) ListAll() ([]*AccessRequest, error) {
-	return s.list(func(_ *AccessRequest) bool { return true })
+	return s.listFromIndex(arAllKey)
 }
 
 // ListPending returns only requests with status=pending, newest first.
 func (s *Store) ListPending() ([]*AccessRequest, error) {
-	return s.list(func(r *AccessRequest) bool { return r.Status == StatusPending })
+	return s.listFromIndex(arPendingKey)
 }
 
 // ListForUser returns all requests submitted by userID, newest first.
 func (s *Store) ListForUser(userID string) ([]*AccessRequest, error) {
-	return s.list(func(r *AccessRequest) bool { return r.UserID == userID })
+	return s.listFromIndex(arUserKey(userID))
 }
 
-func (s *Store) list(filter func(*AccessRequest) bool) ([]*AccessRequest, error) {
-	var out []*AccessRequest
-	err := s.db.View(func(tx *bbolt.Tx) error {
-		return tx.Bucket([]byte(bucketName)).ForEach(func(_, v []byte) error {
-			var r AccessRequest
-			if err := json.Unmarshal(v, &r); err != nil {
-				return nil // skip corrupt entries
-			}
-			if filter(&r) {
-				out = append(out, &r)
-			}
-			return nil
-		})
+func (s *Store) listFromIndex(indexKey string) ([]*AccessRequest, error) {
+	ctx := context.Background()
+	ids, err := s.rdb.ZRevRange(ctx, indexKey, 0, -1).Result()
+	if err != nil {
+		return nil, fmt.Errorf("accessrequests.list %q: %w", indexKey, err)
+	}
+	if len(ids) == 0 {
+		return []*AccessRequest{}, nil
+	}
+	cmds := make([]*redis.MapStringStringCmd, len(ids))
+	_, err = s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for i, id := range ids {
+			cmds[i] = pipe.HGetAll(ctx, arKey(id))
+		}
+		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("accessrequests.list fetch: %w", err)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].RequestedAt.After(out[j].RequestedAt)
-	})
+	out := make([]*AccessRequest, 0, len(ids))
+	for _, cmd := range cmds {
+		fields, err := cmd.Result()
+		if err != nil || len(fields) == 0 {
+			continue
+		}
+		r, err := arFromHash(fields)
+		if err != nil {
+			continue
+		}
+		out = append(out, r)
+	}
 	return out, nil
 }
 
@@ -200,28 +213,72 @@ func (s *Store) list(filter func(*AccessRequest) bool) ([]*AccessRequest, error)
 // who performed the resolution. Returns the updated request.
 // Returns ErrNotFound when the ID does not exist.
 func (s *Store) UpdateStatus(id string, status Status, resolvedBy string) (*AccessRequest, error) {
-	var updated AccessRequest
-	err := s.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(bucketName))
-		v := b.Get([]byte(id))
-		if v == nil {
-			return ErrNotFound
-		}
-		if err := json.Unmarshal(v, &updated); err != nil {
-			return err
-		}
-		now := time.Now().UTC()
-		updated.Status = status
-		updated.ResolvedAt = &now
-		updated.ResolvedBy = resolvedBy
-		data, err := json.Marshal(&updated)
-		if err != nil {
-			return err
-		}
-		return b.Put([]byte(id), data)
-	})
+	ctx := context.Background()
+	// Fetch the full record so we can clean up the dedup key.
+	fields, err := s.rdb.HGetAll(ctx, arKey(id)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("accessrequests.UpdateStatus get: %w", err)
+	}
+	if len(fields) == 0 {
+		return nil, ErrNotFound
+	}
+	req, err := arFromHash(fields)
 	if err != nil {
 		return nil, err
 	}
-	return &updated, nil
+	now := time.Now().UTC()
+	req.Status = status
+	req.ResolvedAt = &now
+	req.ResolvedBy = resolvedBy
+	resolvedAtStr := now.Format(time.RFC3339Nano)
+	_, err = s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.HSet(ctx, arKey(id),
+			"status", string(status),
+			"resolvedAt", resolvedAtStr,
+			"resolvedBy", resolvedBy,
+		)
+		// Remove from pending index; keep in all + user indexes.
+		pipe.ZRem(ctx, arPendingKey, id)
+		// Release the dedup lock so a future request can be created.
+		pipe.Del(ctx, arDedupKey(req.UserID, req.ServiceUID))
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("accessrequests.UpdateStatus write: %w", err)
+	}
+	return req, nil
+}
+
+// --- helpers ---
+
+func arKey(id string) string              { return arHashPrefix + id }
+func arUserKey(userID string) string      { return arUserPrefix + userID }
+func arDedupKey(userID, svcUID string) string {
+	return arDedupPrefix + userID + ":" + svcUID
+}
+
+func arFromHash(f map[string]string) (*AccessRequest, error) {
+	reqAt, err := time.Parse(time.RFC3339Nano, f["requestedAt"])
+	if err != nil {
+		return nil, fmt.Errorf("parse requestedAt: %w", err)
+	}
+	req := &AccessRequest{
+		ID:          f["id"],
+		ServiceUID:  f["serviceUID"],
+		ServiceName: f["serviceName"],
+		UserID:      f["userID"],
+		UserEmail:   f["userEmail"],
+		Message:     f["message"],
+		Status:      Status(f["status"]),
+		RequestedAt: reqAt,
+	}
+	if s := f["resolvedAt"]; s != "" {
+		t, err := time.Parse(time.RFC3339Nano, s)
+		if err != nil {
+			return nil, fmt.Errorf("parse resolvedAt: %w", err)
+		}
+		req.ResolvedAt = &t
+	}
+	req.ResolvedBy = f["resolvedBy"]
+	return req, nil
 }

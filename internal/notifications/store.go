@@ -1,11 +1,17 @@
 // Copyright 2026, OpenTeams.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package notifications provides a bbolt-backed store for platform notifications.
+// Package notifications provides a Redis-backed store for platform notifications.
 //
 // Notifications are global records (they appear for every user). Per-user read
 // state is tracked separately so a notification can be returned as read:true for
 // one user and read:false for another without duplicating content.
+//
+// Redis data model:
+//
+//	nebari:notif:{id}       Hash  — all Notification fields
+//	nebari:notifs           Sorted Set — score=unix-timestamp, member=notif ID
+//	nebari:reads:{userID}   Set   — set of notif IDs the user has read
 //
 // Routes served by this store:
 //
@@ -15,21 +21,19 @@
 package notifications
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/google/uuid"
-	bbolt "go.etcd.io/bbolt"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
-	// notifBucket stores Notification records keyed by notification ID.
-	notifBucket = "notifications"
-	// readsBucket stores per-user read markers. Key format: "<userID>\x00<notifID>".
-	readsBucket = "notification_reads"
+	notifHashPrefix = "nebari:notif:"
+	notifIndexKey   = "nebari:notifs"
+	readsPrefix     = "nebari:reads:"
 )
 
 // ErrNotFound is returned when a notification ID does not exist.
@@ -49,39 +53,23 @@ type Notification struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// Store is a bbolt-backed store for notifications and per-user read state.
+// Store is a Redis-backed store for notifications and per-user read state.
 type Store struct {
-	db *bbolt.DB
+	rdb *redis.Client
 }
 
-// NewStore opens (or creates) the bbolt database at dbPath and returns a
-// ready-to-use Store. The caller must call Close() when done.
-func NewStore(dbPath string) (*Store, error) {
-	db, err := bbolt.Open(dbPath, 0o600, nil)
-	if err != nil {
-		return nil, fmt.Errorf("opening notifications store at %q: %w", dbPath, err)
-	}
-	err = db.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists([]byte(notifBucket)); err != nil {
-			return err
-		}
-		_, err := tx.CreateBucketIfNotExists([]byte(readsBucket))
-		return err
-	})
-	if err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("initialising notifications buckets: %w", err)
-	}
-	return &Store{db: db}, nil
+// NewStore returns a Store backed by the given Redis client.
+// The client must already be configured; no connection is verified here.
+func NewStore(rdb *redis.Client) *Store {
+	return &Store{rdb: rdb}
 }
 
-// Close releases the underlying database file.
-func (s *Store) Close() error {
-	return s.db.Close()
-}
+// Close is a no-op; the Redis client lifetime is managed by the caller.
+func (s *Store) Close() error { return nil }
 
 // Create stores a new notification and returns it. image may be empty.
 func (s *Store) Create(image, title, message string) (*Notification, error) {
+	ctx := context.Background()
 	n := &Notification{
 		ID:        uuid.NewString(),
 		Image:     image,
@@ -89,90 +77,124 @@ func (s *Store) Create(image, title, message string) (*Notification, error) {
 		Message:   message,
 		CreatedAt: time.Now().UTC(),
 	}
-	err := s.db.Update(func(tx *bbolt.Tx) error {
-		data, err := json.Marshal(n)
-		if err != nil {
-			return err
-		}
-		return tx.Bucket([]byte(notifBucket)).Put([]byte(n.ID), data)
+	ts := n.CreatedAt.Format(time.RFC3339Nano)
+	_, err := s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.HSet(ctx, notifKey(n.ID),
+			"id", n.ID,
+			"image", n.Image,
+			"title", n.Title,
+			"message", n.Message,
+			"createdAt", ts,
+		)
+		pipe.ZAdd(ctx, notifIndexKey, redis.Z{
+			Score:  float64(n.CreatedAt.UnixMilli()),
+			Member: n.ID,
+		})
+		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("notifications.Create: %w", err)
 	}
 	return n, nil
 }
 
 // Get retrieves a single notification by ID. Returns ErrNotFound when absent.
 func (s *Store) Get(id string) (*Notification, error) {
-	var n Notification
-	err := s.db.View(func(tx *bbolt.Tx) error {
-		v := tx.Bucket([]byte(notifBucket)).Get([]byte(id))
-		if v == nil {
-			return ErrNotFound
-		}
-		return json.Unmarshal(v, &n)
-	})
+	fields, err := s.rdb.HGetAll(context.Background(), notifKey(id)).Result()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("notifications.Get %q: %w", id, err)
 	}
-	return &n, nil
+	if len(fields) == 0 {
+		return nil, ErrNotFound
+	}
+	return notifFromHash(fields)
 }
 
 // List returns all notifications, newest first.
 func (s *Store) List() ([]*Notification, error) {
-	var out []*Notification
-	err := s.db.View(func(tx *bbolt.Tx) error {
-		return tx.Bucket([]byte(notifBucket)).ForEach(func(_, v []byte) error {
-			var n Notification
-			if err := json.Unmarshal(v, &n); err != nil {
-				return nil // skip corrupt entries
-			}
-			out = append(out, &n)
-			return nil
-		})
+	ctx := context.Background()
+	// ZREVRANGE returns IDs from highest score (newest) to lowest.
+	ids, err := s.rdb.ZRevRange(ctx, notifIndexKey, 0, -1).Result()
+	if err != nil {
+		return nil, fmt.Errorf("notifications.List index: %w", err)
+	}
+	if len(ids) == 0 {
+		return []*Notification{}, nil
+	}
+	// Batch fetch with a pipeline.
+	cmds := make([]*redis.MapStringStringCmd, len(ids))
+	_, err = s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for i, id := range ids {
+			cmds[i] = pipe.HGetAll(ctx, notifKey(id))
+		}
+		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("notifications.List fetch: %w", err)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].CreatedAt.After(out[j].CreatedAt)
-	})
+	out := make([]*Notification, 0, len(ids))
+	for _, cmd := range cmds {
+		fields, err := cmd.Result()
+		if err != nil || len(fields) == 0 {
+			continue // skip missing / corrupt entries
+		}
+		n, err := notifFromHash(fields)
+		if err != nil {
+			continue
+		}
+		out = append(out, n)
+	}
 	return out, nil
-}
-
-// readsKey returns the composite bbolt key for the reads bucket.
-func readsKey(userID, notifID string) []byte {
-	return []byte(userID + "\x00" + notifID)
 }
 
 // MarkRead records that userID has read notifID. Returns ErrNotFound when the
 // notification ID does not exist. Calling MarkRead on an already-read
 // notification is idempotent.
 func (s *Store) MarkRead(userID, notifID string) error {
-	return s.db.Update(func(tx *bbolt.Tx) error {
-		// Verify the notification exists before recording a read.
-		if tx.Bucket([]byte(notifBucket)).Get([]byte(notifID)) == nil {
-			return ErrNotFound
-		}
-		ts, _ := time.Now().UTC().MarshalText()
-		return tx.Bucket([]byte(readsBucket)).Put(readsKey(userID, notifID), ts)
-	})
+	ctx := context.Background()
+	// Verify the notification exists.
+	exists, err := s.rdb.Exists(ctx, notifKey(notifID)).Result()
+	if err != nil {
+		return fmt.Errorf("notifications.MarkRead exists: %w", err)
+	}
+	if exists == 0 {
+		return ErrNotFound
+	}
+	if err := s.rdb.SAdd(ctx, readsKey(userID), notifID).Err(); err != nil {
+		return fmt.Errorf("notifications.MarkRead sadd: %w", err)
+	}
+	return nil
 }
 
 // ReadSet returns a set of notification IDs that userID has already read.
 // The returned map is safe to query with m[id]; absent keys are unread.
 func (s *Store) ReadSet(userID string) (map[string]bool, error) {
-	prefix := []byte(userID + "\x00")
-	out := map[string]bool{}
-	err := s.db.View(func(tx *bbolt.Tx) error {
-		c := tx.Bucket([]byte(readsBucket)).Cursor()
-		for k, _ := c.Seek(prefix); k != nil; k, _ = c.Next() {
-			if len(k) < len(prefix) || string(k[:len(prefix)]) != string(prefix) {
-				break
-			}
-			out[string(k[len(prefix):])] = true
-		}
-		return nil
-	})
-	return out, err
+	members, err := s.rdb.SMembers(context.Background(), readsKey(userID)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("notifications.ReadSet %q: %w", userID, err)
+	}
+	out := make(map[string]bool, len(members))
+	for _, m := range members {
+		out[m] = true
+	}
+	return out, nil
+}
+
+// --- helpers ---
+
+func notifKey(id string) string   { return notifHashPrefix + id }
+func readsKey(userID string) string { return readsPrefix + userID }
+
+func notifFromHash(f map[string]string) (*Notification, error) {
+	t, err := time.Parse(time.RFC3339Nano, f["createdAt"])
+	if err != nil {
+		return nil, fmt.Errorf("parse createdAt: %w", err)
+	}
+	return &Notification{
+		ID:        f["id"],
+		Image:     f["image"],
+		Title:     f["title"],
+		Message:   f["message"],
+		CreatedAt: t,
+	}, nil
 }

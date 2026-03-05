@@ -5,18 +5,18 @@ package accessrequests
 
 import (
 	"errors"
-	"path/filepath"
 	"testing"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 func newStore(t *testing.T) *Store {
 	t.Helper()
-	s, err := NewStore(filepath.Join(t.TempDir(), "ar.db"))
-	if err != nil {
-		t.Fatalf("NewStore: %v", err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-	return s
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	return NewStore(rdb)
 }
 
 const (
@@ -219,27 +219,23 @@ func TestUpdateStatus_NotFound_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestUpdateStatus_PersistedOnReopen(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "ar.db")
-	s1, err := NewStore(dbPath)
-	if err != nil {
-		t.Fatalf("open s1: %v", err)
-	}
+func TestUpdateStatus_PersistedAcrossTwoClients(t *testing.T) {
+	// Verify status update visible from a second Store client on the same Redis.
+	mr := miniredis.RunT(t)
+	rdb1 := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb1.Close() })
+	s1 := NewStore(rdb1)
 	req, _ := s1.Create(svcUID, svcName, userA, "", "")
-	s1.UpdateStatus(req.ID, StatusApproved, "admin") //nolint:errcheck
-	s1.Close()                                       //nolint:errcheck
+	_, _ = s1.UpdateStatus(req.ID, StatusApproved, "admin")
 
-	s2, err := NewStore(dbPath)
-	if err != nil {
-		t.Fatalf("open s2: %v", err)
-	}
-	defer s2.Close() //nolint:errcheck
+	rdb2 := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb2.Close() })
+	s2 := NewStore(rdb2)
 	got, err := s2.Get(req.ID)
 	if err != nil {
-		t.Fatalf("Get after reopen: %v", err)
+		t.Fatalf("Get via second client: %v", err)
 	}
 	if got.Status != StatusApproved {
-		t.Errorf("expected approved status after reopen, got %q", got.Status)
+		t.Errorf("expected approved from second client, got %q", got.Status)
 	}
 }

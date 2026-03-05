@@ -4,6 +4,7 @@
 package websocket_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,10 +12,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/websocket"
 	landingcache "github.com/nebari-dev/nebari-landing/internal/cache"
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
+	"github.com/redis/go-redis/v9"
 )
+
+// newTestHub creates a Hub backed by a miniredis instance for testing.
+// The hub and miniredis server are both cleaned up via t.Cleanup.
+func newTestHub(t *testing.T) *wshub.Hub {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	t.Cleanup(func() { _ = rdb.Close() })
+	return wshub.NewHub(ctx, rdb)
+}
 
 // dialWS connects to a test WebSocket server and returns the connection.
 func dialWS(t *testing.T, srv *httptest.Server) *websocket.Conn {
@@ -35,14 +50,14 @@ func newServer(t *testing.T, hub *wshub.Hub) *httptest.Server {
 }
 
 func TestNewHub_StartsEmpty(t *testing.T) {
-	h := wshub.NewHub()
+	h := newTestHub(t)
 	if h.ClientCount() != 0 {
 		t.Errorf("expected 0 clients, got %d", h.ClientCount())
 	}
 }
 
 func TestHub_ClientConnectsAndDisconnects(t *testing.T) {
-	h := wshub.NewHub()
+	h := newTestHub(t)
 	srv := newServer(t, h)
 
 	conn := dialWS(t, srv)
@@ -61,7 +76,7 @@ func TestHub_ClientConnectsAndDisconnects(t *testing.T) {
 }
 
 func TestHub_BroadcastDeliveredToClient(t *testing.T) {
-	h := wshub.NewHub()
+	h := newTestHub(t)
 	srv := newServer(t, h)
 
 	conn := dialWS(t, srv)
@@ -71,7 +86,8 @@ func TestHub_BroadcastDeliveredToClient(t *testing.T) {
 	svc := &landingcache.ServiceInfo{Name: "grafana", Namespace: "monitoring"}
 	h.Broadcast(wshub.Event{Type: wshub.EventAdded, Service: svc})
 
-	_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	// Allow time for Redis Pub/Sub round-trip + local broadcast.
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	_, msg, err := conn.ReadMessage()
 	if err != nil {
 		t.Fatalf("read: %v", err)
@@ -102,7 +118,7 @@ func TestHub_PublishMapsEventTypes(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
-			h := wshub.NewHub()
+			h := newTestHub(t)
 			srv := newServer(t, h)
 
 			conn := dialWS(t, srv)
@@ -112,7 +128,8 @@ func TestHub_PublishMapsEventTypes(t *testing.T) {
 			svc := &landingcache.ServiceInfo{Name: "svc"}
 			h.Publish(tc.input, svc)
 
-			_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+			// Allow time for Redis Pub/Sub round-trip.
+			_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 			_, msg, err := conn.ReadMessage()
 			if err != nil {
 				t.Fatalf("read: %v", err)
@@ -129,7 +146,7 @@ func TestHub_PublishMapsEventTypes(t *testing.T) {
 }
 
 func TestHub_BroadcastToMultipleClients(t *testing.T) {
-	h := wshub.NewHub()
+	h := newTestHub(t)
 	srv := newServer(t, h)
 
 	conn1 := dialWS(t, srv)
@@ -146,7 +163,8 @@ func TestHub_BroadcastToMultipleClients(t *testing.T) {
 	h.Broadcast(wshub.Event{Type: wshub.EventModified, Service: svc})
 
 	for i, c := range []*websocket.Conn{conn1, conn2} {
-		_ = c.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		// Allow time for Redis Pub/Sub round-trip.
+		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
 		_, msg, err := c.ReadMessage()
 		if err != nil {
 			t.Fatalf("client %d read: %v", i+1, err)
@@ -162,7 +180,7 @@ func TestHub_BroadcastToMultipleClients(t *testing.T) {
 }
 
 func TestHub_BroadcastNoClients_NoError(t *testing.T) {
-	h := wshub.NewHub()
+	h := newTestHub(t)
 	// Should not panic or error
 	h.Broadcast(wshub.Event{Type: wshub.EventDeleted, Service: &landingcache.ServiceInfo{Name: "gone"}})
 }

@@ -4,20 +4,20 @@
 package pins
 
 import (
-	"path/filepath"
 	"testing"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 const testUID1 = "uid-1"
 
 func newStore(t *testing.T) *PinStore {
 	t.Helper()
-	s, err := NewPinStore(filepath.Join(t.TempDir(), "pins.db"))
-	if err != nil {
-		t.Fatalf("NewPinStore: %v", err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-	return s
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	return NewPinStore(rdb)
 }
 
 // --- Get ---
@@ -127,19 +127,23 @@ func TestUnpin_DoesNotAffectOtherUsers(t *testing.T) {
 
 // --- Persistence ---
 
-func TestPersistence_ReopenRetainsData(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "pins.db")
-	s1, _ := NewPinStore(path)
+func TestPersistence_SameRedis_RetainsData(t *testing.T) {
+	// With Redis, data persists as long as the server is running.
+	// Verify two separate PinStore clients pointing at the same server share state.
+	mr := miniredis.RunT(t)
+	rdb1 := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb1.Close() })
+	s1 := NewPinStore(rdb1)
 	_ = s1.Pin("alice", testUID1)
-	_ = s1.Close()
 
-	s2, err := NewPinStore(path)
+	rdb2 := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb2.Close() })
+	s2 := NewPinStore(rdb2)
+	uids, err := s2.Get("alice")
 	if err != nil {
-		t.Fatalf("reopen: %v", err)
+		t.Fatalf("Get via second client: %v", err)
 	}
-	defer func() { _ = s2.Close() }()
-	uids, _ := s2.Get("alice")
 	if len(uids) != 1 || uids[0] != testUID1 {
-		t.Errorf("expected [uid-1] after reopen, got %v", uids)
+		t.Errorf("expected [uid-1] from second client, got %v", uids)
 	}
 }

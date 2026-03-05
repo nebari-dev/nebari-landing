@@ -11,9 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
@@ -26,7 +28,6 @@ import (
 	"github.com/nebari-dev/nebari-landing/internal/pins"
 	"github.com/nebari-dev/nebari-landing/internal/watcher"
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
@@ -40,15 +41,15 @@ func init() {
 
 func main() {
 	var (
-		port                 int
-		keycloakURL          string
-		keycloakRealm        string
-		enableAuth           bool
-		healthInterval       int
-		pinsDBPath           string
-		accessRequestsDBPath string
-		adminGroup           string
-		notificationsDBPath  string
+		port           int
+		keycloakURL    string
+		keycloakRealm  string
+		enableAuth     bool
+		healthInterval int
+		adminGroup     string
+		redisAddr      string
+		redisPassword  string
+		redisDB        int
 	)
 
 	// Flags fall back to environment variables so the binary works naturally when
@@ -65,14 +66,14 @@ func main() {
 		"Enable JWT authentication and authorization (env: ENABLE_AUTH)")
 	flag.IntVar(&healthInterval, "health-interval", envInt("HEALTH_INTERVAL", 30),
 		"Health check interval in seconds (env: HEALTH_INTERVAL)")
-	flag.StringVar(&pinsDBPath, "pins-db", envStr("PINS_DB_PATH", "/data/pins.db"),
-		"Path to the bbolt database file for user pin storage (env: PINS_DB_PATH)")
-	flag.StringVar(&accessRequestsDBPath, "access-requests-db", envStr("ACCESS_REQUESTS_DB_PATH", "/data/access_requests.db"),
-		"Path to the bbolt database file for access request storage (env: ACCESS_REQUESTS_DB_PATH)")
 	flag.StringVar(&adminGroup, "admin-group", envStr("ADMIN_GROUP", "admin"),
 		"Keycloak group whose members may access admin endpoints (env: ADMIN_GROUP)")
-	flag.StringVar(&notificationsDBPath, "notifications-db", envStr("NOTIFICATIONS_DB_PATH", "/data/notifications.db"),
-		"Path to the bbolt database file for notifications (env: NOTIFICATIONS_DB_PATH)")
+	flag.StringVar(&redisAddr, "redis-addr", envStr("REDIS_ADDR", "localhost:6379"),
+		"Redis server address host:port (env: REDIS_ADDR)")
+	flag.StringVar(&redisPassword, "redis-password", os.Getenv("REDIS_PASSWORD"),
+		"Redis password, if any (env: REDIS_PASSWORD)")
+	flag.IntVar(&redisDB, "redis-db", envInt("REDIS_DB", 0),
+		"Redis database index (env: REDIS_DB)")
 
 	opts := zap.Options{
 		Development: true,
@@ -101,11 +102,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	serviceCache := cache.NewServiceCache()
-	hub := wshub.NewHub()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	serviceCache := cache.NewServiceCache()
+
+	// Build Redis client — shared by all stores and the WebSocket hub.
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: redisPassword,
+		DB:       redisDB,
+	})
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		setupLog.Error(err, "Failed to connect to Redis", "addr", redisAddr)
+		os.Exit(1)
+	}
+	setupLog.Info("Redis connected", "addr", redisAddr, "db", redisDB)
+	defer rdb.Close()
+
+	hub := wshub.NewHub(ctx, rdb)
 
 	nebariAppWatcher, err := watcher.NewNebariAppWatcher(config, scheme, serviceCache)
 	if err != nil {
@@ -154,48 +169,15 @@ func main() {
 	healthChecker := health.NewHealthChecker(serviceCache, time.Duration(healthInterval)*time.Second)
 	go healthChecker.Start(ctx)
 
-	// Open the pin store (bbolt). The database file is created if it doesn't exist.
-	// A nil store disables the /api/v1/pins endpoints gracefully.
-	var pinStore *pins.PinStore
-	if pinsDBPath != "" {
-		ps, err := pins.NewPinStore(pinsDBPath)
-		if err != nil {
-			setupLog.Error(err, "Failed to open pin store", "path", pinsDBPath)
-			os.Exit(1)
-		}
-		pinStore = ps
-		setupLog.Info("Pin store opened", "path", pinsDBPath)
-	} else {
-		setupLog.Info("PINS_DB_PATH is empty — pin endpoints disabled")
-	}
+	// Build Redis-backed stores. All three share the same Redis client.
+	pinStore := pins.NewPinStore(rdb)
+	setupLog.Info("Pin store ready (Redis)")
 
-	// Open the access request store. A nil store returns 501 on the request-access endpoints.
-	var accessRequestStore *accessrequests.Store
-	if accessRequestsDBPath != "" {
-		ars, err := accessrequests.NewStore(accessRequestsDBPath)
-		if err != nil {
-			setupLog.Error(err, "Failed to open access request store", "path", accessRequestsDBPath)
-			os.Exit(1)
-		}
-		accessRequestStore = ars
-		setupLog.Info("Access request store opened", "path", accessRequestsDBPath)
-	} else {
-		setupLog.Info("ACCESS_REQUESTS_DB_PATH is empty — access request endpoints disabled")
-	}
+	accessRequestStore := accessrequests.NewStore(rdb)
+	setupLog.Info("Access request store ready (Redis)")
 
-	// Open the notification store. A nil store returns an empty list on GET and 501 on sub-routes.
-	var notificationStore *notifications.Store
-	if notificationsDBPath != "" {
-		ns, err := notifications.NewStore(notificationsDBPath)
-		if err != nil {
-			setupLog.Error(err, "Failed to open notification store", "path", notificationsDBPath)
-			os.Exit(1)
-		}
-		notificationStore = ns
-		setupLog.Info("Notification store opened", "path", notificationsDBPath)
-	} else {
-		setupLog.Info("NOTIFICATIONS_DB_PATH is empty — notifications endpoints return empty list")
-	}
+	notificationStore := notifications.NewStore(rdb)
+	setupLog.Info("Notification store ready (Redis)")
 
 	// Build Keycloak admin client from the same env vars the operator uses.
 	// Supports cross-namespace secret lookup via KEYCLOAK_ADMIN_SECRET_NAME +
@@ -254,22 +236,6 @@ func main() {
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		setupLog.Error(err, "Server shutdown failed")
-	}
-
-	if pinStore != nil {
-		if err := pinStore.Close(); err != nil {
-			setupLog.Error(err, "Failed to close pin store")
-		}
-	}
-	if accessRequestStore != nil {
-		if err := accessRequestStore.Close(); err != nil {
-			setupLog.Error(err, "Failed to close access request store")
-		}
-	}
-	if notificationStore != nil {
-		if err := notificationStore.Close(); err != nil {
-			setupLog.Error(err, "Failed to close notification store")
-		}
 	}
 
 	setupLog.Info("Server stopped")

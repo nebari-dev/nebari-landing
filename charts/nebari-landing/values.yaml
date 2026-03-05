@@ -1,0 +1,161 @@
+# Default values for nebari-landing.
+
+# -- Global image pull policy applied to all containers.
+global:
+  imagePullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# Frontend pod  (static assets + OAuth2 Proxy sidecar)
+# ---------------------------------------------------------------------------
+frontend:
+  replicaCount: 1
+
+  image:
+    repository: quay.io/nebari/nebari-frontend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  # Port the static file server listens on *inside the pod* (reachable only
+  # via the OAuth2 Proxy sidecar; not exposed externally).
+  port: 80
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  # OAuth2 Proxy runs as a sidecar in front of the static server.
+  oauth2Proxy:
+    image:
+      repository: quay.io/oauth2-proxy/oauth2-proxy
+      tag: "latest"
+      pullPolicy: IfNotPresent
+
+    # Port exposed by the Service / Envoy Gateway route.
+    port: 4180
+
+    # OIDC provider — Keycloak realm URL.
+    # e.g. https://keycloak.example.com/realms/nebari
+    oidcIssuerUrl: ""
+
+    # Keycloak OIDC client ID registered for the landing page frontend.
+    clientId: "nebari-landing"
+
+    # Name of a Kubernetes Secret containing:
+    #   client-secret  — OIDC client secret
+    #   cookie-secret  — 32-byte random base64 string (openssl rand -base64 32)
+    existingSecret: "nebari-landing-oauth2-proxy"
+
+    # If true the access token is forwarded to the upstream (webapi calls from
+    # the browser will arrive pre-authorised).
+    passAccessToken: true
+
+    # Email domain restriction ("*" allows any authenticated user).
+    emailDomain: "*"
+
+    # Extra args passed verbatim to the oauth2-proxy binary.
+    extraArgs: []
+    # - --skip-provider-button
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+  service:
+    type: ClusterIP
+    port: 4180
+
+# ---------------------------------------------------------------------------
+# Webapi pod  (Go binary — REST API + WebSocket)
+# ---------------------------------------------------------------------------
+webapi:
+  replicaCount: 1
+
+  image:
+    repository: quay.io/nebari/nebari-webapi
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  port: 8080
+
+  # Keycloak JWT validation.
+  keycloak:
+    url: ""           # http://keycloak-keycloakx-http.keycloak.svc:8080/auth
+    realm: "nebari"
+    issuerUrl: ""     # overrides `url` for `iss` claim validation when different
+    enableAuth: true
+    adminGroup: "admin"
+    # Name of a Kubernetes Secret (in keycloak namespace) holding admin creds.
+    # Keys: username / password  (or admin-username / admin-password)
+    adminSecretName: "nebari-realm-admin-credentials"
+    adminSecretNamespace: "keycloak"
+
+  healthInterval: 30
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+# ---------------------------------------------------------------------------
+# Envoy Gateway HTTPRoute
+# ---------------------------------------------------------------------------
+httpRoute:
+  enabled: true
+  # Name of the Gateway to attach to.
+  gatewayName: "envoy-gateway"
+  gatewayNamespace: "envoy-gateway-system"
+  # Hostname the landing page is served on.
+  hostname: "nebari.example.com"
+  # TLS is terminated by the Gateway; set to true when the Gateway listener
+  # uses HTTPS so the route is only matched on the TLS listener.
+  tls: true
+
+# ---------------------------------------------------------------------------
+# Redis subchart (bitnami/redis 23.1.1)
+# ---------------------------------------------------------------------------
+redis:
+  enabled: true
+
+  architecture: standalone   # standalone is sufficient; use replication for HA
+
+  auth:
+    enabled: true
+    # Name of an existing secret with key `redis-password`.
+    # When empty, the subchart auto-generates a password.
+    existingSecret: ""
+    existingSecretPasswordKey: "redis-password"
+
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+    # Enable AOF persistence for durability.
+    extraFlags:
+      - "--appendonly yes"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi

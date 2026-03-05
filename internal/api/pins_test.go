@@ -7,23 +7,23 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
 )
 
-// newPinStore creates a temp-dir-backed PinStore for tests.
+// newPinStore creates a miniredis-backed PinStore for tests.
 func newPinStore(t *testing.T) *pins.PinStore {
 	t.Helper()
-	ps, err := pins.NewPinStore(filepath.Join(t.TempDir(), "pins.db"))
-	if err != nil {
-		t.Fatalf("NewPinStore: %v", err)
-	}
-	t.Cleanup(func() { _ = ps.Close() })
-	return ps
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	return pins.NewPinStore(rdb)
 }
 
 // newPinHandler builds a Handler with auth disabled and a real PinStore.

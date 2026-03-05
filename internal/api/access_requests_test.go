@@ -7,23 +7,23 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 )
 
-// newARStore creates a temporary access request store for tests.
+// newARStore creates a miniredis-backed access request store for tests.
 func newARStore(t *testing.T) *accessrequests.Store {
 	t.Helper()
-	s, err := accessrequests.NewStore(filepath.Join(t.TempDir(), "ar.db"))
-	if err != nil {
-		t.Fatalf("NewStore: %v", err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-	return s
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	return accessrequests.NewStore(rdb)
 }
 
 // newARHandler returns a Handler with auth disabled and an access request store wired in.

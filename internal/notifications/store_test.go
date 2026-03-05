@@ -5,19 +5,19 @@ package notifications
 
 import (
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 func newStore(t *testing.T) *Store {
 	t.Helper()
-	s, err := NewStore(filepath.Join(t.TempDir(), "notif.db"))
-	if err != nil {
-		t.Fatalf("NewStore: %v", err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-	return s
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	return NewStore(rdb)
 }
 
 // --- Create ---
@@ -167,17 +167,20 @@ func TestReadSet_MultipleNotifications(t *testing.T) {
 	}
 }
 
-func TestReadSet_PersistsAcrossReopen(t *testing.T) {
-	dir := t.TempDir()
-	s1, _ := NewStore(filepath.Join(dir, "n.db"))
+func TestReadSet_PersistsAcrossTwoClients(t *testing.T) {
+	// Verify read-state shared across two Store clients on the same Redis server.
+	mr := miniredis.RunT(t)
+	rdb1 := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb1.Close() })
+	s1 := NewStore(rdb1)
 	n, _ := s1.Create("", "T", "M")
 	_ = s1.MarkRead("alice", n.ID)
-	_ = s1.Close()
 
-	s2, _ := NewStore(filepath.Join(dir, "n.db"))
-	t.Cleanup(func() { _ = s2.Close() })
+	rdb2 := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb2.Close() })
+	s2 := NewStore(rdb2)
 	rs, _ := s2.ReadSet("alice")
 	if !rs[n.ID] {
-		t.Error("read state should persist across reopen")
+		t.Error("read state should be visible from a second Store client")
 	}
 }

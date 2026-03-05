@@ -1,125 +1,69 @@
 // Copyright 2026, OpenTeams.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package pins provides a bbolt-backed persistent store for per-user
+// Package pins provides a Redis-backed persistent store for per-user
 // pinned-service preferences in the service-discovery API.
 //
 // Data model:
 //
-//	bucket "pins"
-//	  key:   preferred_username  (string, from validated JWT claim)
-//	  value: JSON-encoded []string of service UIDs
+//	key: nebari:pins:{username}  (Redis Set of service UIDs)
+//
+// Operations are idempotent by nature of Redis Set semantics —
+// SADD and SREM are both no-ops when the element is already present/absent.
 package pins
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 
-	bbolt "go.etcd.io/bbolt"
+	"github.com/redis/go-redis/v9"
 )
 
-const bucketName = "pins"
+const keyPrefix = "nebari:pins:"
 
-// PinStore persists per-user pinned service UIDs using bbolt.
+// PinStore persists per-user pinned service UIDs using Redis Sets.
 type PinStore struct {
-	db *bbolt.DB
+	rdb *redis.Client
 }
 
-// NewPinStore opens (or creates) the bbolt database at dbPath and returns a
-// ready-to-use PinStore. The caller is responsible for calling Close() when done.
-func NewPinStore(dbPath string) (*PinStore, error) {
-	db, err := bbolt.Open(dbPath, 0o600, nil)
-	if err != nil {
-		return nil, fmt.Errorf("opening pin store at %q: %w", dbPath, err)
-	}
-	// Ensure the bucket exists.
-	err = db.Update(func(tx *bbolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
-		return err
-	})
-	if err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("creating pins bucket: %w", err)
-	}
-	return &PinStore{db: db}, nil
+// NewPinStore returns a PinStore backed by the given Redis client.
+// The client must already be configured; no connection is verified here.
+func NewPinStore(rdb *redis.Client) *PinStore {
+	return &PinStore{rdb: rdb}
 }
 
-// Close releases the underlying database file.
-func (s *PinStore) Close() error {
-	return s.db.Close()
-}
+// Close is a no-op; the Redis client lifetime is managed by the caller.
+func (s *PinStore) Close() error { return nil }
 
 // Get returns the list of pinned UIDs for username.
 // Returns an empty slice when the user has no pins stored yet.
 func (s *PinStore) Get(username string) ([]string, error) {
-	var uids []string
-	err := s.db.View(func(tx *bbolt.Tx) error {
-		v := tx.Bucket([]byte(bucketName)).Get([]byte(username))
-		if v == nil {
-			uids = []string{}
-			return nil
-		}
-		return json.Unmarshal(v, &uids)
-	})
+	uids, err := s.rdb.SMembers(context.Background(), pinKey(username)).Result()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pins.Get %q: %w", username, err)
+	}
+	if uids == nil {
+		uids = []string{}
 	}
 	return uids, nil
 }
 
 // Pin adds uid to username's pinned set (idempotent).
 func (s *PinStore) Pin(username, uid string) error {
-	return s.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(bucketName))
-		uids, err := decode(b.Get([]byte(username)))
-		if err != nil {
-			return err
-		}
-		for _, existing := range uids {
-			if existing == uid {
-				return nil // already pinned
-			}
-		}
-		uids = append(uids, uid)
-		return put(b, username, uids)
-	})
+	if err := s.rdb.SAdd(context.Background(), pinKey(username), uid).Err(); err != nil {
+		return fmt.Errorf("pins.Pin %q → %q: %w", username, uid, err)
+	}
+	return nil
 }
 
 // Unpin removes uid from username's pinned set (idempotent).
 func (s *PinStore) Unpin(username, uid string) error {
-	return s.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(bucketName))
-		uids, err := decode(b.Get([]byte(username)))
-		if err != nil {
-			return err
-		}
-		result := uids[:0]
-		for _, existing := range uids {
-			if existing != uid {
-				result = append(result, existing)
-			}
-		}
-		return put(b, username, result)
-	})
+	if err := s.rdb.SRem(context.Background(), pinKey(username), uid).Err(); err != nil {
+		return fmt.Errorf("pins.Unpin %q → %q: %w", username, uid, err)
+	}
+	return nil
 }
 
-// decode unmarshals a JSON-encoded []string from raw; returns [] on nil input.
-func decode(raw []byte) ([]string, error) {
-	if raw == nil {
-		return []string{}, nil
-	}
-	var out []string
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// put JSON-encodes uids and stores them under key username.
-func put(b *bbolt.Bucket, username string, uids []string) error {
-	v, err := json.Marshal(uids)
-	if err != nil {
-		return err
-	}
-	return b.Put([]byte(username), v)
+func pinKey(username string) string {
+	return keyPrefix + username
 }

@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nebari-landing.fullname" . }}-frontend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nebari-landing.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: {{ .Values.frontend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "nebari-landing.frontend.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nebari-landing.labels" . | nindent 8 }}
+        {{- include "nebari-landing.frontend.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101    # nginx default non-root uid
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        # ---------------------------------------------------------------
+        # oauth2-proxy — mandatory sidecar, is the sole external entry
+        # point. Envoy Gateway routes traffic here; the static server
+        # below is only reachable from within the pod.
+        # ---------------------------------------------------------------
+        - name: oauth2-proxy
+          image: "{{ .Values.frontend.oauth2Proxy.image.repository }}:{{ .Values.frontend.oauth2Proxy.image.tag }}"
+          imagePullPolicy: {{ .Values.frontend.oauth2Proxy.image.pullPolicy }}
+          args:
+            - --provider=oidc
+            - --oidc-issuer-url={{ required "frontend.oauth2Proxy.oidcIssuerUrl is required" .Values.frontend.oauth2Proxy.oidcIssuerUrl }}
+            - --client-id={{ .Values.frontend.oauth2Proxy.clientId }}
+            - --upstream=http://127.0.0.1:{{ .Values.frontend.port }}
+            - --http-address=0.0.0.0:{{ .Values.frontend.oauth2Proxy.port }}
+            - --email-domain={{ .Values.frontend.oauth2Proxy.emailDomain }}
+            - --pass-access-token={{ .Values.frontend.oauth2Proxy.passAccessToken }}
+            - --set-authorization-header={{ .Values.frontend.oauth2Proxy.passAccessToken }}
+            {{- range .Values.frontend.oauth2Proxy.extraArgs }}
+            - {{ . }}
+            {{- end }}
+          env:
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "frontend.oauth2Proxy.existingSecret is required" .Values.frontend.oauth2Proxy.existingSecret }}
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.frontend.oauth2Proxy.existingSecret }}
+                  key: cookie-secret
+          ports:
+            - name: proxy
+              containerPort: {{ .Values.frontend.oauth2Proxy.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: {{ .Values.frontend.oauth2Proxy.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.frontend.oauth2Proxy.port }}
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.frontend.oauth2Proxy.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+
+        # ---------------------------------------------------------------
+        # frontend — serves static Vite build assets.
+        # Only reachable via oauth2-proxy on 127.0.0.1.
+        # ---------------------------------------------------------------
+        - name: frontend
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.frontend.port }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          # nginx needs a writable /tmp and /var/cache/nginx
+          volumeMounts:
+            - name: nginx-tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+
+      volumes:
+        - name: nginx-tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+
+      terminationGracePeriodSeconds: 10
