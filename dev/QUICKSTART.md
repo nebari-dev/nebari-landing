@@ -104,22 +104,19 @@ populates the webapi's in-memory service cache. The webapi then serves that cach
 
 ## Running on WSL2 (Windows)
 
-MetalLB uses L2/ARP to advertise the `192.168.49.x` IP pool. In default WSL2
-networking, that ARP traffic never crosses the Hyper-V VM boundary, so the
-MetalLB IPs are unreachable from the Windows host browser.
+MetalLB uses L2/ARP to advertise the `192.168.49.x` IP pool. In default WSL2 networking, that ARP traffic never crosses
+the Hyper-V VM boundary, so the MetalLB IPs are unreachable from the Windows host browser.
 
 There are three ways to fix this, in order of recommendation:
 
----
+
 
 ### Option A — WSL2 mirrored networking (Windows 11 24H2+, recommended)
 
-Mirrored mode bridges the WSL2 VM NIC to the Windows host network stack.
-However, the minikube docker bridge (`192.168.49.0/24`) is an *internal* Linux
-bridge — it is not automatically exposed to Windows by mirrored mode alone.
-You also need `minikube tunnel`, which injects host routes into the Linux kernel;
-in mirrored mode those routes propagate to the Windows routing table, making the
-MetalLB IPs reachable from the Windows browser.
+Mirrored mode bridges the WSL2 VM NIC to the Windows host network stack. However, the minikube docker bridge
+(`192.168.49.0/24`) is an *internal* Linux bridge — it is not automatically exposed to Windows by mirrored mode alone.
+You also need `minikube tunnel`, which injects host routes into the Linux kernel; in mirrored mode those routes
+propagate to the Windows routing table, making the MetalLB IPs reachable from the Windows browser.
 
 **One-time Windows setup:**
 
@@ -153,20 +150,17 @@ make -f dev/Makefile setup
 make -f dev/Makefile minikube-tunnel
 ```
 
-`minikube tunnel` must stay running for the duration of the session. It may
-prompt for `sudo` (it modifies the kernel routing table). If it does, run it
-in a separate terminal directly:
+`minikube tunnel` must stay running for the duration of the session. It may prompt for `sudo` (it modifies the kernel
+routing table). If it does, run it in a separate terminal directly:
 
 ```sh
 sudo minikube tunnel -p nebari-local
 ```
 
-Note on IP pool: the `metallb` target auto-detects the subnet from `minikube ip`
-at runtime (it no longer uses the hardcoded `dev/manifests/metallb/config.yaml`).
-The pool will always be `.100–.150` within whatever subnet minikube assigned.
-With the docker driver and the `nebari-local` profile name, minikube consistently
-uses `192.168.49.0/24`, so the IPs in this guide stay valid. If you rename the
-cluster via `CLUSTER_NAME=…`, the pool re-calculates automatically.
+Note on IP pool: the `metallb` target auto-detects the subnet from `minikube ip` at runtime (it no longer uses the
+hardcoded `dev/manifests/metallb/config.yaml`). The pool will always be `.100–.150` within whatever subnet minikube
+assigned. With the docker driver and the `nebari-local` profile name, minikube consistently uses `192.168.49.0/24`, so
+the IPs in this guide stay valid. If you rename the cluster via `CLUSTER_NAME=…`, the pool re-calculates automatically.
 
 **Verify connectivity from Windows** (after `minikube tunnel` is running):
 
@@ -176,20 +170,19 @@ curl http://192.168.49.100/auth/admin
 # Should return a redirect (302) — not a timeout
 ```
 
-If you still get a timeout, add a Windows Defender Firewall inbound rule allowing
-TCP traffic from `192.168.49.0/24`.
+If you still get a timeout, add a Windows Defender Firewall inbound rule allowing TCP traffic from `192.168.49.0/24`.
 
----
+
 
 ### Option B — Docker Desktop (any Windows version)
 
-Docker Desktop routes container networks through `vpnkit`, making the minikube
-docker bridge accessible from Windows regardless of WSL2 networking mode.
+Docker Desktop routes container networks through `vpnkit`, making the minikube docker bridge accessible from Windows
+regardless of WSL2 networking mode.
 
 1. Install [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/).
 2. In Docker Desktop → Settings → Resources → WSL Integration: enable your WSL2 distro.
-3. **Run `make setup` from a Windows terminal (PowerShell/CMD)**, not from WSL2 —
-   minikube must target the Windows Docker daemon, not the WSL2 one.
+3. **Run `make setup` from a Windows terminal (PowerShell/CMD)**, not from WSL2 — minikube must target the Windows
+   Docker daemon, not the WSL2 one.
    ```powershell
    cd \path\to\nebari-landing
    make -f dev/Makefile setup
@@ -201,13 +194,13 @@ docker bridge accessible from Windows regardless of WSL2 networking mode.
    make -f dev/Makefile setup
    ```
 
----
+
 
 ### Option C — port-forward mode (any Windows version, no extra software)
 
-If neither option above is available, use the WSL-specific targets that skip
-MetalLB entirely and expose services via `kubectl port-forward` on `localhost`.
-WSL2 automatically forwards `localhost:<PORT>` to `127.0.0.1` on the Windows host.
+If neither option above is available, use the WSL-specific targets that skip MetalLB entirely and expose services via
+`kubectl port-forward` on `localhost`. WSL2 automatically forwards `localhost:<PORT>` to `127.0.0.1` on the Windows
+host.
 
 ```sh
 make -f dev/Makefile wsl-setup
@@ -228,19 +221,18 @@ make -f dev/Makefile port-forward     # start / restart
 make -f dev/Makefile stop-port-forward # stop
 ```
 
-**How it differs from the MetalLB setup** (see `dev/keycloak/values-wsl.yaml`
-and `dev/manifests/nebari-landingpage/overlays/wsl/`):
-- Keycloak `KC_HOSTNAME_URL=http://localhost:8180/auth` (the JWT `iss` matches
-  the Windows-visible URL).
-- `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` — pods fetch Keycloak discovery via the
-  cluster-internal service name; the returned `token_endpoint` / `jwks_uri` use
-  that same internal hostname so back-channel calls never go through the forward.
-- `proxy.mode=none` — `kubectl port-forward` injects no `X-Forwarded-*` headers;
-  `xforwarded` mode (the default) would cause the admin console to hang.
-- oauth2-proxy `--oidc-issuer-url` points to the cluster-internal Keycloak
-  service; `--skip-oidc-issuer-verification` suppresses the issuer-URL mismatch.
+**How it differs from the MetalLB setup** (see `dev/keycloak/values-wsl.yaml` and
+`dev/manifests/nebari-landingpage/overlays/wsl/`):
+- Keycloak `KC_HOSTNAME_URL=http://localhost:8180/auth` (the JWT `iss` matches the Windows-visible URL).
+- `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` — pods fetch Keycloak discovery via the cluster-internal service name; the
+  returned `token_endpoint` / `jwks_uri` use that same internal hostname so back-channel calls never go through the
+  forward.
+- `proxy.mode=none` — `kubectl port-forward` injects no `X-Forwarded-*` headers; `xforwarded` mode (the default) would
+  cause the admin console to hang.
+- oauth2-proxy `--oidc-issuer-url` points to the cluster-internal Keycloak service; `--skip-oidc-issuer-verification`
+  suppresses the issuer-URL mismatch.
 
----
+
 
 ## Quick-start (all-in-one)
 
@@ -278,6 +270,48 @@ back to the landing page.
 
 
 ## Day-to-day workflow
+
+### Hot-reload frontend changes with Vite HMR (dev-watch)
+
+For a tight edit-refresh loop, swap the nginx container for a Vite dev server backed by a live `minikube mount`. File
+changes on the host are picked up instantly — no image rebuild, no pod restart.
+
+```sh
+make -f dev/Makefile dev-watch
+```
+
+What happens:
+1. `minikube mount frontend/:/mnt/nebari-frontend` starts in the background, keeping the host `frontend/` directory in
+   sync with `/mnt/nebari-frontend` inside the minikube VM.
+2. The `dev-watch` kustomize overlay is applied: the `nebari-landingpage` container is replaced by `node:22-alpine`
+   running `npm install && vite --host 0.0.0.0 --port 8080`. The `oauth2-proxy` sidecar is unchanged.
+3. A `wait-for-mount` init container blocks until `package.json` appears under the hostPath volume, preventing Vite from
+   starting before the mount is populated.
+4. Port-forwards are (re)started so the page is available at `http://localhost:8080/`.
+
+Open `http://localhost:8080/`, edit any file under `frontend/src/`, and the browser hot-reloads automatically.
+
+**Check status at any time:**
+
+```sh
+make -f dev/Makefile dev-watch-status
+```
+
+This prints: mount process health, last 20 lines of the mount log, pod phase, init container logs, Vite container logs
+(last 40 lines), and whether `http://localhost:8080/` is reachable.
+
+**Revert to the standard nginx image:**
+
+```sh
+make -f dev/Makefile stop-dev-watch
+```
+
+This restores the `dev` overlay (prebuilt nginx image) and stops the `minikube mount` process.
+
+> **Note:** Vite takes up to ~60 s to start (npm install + initial build). The pod's readiness probe has a 30 s initial
+> delay; if the probe fires before Vite is ready the pod will restart once — that is normal.
+
+
 
 ### Rebuild the frontend after source changes
 
@@ -371,6 +405,9 @@ dev/
     │       │   ├── deployment-patch.yaml  ← Adds oauth2-proxy sidecar container
     │       │   ├── service-patch.yaml     ← Changes service to LoadBalancer (LB_IP_LANDING)
     │       │   └── oauth2proxy-secret.yaml
+    │       ├── dev-watch/          ← Hot-reload overlay (make dev-watch)
+    │       │   ├── kustomization.yaml     ← Extends dev overlay
+    │       │   └── deployment-patch.yaml  ← Swaps nginx for Vite dev server + hostPath volume
     │       └── wsl/                ← NodePort + localhost overlay (make wsl-setup)
     │           ├── kustomization.yaml
     │           ├── deployment-patch.yaml  ← oauth2-proxy with cluster-internal KC URL
@@ -468,6 +505,17 @@ curl -s http://192.168.49.100/auth/realms/nebari/.well-known/openid-configuratio
   | python3 -c "import sys,json; print(json.load(sys.stdin)['issuer'])"
 # Should be: http://192.168.49.100/auth/realms/nebari
 ```
+
+If the discovery returns `http://localhost:8180/auth/realms/nebari` instead, Keycloak's `KC_HOSTNAME_URL` was set to the
+localhost port-forward URL. `make keycloak-install` now injects the correct MetalLB IP automatically via `envsubst`.
+Redeploy to fix it:
+
+```sh
+make -f dev/Makefile keycloak-install
+```
+
+After Keycloak restarts, verify the issuer is correct (command above) then confirm the webapi accepts tokens by
+re-running the integration tests.
 
 ### MetalLB services stuck in `<pending>`
 

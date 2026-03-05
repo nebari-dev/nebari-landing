@@ -4,6 +4,21 @@
 # 'minikube mount frontend/:/mnt/nebari-frontend' (started by 'make dev-watch') and
 # mounted into the pod as a hostPath volume.
 #
+# KEY DESIGN NOTES:
+#
+# 1. node_modules isolation:
+#    The macOS host's node_modules (darwin binaries) is mounted into the Linux
+#    container via the 9p/hostPath volume.  npm treats these as up-to-date and
+#    skips reinstall, causing Vite to silently exit when it tries to load a darwin
+#    native binary on Linux.
+#    Fix: an emptyDir volume is mounted at /app/node_modules, shadowing the macOS
+#    node_modules.  npm install then fetches Linux-native binaries into the emptyDir.
+#
+# 2. Polling file watcher:
+#    9p (minikube mount) does not support inotify, so chokidar must fall back to
+#    polling.  VITE_USE_POLLING=true is passed to vite.config.ts which enables
+#    server.watch.usePolling when that env var is set.
+#
 # Vite detects file changes in the mount and hot-reloads the browser with no pod restart.
 # oauth2-proxy is unchanged — Vite is forced to listen on the same port (8080) as nginx.
 #
@@ -40,6 +55,8 @@ spec:
           volumeMounts:
             - name: frontend-src
               mountPath: /app
+            - name: node-modules
+              mountPath: /app/node_modules
           securityContext:
             runAsUser: 0
             runAsNonRoot: false
@@ -50,40 +67,49 @@ spec:
           # Override the imagePullPolicy:Never inherited from the parent dev overlay.
           # node:22-alpine must be pulled from the registry; it is not loaded into minikube.
           imagePullPolicy: IfNotPresent
-          # npm install is a no-op when node_modules is already present (fast).
-          # Vite listens on port 8080 so oauth2-proxy upstream is unchanged.
+          # npm install populates the emptyDir node-modules volume with Linux-native
+          # binaries (the macOS node_modules from the 9p mount is shadowed by emptyDir).
+          # VITE_USE_POLLING=true enables chokidar polling for the 9p filesystem.
+          # --force bypasses Vite's module cache to avoid stale transforms on first run.
           command:
             - sh
             - -c
-            - "npm install && exec npm run dev -- --host 0.0.0.0 --port 8080"
+            - "npm install && exec npm run dev -- --host 0.0.0.0 --port 8080 --force"
           workingDir: /app
+          env:
+            - name: VITE_USE_POLLING
+              value: "true"
           ports:
             - name: http
               containerPort: 8080
           volumeMounts:
             - name: frontend-src
               mountPath: /app
-          # Vite takes time to start (npm install + vite startup); use generous delays.
+            - name: node-modules
+              mountPath: /app/node_modules
+          # npm install + Vite startup on the first run takes ~2-3 min;
+          # use generous initial delays so the probe doesn't kill the pod prematurely.
           livenessProbe:
             httpGet:
               path: /
               port: 8080
-            initialDelaySeconds: 60
+            initialDelaySeconds: 180
             periodSeconds: 15
             failureThreshold: 6
           readinessProbe:
             httpGet:
               path: /
               port: 8080
-            initialDelaySeconds: 30
+            initialDelaySeconds: 90
             periodSeconds: 10
+            failureThreshold: 12
           resources:
             requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: 500m
+              cpu: 200m
               memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
           securityContext:
             runAsUser: 0
             runAsNonRoot: false
@@ -97,3 +123,7 @@ spec:
             #   minikube -p <cluster> mount <repo>/frontend:/mnt/nebari-frontend
             path: /mnt/nebari-frontend
             type: DirectoryOrCreate
+        - name: node-modules
+          # emptyDir shadows the macOS node_modules from the 9p mount so that
+          # npm install fetches Linux-native binaries into this volume instead.
+          emptyDir: {}

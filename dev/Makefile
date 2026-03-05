@@ -107,7 +107,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
         keycloak keycloak-install keycloak-realm keycloak-client frontend-client \
         operator-install operator-uninstall \
         test-apps \
-        argocd-apps install uninstall dev-watch stop-dev-watch info \
+        argocd-apps install uninstall dev-watch stop-dev-watch dev-watch-status info \
         port-forward stop-port-forward \
         minikube-tunnel stop-minikube-tunnel \
         deps-check _minikube
@@ -256,11 +256,16 @@ keycloak-install:
 	@echo "→  Installing Keycloak (codecentric/keycloakx) …"
 	kubectl create namespace $(NAMESPACE_KC) --dry-run=client -o yaml | kubectl apply -f -
 	helm repo add codecentric $(KEYCLOAK_CHART) --force-update
-	helm upgrade --install $(HELM_RELEASE_KC) codecentric/$(KEYCLOAK_CHART_NAME) \
-	  --version $(KEYCLOAK_VERSION) \
-	  --namespace $(NAMESPACE_KC) \
-	  --values dev/keycloak/values.yaml \
-	  --wait --timeout 10m
+	@MINIKUBE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME)); \
+	 SUBNET=$$(echo "$$MINIKUBE_IP" | sed 's/\.[0-9]*$$//'); \
+	 export KC_HOSTNAME_URL="http://$${SUBNET}.100/auth"; \
+	 echo "→  Keycloak public URL (KC_HOSTNAME_URL): $$KC_HOSTNAME_URL"; \
+	 envsubst < dev/keycloak/values.yaml | \
+	 helm upgrade --install $(HELM_RELEASE_KC) codecentric/$(KEYCLOAK_CHART_NAME) \
+	   --version $(KEYCLOAK_VERSION) \
+	   --namespace $(NAMESPACE_KC) \
+	   --values - \
+	   --wait --timeout 10m
 	@echo "✔  Keycloak deployed"
 
 ## keycloak-realm: run the kcadm Job to create and populate the nebari realm
@@ -374,30 +379,44 @@ uninstall: operator-uninstall
 ## The browser hot-reloads without a pod restart.
 ## Requires a running cluster ('make setup'). Stop with: make -f dev/Makefile stop-dev-watch
 dev-watch:
-	@echo "→  Starting minikube mount in a new terminal …"
+	@echo "→  Starting minikube mount …"
 	@pkill -f "minikub[e].*mount.*nebari-frontend" 2>/dev/null || true
 	@sleep 1
-	# Open a dedicated terminal for the mount process — it must stay alive.
-	# Uses nohup + setsid to fully detach from the current process group.
-	@setsid nohup $(MINIKUBE_BIN) -p $(CLUSTER_NAME) mount \
-	  "$(CURDIR)/frontend:/mnt/nebari-frontend" \
-	  > /tmp/minikube-mount-frontend.log 2>&1 < /dev/null &
-	@echo "   Mount PID written to /tmp/minikube-mount-frontend.pid"
-	@echo $$! > /tmp/minikube-mount-frontend.pid
+	# Launch the mount in a new OS session (start_new_session=True ≡ setsid) so it
+	# survives Make exiting. Python is available on all supported platforms.
+	@python3 -c "\
+import subprocess, shlex, sys; \
+cmd = shlex.split('$(MINIKUBE_BIN) -p $(CLUSTER_NAME) mount $(CURDIR)/frontend:/mnt/nebari-frontend'); \
+log = open('/tmp/minikube-mount-frontend.log', 'w'); \
+p = subprocess.Popen(cmd, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True); \
+open('/tmp/minikube-mount-frontend.pid', 'w').write(str(p.pid)); \
+print('   Mount PID', p.pid, '— log: /tmp/minikube-mount-frontend.log'); \
+"
 	@echo "   Waiting for mount to establish …"
 	@for i in $$(seq 1 15); do \
-	  if grep -q "Watching" /tmp/minikube-mount-frontend.log 2>/dev/null; then \
-	    echo "✔  minikube mount active (log: /tmp/minikube-mount-frontend.log)"; break; \
+	  if grep -q "Successfully mounted" /tmp/minikube-mount-frontend.log 2>/dev/null; then \
+	    echo "✔  minikube mount active"; break; \
 	  fi; \
 	  sleep 1; \
 	done
+	@if ! grep -q "Successfully mounted" /tmp/minikube-mount-frontend.log 2>/dev/null; then \
+	  echo "✗  minikube mount did not establish within 15 s — check /tmp/minikube-mount-frontend.log"; \
+	  cat /tmp/minikube-mount-frontend.log; \
+	  exit 1; \
+	fi
 	@echo "→  Applying dev-watch overlay (Vite HMR + hostPath volume) …"
-	$(MAKE) -f dev/Makefile install OVERLAY=dev-watch
+	kubectl create namespace $(NAMESPACE_APP) --dry-run=client -o yaml | kubectl apply -f -
+	kubectl apply -k dev/manifests/nebari-landingpage/overlays/dev-watch
+	@echo "   Deleting any pods that started before the mount was ready (avoids hostPath race condition) …"
+	@kubectl -n $(NAMESPACE_APP) delete pod -l app.kubernetes.io/name=nebari-landingpage 2>/dev/null || true
+	@echo "   Waiting for Vite pod to become ready (~2 min for npm install + Vite startup) …"
+	kubectl rollout status deployment/nebari-landingpage -n $(NAMESPACE_APP) --timeout=8m
 	$(MAKE) -f dev/Makefile port-forward
 	@echo ""
 	@echo "✔  Dev-watch active. Edit files in frontend/ — Vite HMR reloads the browser."
 	@echo "   Landing  : http://localhost:$(PORT_LANDING)/"
 	@echo "   Mount log: /tmp/minikube-mount-frontend.log"
+	@echo "   Status   : make -f dev/Makefile dev-watch-status"
 	@echo "   Stop     : make -f dev/Makefile stop-dev-watch"
 
 ## stop-dev-watch: restore the prebuilt nginx image and stop the minikube mount
@@ -407,6 +426,64 @@ stop-dev-watch:
 	$(MAKE) -f dev/Makefile port-forward
 	@pkill -f "minikub[e].*mount.*nebari-frontend" 2>/dev/null && echo "✔  minikube mount stopped" || true
 	@echo "✔  dev-watch stopped — run 'make -f dev/Makefile image-build' to rebuild the image"
+
+## dev-watch-status: show the health of all dev-watch components in one shot
+## Checks: minikube mount process, mount log tail, pod phase, init + main container
+## logs (last 30 lines each), and whether Vite is listening on :8080.
+dev-watch-status:
+	@echo ""
+	@echo "╔══════════════════════════════════════════════════════════════╗"
+	@echo "║                  dev-watch status                           ║"
+	@echo "╠══════════════════════════════════════════════════════════════╣"
+	@echo ""
+	@echo "── 1. minikube mount process ──────────────────────────────────"
+	@if pgrep -f "minikub[e].*mount.*nebari-frontend" > /dev/null 2>&1; then \
+	  PID=$$(pgrep -f "minikub[e].*mount.*nebari-frontend" | head -1); \
+	  echo "✔  Running (PID $$PID)"; \
+	else \
+	  echo "✗  NOT running — start with: make -f dev/Makefile dev-watch"; \
+	fi
+	@echo ""
+	@echo "── 2. mount log (last 20 lines) ───────────────────────────────"
+	@if [ -f /tmp/minikube-mount-frontend.log ]; then \
+	  tail -n 20 /tmp/minikube-mount-frontend.log; \
+	else \
+	  echo "   (log file not found: /tmp/minikube-mount-frontend.log)"; \
+	fi
+	@echo ""
+	@echo "── 3. pod status ──────────────────────────────────────────────"
+	@kubectl -n $(NAMESPACE_APP) get pods -l app.kubernetes.io/name=nebari-landingpage -o wide 2>/dev/null || echo "   (no pods found)"
+	@echo ""
+	@echo "── 4. init container logs (wait-for-mount, last 30 lines) ─────"
+	@POD=$$(kubectl -n $(NAMESPACE_APP) get pods -l app.kubernetes.io/name=nebari-landingpage \
+	          --field-selector=status.phase=Running \
+	          -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
+	 if [ -n "$$POD" ]; then \
+	   kubectl -n $(NAMESPACE_APP) logs $$POD -c wait-for-mount --tail=30 2>/dev/null \
+	     || echo "   (init container has already completed — no logs)"; \
+	 else \
+	   echo "   (no Running pod found)"; \
+	 fi
+	@echo ""
+	@echo "── 5. Vite container logs (nebari-landingpage, last 40 lines) ─"
+	@POD=$$(kubectl -n $(NAMESPACE_APP) get pods -l app.kubernetes.io/name=nebari-landingpage \
+	          --field-selector=status.phase=Running \
+	          -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
+	 if [ -n "$$POD" ]; then \
+	   kubectl -n $(NAMESPACE_APP) logs $$POD -c nebari-landingpage --tail=40 2>/dev/null; \
+	 else \
+	   echo "   (no Running pod found)"; \
+	 fi
+	@echo ""
+	@echo "── 6. HMR reachability (port-forward → :8080) ─────────────────"
+	@if curl -sf --max-time 3 http://localhost:$(PORT_LANDING)/ -o /dev/null; then \
+	  echo "✔  http://localhost:$(PORT_LANDING)/ is reachable"; \
+	else \
+	  echo "✗  http://localhost:$(PORT_LANDING)/ unreachable — Vite may still be starting"; \
+	fi
+	@echo ""
+	@echo "╚══════════════════════════════════════════════════════════════╝"
+	@echo ""
 
 # ── Info / convenience ────────────────────────────────────────────────────────
 
@@ -426,7 +503,6 @@ info:
 	 echo "║  MetalLB subnet   : $${SUBNET:-192.168.49}.0/24 (pool .100–.150)"; \
 	 echo "║"; \
 	 echo "║  MetalLB LoadBalancer IPs:"; \
-	 echo "║    (WSL2: also run 'make minikube-tunnel' for Windows access)"; \
 	 echo "║"; \
 	 echo "║  Landing page + oauth2-proxy:"; \
 	 echo "║    http://$${LAND_IP}/"; \
@@ -443,10 +519,23 @@ info:
 	 echo "║  Operator namespace : $(NAMESPACE_OPERATOR)"; \
 	 echo "║"; \
 	 echo "║  Integration tests:"; \
-	 echo "║    python3 dev/webapi_test.py \\\""; \
-	 echo "║      --webapi-url http://$${API_IP}:8080 \\\""; \
-	 echo "║      --keycloak-url http://$${KC_IP}/auth \\\""; \
-	 echo "║      -u admin -p $(REALM_ADMIN_PASSWORD)"
+	 echo "║    python3 dev/webapi_test.py \\"; \
+	 echo "║      --webapi-url http://$${API_IP}:8080 \\"; \
+	 echo "║      --keycloak-url http://$${KC_IP}/auth \\"; \
+	 echo "║      -u admin -p $(REALM_ADMIN_PASSWORD)"; \
+	 echo "║"; \
+	 echo "║  Hot-reload dev (Vite HMR via minikube mount):"; \
+	 if pgrep -f "minikub[e].*mount.*nebari-frontend" > /dev/null 2>&1; then \
+	   PID=$$(pgrep -f "minikub[e].*mount.*nebari-frontend" | head -1); \
+	   echo "║    ✔  minikube mount active (PID $$PID)"; \
+	   echo "║       http://localhost:$(PORT_LANDING)/  ← Vite dev server"; \
+	   echo "║       Log: /tmp/minikube-mount-frontend.log"; \
+	   echo "║       Stop: make -f dev/Makefile stop-dev-watch"; \
+	 else \
+	   echo "║    ○  Not running  (nginx/prebuilt image active)"; \
+	   echo "║       Start: make -f dev/Makefile dev-watch"; \
+	   echo "║       Status: make -f dev/Makefile dev-watch-status"; \
+	 fi
 	@echo "╚══════════════════════════════════════════════════════════════╝"
 	@echo ""
 
