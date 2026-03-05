@@ -239,3 +239,12 @@ func TestUpdateStatus_PersistedAcrossTwoClients(t *testing.T) {
 		t.Errorf("expected approved from second client, got %q", got.Status)
 	}
 }
+
+// --- Close ---
+
+func TestClose_ReturnsNoError(t *testing.T) {
+	s := newStore(t)
+	if err := s.Close(); err != nil {
+		t.Errorf("Close() returned unexpected error: %v", err)
+	}
+}

@@ -435,3 +435,36 @@ func TestNewJWTValidator_BackoffDoublesOnEachRetry(t *testing.T) {
 		}
 	}
 }
+
+// --- SetIssuerURL ---
+
+func TestSetIssuerURL_SetsURL(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+	v.SetIssuerURL("https://keycloak.example.com/auth")
+	if v.issuerURL != "https://keycloak.example.com/auth" {
+		t.Errorf("expected issuerURL to be set, got %q", v.issuerURL)
+	}
+}
+
+func TestSetIssuerURL_EmptyString_IsNoOp(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+	original := v.issuerURL
+	v.SetIssuerURL("")
+	if v.issuerURL != original {
+		t.Errorf("empty SetIssuerURL should be no-op, issuerURL changed to %q", v.issuerURL)
+	}
+}
+
+func TestSetIssuerURL_TrailingSlashStripped(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+	v.SetIssuerURL("https://keycloak.example.com/")
+	if v.issuerURL != "https://keycloak.example.com" {
+		t.Errorf("expected trailing slash stripped, got %q", v.issuerURL)
+	}
+}

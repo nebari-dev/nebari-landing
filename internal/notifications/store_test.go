@@ -184,3 +184,12 @@ func TestReadSet_PersistsAcrossTwoClients(t *testing.T) {
 		t.Error("read state should be visible from a second Store client")
 	}
 }
+
+// --- Close ---
+
+func TestClose_ReturnsNoError(t *testing.T) {
+	s := newStore(t)
+	if err := s.Close(); err != nil {
+		t.Errorf("Close() returned unexpected error: %v", err)
+	}
+}

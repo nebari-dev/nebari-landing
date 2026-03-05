@@ -147,3 +147,12 @@ func TestPersistence_SameRedis_RetainsData(t *testing.T) {
 		t.Errorf("expected [uid-1] from second client, got %v", uids)
 	}
 }
+
+// --- Close ---
+
+func TestClose_ReturnsNoError(t *testing.T) {
+	s := newStore(t)
+	if err := s.Close(); err != nil {
+		t.Errorf("Close() returned unexpected error: %v", err)
+	}
+}
