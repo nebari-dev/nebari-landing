@@ -19,6 +19,7 @@ on:
       - internal/**
       - test/**
       - deploy/**
+      - charts/**
       - go.mod
       - go.sum
       - Dockerfile
@@ -31,6 +32,7 @@ on:
       - internal/**
       - test/**
       - deploy/**
+      - charts/**
       - go.mod
       - go.sum
       - Dockerfile
