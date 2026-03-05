@@ -64,8 +64,8 @@ type Event struct {
 // Hub manages active WebSocket connections on this replica and fans out events
 // received from the Redis Pub/Sub channel to all connected clients.
 type Hub struct {
-	rdb *redis.Client
-	mu  sync.RWMutex
+	rdb     *redis.Client
+	mu      sync.RWMutex
 	clients map[*websocket.Conn]struct{}
 }
 

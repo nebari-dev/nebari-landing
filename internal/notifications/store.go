@@ -182,7 +182,7 @@ func (s *Store) ReadSet(userID string) (map[string]bool, error) {
 
 // --- helpers ---
 
-func notifKey(id string) string   { return notifHashPrefix + id }
+func notifKey(id string) string     { return notifHashPrefix + id }
 func readsKey(userID string) string { return readsPrefix + userID }
 
 func notifFromHash(f map[string]string) (*Notification, error) {

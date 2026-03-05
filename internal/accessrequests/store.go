@@ -251,8 +251,8 @@ func (s *Store) UpdateStatus(id string, status Status, resolvedBy string) (*Acce
 
 // --- helpers ---
 
-func arKey(id string) string              { return arHashPrefix + id }
-func arUserKey(userID string) string      { return arUserPrefix + userID }
+func arKey(id string) string         { return arHashPrefix + id }
+func arUserKey(userID string) string { return arUserPrefix + userID }
 func arDedupKey(userID, svcUID string) string {
 	return arDedupPrefix + userID + ":" + svcUID
 }
