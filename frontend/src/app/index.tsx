@@ -18,12 +18,8 @@ export default function App() {
 
   useEffect(() => {
     initKeycloak()
-      .catch((err) => {
-        console.error("Keycloak init failed", err);
-      })
-      .finally(() => {
-        setIsAuthReady(true);
-      });
+      .then(() => setIsAuthReady(true))
+      .catch(err => { console.error(err); setIsAuthReady(true); });
   }, []);
 
   if (!isAuthReady) {

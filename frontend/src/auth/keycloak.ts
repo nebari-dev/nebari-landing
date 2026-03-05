@@ -14,14 +14,15 @@ export function initKeycloak() {
       onLoad: "check-sso",
     });
   }
-
   return keycloakInitPromise;
 }
 
 export function signIn() {
-  return keycloak.login();
+  // rd = where to send the browser after auth finishes
+  window.location.href = "/oauth2/start?rd=/";
 }
 
 export function signOut() {
-  return keycloak.logout();
+  // clears oauth2-proxy session cookie
+  window.location.href = "/oauth2/sign_out?rd=/";
 }

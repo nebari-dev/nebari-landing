@@ -171,13 +171,20 @@ cluster-delete:
 
 # ── Image build & load ────────────────────────────────────────────────────────
 
+VITE_KEYCLOAK_URL      ?= http://localhost:8180/auth
+VITE_KEYCLOAK_REALM    ?= nebari
+VITE_KEYCLOAK_CLIENT_ID?= nebari-landingpage
+
 ## image-build: build the Docker image and load it directly into minikube
 image-build:
 	@echo "→  Building container image $(IMAGE) …"
 	$(MINIKUBE_BIN) -p $(CLUSTER_NAME) image build \
 	  -t $(IMAGE) \
 	  -f dev/Dockerfile \
-	  .
+	   	--build-opt "build-arg=VITE_KEYCLOAK_URL=http://localhost:8180/auth" \
+		--build-opt "build-arg=VITE_KEYCLOAK_REALM=nebari" \
+		--build-opt "build-arg=VITE_KEYCLOAK_CLIENT_ID=nebari-landingpage" \
+		.
 	@echo "✔  Image $(IMAGE) loaded into minikube"
 
 # ── cert-manager ───────────────────────────────────────────────────────────────────
