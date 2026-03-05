@@ -8,17 +8,17 @@
 # Targets (in recommended order):
 #   make setup          – full end-to-end cluster + app setup
 #   make cluster-start  – start/create the minikube cluster
-#   make image-build    – build & load the container image into minikube
+#   make image-build    – build webapi + frontend images and load into minikube
 #   make cert-manager   – install cert-manager + selfsigned ClusterIssuer
 #   make metallb        – enable MetalLB + auto-detect IP pool (eliminates port-forwards)
 #   make minikube-tunnel – (WSL2 mirrored mode) inject routes so MetalLB IPs reach Windows
 #   make keycloak       – install Keycloak with the nebari realm
 #   make keycloak-client – create webapi + frontend OIDC clients in Keycloak
 # make frontend-client – create the nebari-landingpage confidential OIDC client + k8s Secret
-#   make operator-install – deploy operator + webapi via kustomize
+#   make operator-install – deploy nebari-operator controller (CRDs + controller manager)
 #   make test-apps      – apply sample NebariApp CRs for local testing
 #   make argocd-apps    – apply ArgoCD Application manifests directly
-#   make install        – deploy nebari-landingpage (kustomize dev overlay)
+#   make install        – deploy nebari-landing via Helm chart (webapi + frontend + Redis)
 #   make uninstall      – delete deployed resources
 #   make cluster-delete – delete the minikube cluster
 #   make info           – print useful URLs / credentials
@@ -34,9 +34,11 @@ MINIKUBE_CPUS      ?= 4
 MINIKUBE_MEMORY    ?= 8192
 MINIKUBE_DRIVER    ?= docker
 
-IMAGE_REPO         ?= nebari-landing
-IMAGE_TAG          ?= dev
-IMAGE              := $(IMAGE_REPO):$(IMAGE_TAG)
+IMAGE_REPO          ?= nebari-landing
+IMAGE_TAG           ?= dev
+WEBAPI_IMAGE        := $(IMAGE_REPO)/webapi:$(IMAGE_TAG)
+FRONTEND_IMAGE      := $(IMAGE_REPO)/frontend:$(IMAGE_TAG)
+HELM_RELEASE        ?= nebari-landing
 
 HELM_RELEASE_KC    ?= keycloak
 
@@ -79,8 +81,6 @@ PORT_LANDING   ?= 8080
 # Set via: make frontend-client LANDING_HOST=nebari.example.com
 LANDING_HOST   ?=
 
-OVERLAY            ?= dev
-
 # ── Detect OS / Arch ────────────────────────────────────────────────────────
 
 OS   := $(shell uname -s | tr '[:upper:]' '[:lower:]')
@@ -111,8 +111,6 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
         port-forward stop-port-forward \
         minikube-tunnel stop-minikube-tunnel \
         deps-check _minikube
-
-OVERLAY_PATH := dev/manifests/nebari-landingpage/overlays/$(OVERLAY)
 
 # ── Main entry point ─────────────────────────────────────────────────────────
 
@@ -171,14 +169,19 @@ cluster-delete:
 
 # ── Image build & load ────────────────────────────────────────────────────────
 
-## image-build: build the Docker image and load it directly into minikube
+## image-build: build webapi and frontend images and load them into minikube
 image-build:
-	@echo "→  Building container image $(IMAGE) …"
+	@echo "→  Building webapi image $(WEBAPI_IMAGE) …"
 	$(MINIKUBE_BIN) -p $(CLUSTER_NAME) image build \
-	  -t $(IMAGE) \
-	  -f dev/Dockerfile \
+	  -t $(WEBAPI_IMAGE) \
+	  -f Dockerfile \
 	  .
-	@echo "✔  Image $(IMAGE) loaded into minikube"
+	@echo "→  Building frontend image $(FRONTEND_IMAGE) …"
+	$(MINIKUBE_BIN) -p $(CLUSTER_NAME) image build \
+	  -t $(FRONTEND_IMAGE) \
+	  -f Dockerfile.frontend \
+	  .
+	@echo "✔  Images loaded into minikube: $(WEBAPI_IMAGE) $(FRONTEND_IMAGE)"
 
 # ── cert-manager ───────────────────────────────────────────────────────────────────
 
@@ -221,6 +224,7 @@ metallb:
 	 echo "     routable from Windows even in mirrored mode. Run:"; \
 	 echo "       make -f dev/Makefile minikube-tunnel"; \
 	 echo "     to inject routes into the Windows networking stack."
+
 
 ## keycloak: install PostgreSQL + Keycloak and configure the nebari realm
 keycloak: postgresql keycloak-install keycloak-realm
@@ -287,19 +291,20 @@ keycloak-client:
 ## TLS step (envoy-gateway-system missing) and never reaches auth provisioning.
 ## This target replicates what the operator would do:
 ##   1. Creates the Keycloak client (kcadm Job)
-##   2. Writes the same Secret the operator would create: nebari-landingpage-oidc-client
+##   2. Writes nebari-landing-oauth2-proxy Secret (client-secret + cookie-secret)
+##      consumed by the Helm chart's oauth2-proxy sidecar
 frontend-client:
 	@echo "→  Creating nebari-landingpage Keycloak client (dev fallback) …"
 	kubectl delete job keycloak-frontend-client-setup -n $(NAMESPACE_KC) --ignore-not-found
 	PORT_LANDING=$(PORT_LANDING) LANDING_HOST=$(LANDING_HOST) envsubst '$${PORT_LANDING} $${LANDING_HOST}' < dev/keycloak/frontend-client-job.yaml | kubectl apply -f -
 	kubectl wait --for=condition=complete job/keycloak-frontend-client-setup \
 	  -n $(NAMESPACE_KC) --timeout=3m
-	@echo "→  Writing nebari-landingpage-oidc-client Secret (mirrors operator output) …"
+	@echo "→  Writing nebari-landing-oauth2-proxy Secret (Helm chart oauth2-proxy input) …"
 	kubectl create namespace $(NAMESPACE_APP) --dry-run=client -o yaml | kubectl apply -f -
-	kubectl create secret generic nebari-landingpage-oidc-client \
+	kubectl create secret generic nebari-landing-oauth2-proxy \
 	  --namespace $(NAMESPACE_APP) \
-	  --from-literal=client-id=nebari-landingpage \
 	  --from-literal=client-secret=nebari-frontend-dev-secret \
+	  --from-literal=cookie-secret=$$(python3 -c 'import secrets,base64; print(base64.b64encode(secrets.token_bytes(32)).decode())') \
 	  --dry-run=client -o yaml | kubectl apply -f -
 	@echo "✔  Keycloak nebari-landingpage client ready"
 
@@ -322,23 +327,21 @@ frontend-client:
 #   dev/manifests/nebari-operator/webapi/
 # to change image tags or add further patches.
 
-## operator-install: deploy the nebari-operator + webapi via kustomize
+## operator-install: deploy only the nebari-operator controller via kustomize
+## The webapi is now managed by the Helm chart (make install)
 operator-install:
-	@echo "→  Deploying nebari-operator …"
+	@echo "→  Deploying nebari-operator controller …"
 	kubectl create namespace $(NAMESPACE_OPERATOR) --dry-run=client -o yaml | kubectl apply -f -
 	kubectl create namespace $(NAMESPACE_APP)      --dry-run=client -o yaml | kubectl apply -f -
 	kubectl label namespace $(NAMESPACE_APP) nebari.dev/managed=true --overwrite
 	kubectl apply -k dev/manifests/nebari-operator/operator
-	kubectl apply -k dev/manifests/nebari-operator/webapi
 	kubectl rollout status deployment/nebari-operator-controller-manager -n $(NAMESPACE_OPERATOR) --timeout=5m
-	kubectl rollout status deployment/webapi                             -n $(NAMESPACE_APP)      --timeout=5m
-	@echo "✔  nebari-operator + webapi deployed"
+	@echo "✔  nebari-operator controller deployed"
 
-## operator-uninstall: remove the operator and webapi deployments
+## operator-uninstall: remove the operator controller
 operator-uninstall:
 	-kubectl delete -k dev/manifests/nebari-operator/operator --ignore-not-found
-	-kubectl delete -k dev/manifests/nebari-operator/webapi   --ignore-not-found
-	@echo "✔  nebari-operator + webapi removed"
+	@echo "✔  nebari-operator controller removed"
 
 ## test-apps: apply sample NebariApp CRs to populate the webapi service cache
 test-apps:
@@ -354,17 +357,19 @@ argocd-apps:
 
 # ── Landing page ──────────────────────────────────────────────────────────────
 
-## install: deploy nebari-landingpage using the kustomize overlay (default: dev)
+## install: deploy nebari-landing via Helm chart (webapi + frontend + Redis)
 install:
-	@echo "→  Applying kustomize overlay '$(OVERLAY)' …"
+	@echo "→  Deploying nebari-landing Helm chart (release: $(HELM_RELEASE)) …"
 	kubectl create namespace $(NAMESPACE_APP) --dry-run=client -o yaml | kubectl apply -f -
-	kubectl apply -k $(OVERLAY_PATH)
-	kubectl rollout status deployment/nebari-landingpage -n $(NAMESPACE_APP) --timeout=3m
-	@echo "✔  nebari-landingpage deployed in namespace '$(NAMESPACE_APP)'"
+	helm upgrade --install $(HELM_RELEASE) charts/nebari-landing \
+	  --namespace $(NAMESPACE_APP) \
+	  --values dev/chart-values.yaml \
+	  --wait --timeout 5m
+	@echo "✔  nebari-landing deployed in namespace '$(NAMESPACE_APP)'"
 
 ## uninstall: remove deployed resources (does not delete the cluster)
 uninstall: operator-uninstall
-	-kubectl delete -k $(OVERLAY_PATH) --ignore-not-found
+	-helm uninstall $(HELM_RELEASE) -n $(NAMESPACE_APP)
 	-kubectl delete job keycloak-realm-setup -n $(NAMESPACE_KC) --ignore-not-found
 	-helm uninstall $(HELM_RELEASE_KC) -n $(NAMESPACE_KC)
 	-helm uninstall postgresql           -n $(NAMESPACE_KC)
@@ -417,11 +422,10 @@ info:
 port-forward:
 	@echo "→  (Re)starting port-forwards in the background …"
 	@pkill -f "kubect[l].*port-forward.*keycloak-keycloakx-http" 2>/dev/null || true
-	@pkill -f "kubect[l].*port-forward.*svc/webapi" 2>/dev/null || true
-	@pkill -f "kubect[l].*port-forward.*nebari-landingpage" 2>/dev/null || true
-	@nohup kubectl -n $(NAMESPACE_KC)  port-forward svc/keycloak-keycloakx-http $(PORT_KEYCLOAK):80  > /tmp/pf-keycloak.log 2>&1 &
-	@nohup kubectl -n $(NAMESPACE_APP) port-forward svc/webapi                  $(PORT_WEBAPI):8080  > /tmp/pf-webapi.log 2>&1 &
-	@nohup kubectl -n $(NAMESPACE_APP) port-forward svc/nebari-landingpage       $(PORT_LANDING):80   > /tmp/pf-landing.log 2>&1 &
+	@pkill -f "kubect[l].*port-forward.*(nebari-landing-webapi|nebari-landing-frontend)" 2>/dev/null || true
+	@nohup kubectl -n $(NAMESPACE_KC)  port-forward svc/keycloak-keycloakx-http        $(PORT_KEYCLOAK):80   > /tmp/pf-keycloak.log 2>&1 &
+	@nohup kubectl -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-webapi          $(PORT_WEBAPI):8080  > /tmp/pf-webapi.log 2>&1 &
+	@nohup kubectl -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-frontend        $(PORT_LANDING):4180 > /tmp/pf-landing.log 2>&1 &
 	@sleep 2
 	@echo "✔  Port-forwards active (logs: /tmp/pf-*.log):"
 	@echo "     Keycloak   : http://localhost:$(PORT_KEYCLOAK)/auth"
@@ -431,8 +435,7 @@ port-forward:
 ## stop-port-forward: kill all background kubectl port-forward processes
 stop-port-forward:
 	@pkill -f "kubect[l].*port-forward.*keycloak-keycloakx-http" 2>/dev/null && echo "✔  Killed Keycloak port-forward" || true
-	@pkill -f "kubect[l].*port-forward.*svc/webapi" 2>/dev/null && echo "✔  Killed WebAPI port-forward" || true
-	@pkill -f "kubect[l].*port-forward.*nebari-landingpage" 2>/dev/null && echo "✔  Killed landing port-forward" || true
+	@pkill -f "kubect[l].*port-forward.*(nebari-landing-webapi|nebari-landing-frontend)" 2>/dev/null && echo "✔  Killed app port-forwards" || true
 
 ## minikube-tunnel: run 'minikube tunnel' in the background (needed on WSL2 mirrored mode)
 ## 'minikube tunnel' injects host routes for LoadBalancer IPs into the Linux kernel.
