@@ -85,7 +85,7 @@ func NewHub(ctx context.Context, rdb *redis.Client) *Hub {
 // broadcasting them to locally connected WebSocket clients.
 func (h *Hub) subscribe(ctx context.Context) {
 	pubsub := h.rdb.Subscribe(ctx, redisPubSubChannel)
-	defer pubsub.Close()
+	defer func() { _ = pubsub.Close() }()
 	ch := pubsub.Channel()
 	for {
 		select {

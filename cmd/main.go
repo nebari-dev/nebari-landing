@@ -118,7 +118,11 @@ func main() {
 		os.Exit(1)
 	}
 	setupLog.Info("Redis connected", "addr", redisAddr, "db", redisDB)
-	defer rdb.Close()
+	defer func() {
+		if err := rdb.Close(); err != nil {
+			setupLog.Error(err, "failed to close Redis connection")
+		}
+	}()
 
 	hub := wshub.NewHub(ctx, rdb)
 

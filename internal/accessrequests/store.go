@@ -112,17 +112,18 @@ func (s *Store) Create(serviceUID, serviceName, userID, userEmail, message strin
 		RequestedAt: time.Now().UTC(),
 	}
 	dedupKey := arDedupKey(userID, serviceUID)
-	// Atomic dedup: SET NX returns true only if the key did not exist.
-	set, err := s.rdb.SetNX(ctx, dedupKey, req.ID, 0).Result()
-	if err != nil {
+	// Atomic dedup: SET NX returns OK only if the key did not exist.
+	if err := s.rdb.SetArgs(ctx, dedupKey, req.ID, redis.SetArgs{
+		Mode: "NX",
+	}).Err(); err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrDuplicatePending
+		}
 		return nil, fmt.Errorf("accessrequests.Create dedup: %w", err)
-	}
-	if !set {
-		return nil, ErrDuplicatePending
 	}
 	score := float64(req.RequestedAt.UnixMilli())
 	ts := req.RequestedAt.Format(time.RFC3339Nano)
-	_, err = s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+	_, err := s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.HSet(ctx, arKey(req.ID),
 			"id", req.ID,
 			"serviceUID", req.ServiceUID,
@@ -177,7 +178,12 @@ func (s *Store) ListForUser(userID string) ([]*AccessRequest, error) {
 
 func (s *Store) listFromIndex(indexKey string) ([]*AccessRequest, error) {
 	ctx := context.Background()
-	ids, err := s.rdb.ZRevRange(ctx, indexKey, 0, -1).Result()
+	ids, err := s.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:   indexKey,
+		Start: 0,
+		Stop:  -1,
+		Rev:   true,
+	}).Result()
 	if err != nil {
 		return nil, fmt.Errorf("accessrequests.list %q: %w", indexKey, err)
 	}

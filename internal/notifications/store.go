@@ -113,8 +113,13 @@ func (s *Store) Get(id string) (*Notification, error) {
 // List returns all notifications, newest first.
 func (s *Store) List() ([]*Notification, error) {
 	ctx := context.Background()
-	// ZREVRANGE returns IDs from highest score (newest) to lowest.
-	ids, err := s.rdb.ZRevRange(ctx, notifIndexKey, 0, -1).Result()
+	// ZRangeArgs with Rev:true returns IDs from highest score (newest) to lowest.
+	ids, err := s.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:   notifIndexKey,
+		Start: 0,
+		Stop:  -1,
+		Rev:   true,
+	}).Result()
 	if err != nil {
 		return nil, fmt.Errorf("notifications.List index: %w", err)
 	}

@@ -148,7 +148,7 @@ func NewFromEnvWithK8sClient(ctx context.Context, k8sClient client.Client) (*Cli
 
 	if user == "" || pass == "" {
 		return nil, errors.New(
-			"Keycloak admin credentials not resolved: set KEYCLOAK_ADMIN_SECRET_NAME " +
+			"keycloak admin credentials not resolved: set KEYCLOAK_ADMIN_SECRET_NAME " +
 				"(pointing to a secret with 'username'/'password' keys) " +
 				"or KEYCLOAK_ADMIN_USERNAME + KEYCLOAK_ADMIN_PASSWORD",
 		)
