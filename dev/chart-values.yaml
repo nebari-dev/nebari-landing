@@ -1,0 +1,104 @@
+# dev/chart-values.yaml — Helm values overrides for local minikube dev
+#
+# Usage:
+#   helm upgrade --install nebari-landing charts/nebari-landing \
+#     --namespace nebari-system \
+#     --values dev/chart-values.yaml
+#
+# The Makefile 'install' target uses this file automatically.
+#
+# Pre-requisites (already created by other make targets):
+#   Secret nebari-landing-oauth2-proxy  (make frontend-client)
+#     keys: client-secret, cookie-secret
+#   Secret nebari-realm-admin-credentials  (make postgresql-secrets)
+#     keys: username, password
+
+# ---------------------------------------------------------------------------
+# Webapi
+# ---------------------------------------------------------------------------
+webapi:
+  image:
+    # Image loaded into minikube by 'make image-build'
+    repository: nebari-landing/webapi
+    tag: dev
+    # Never pull — image only exists inside minikube
+    pullPolicy: Never
+
+  keycloak:
+    # Cluster-internal URL for back-channel calls (JWKS fetch, admin API)
+    url: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth"
+    # Issuer URL that Keycloak stamps in JWTs (matches KC_HOSTNAME_URL in values.yaml)
+    issuerUrl: "http://localhost:8180/auth"
+    realm: "nebari"
+    enableAuth: true
+    adminGroup: "admin"
+    adminSecretName: "nebari-realm-admin-credentials"
+    adminSecretNamespace: "keycloak"
+
+  # Expose via MetalLB so 'make port-forward' and direct LB access both work
+  service:
+    type: LoadBalancer
+
+# ---------------------------------------------------------------------------
+# Frontend + oauth2-proxy sidecar
+# ---------------------------------------------------------------------------
+frontend:
+  image:
+    # Image loaded into minikube by 'make image-build'
+    repository: nebari-landing/nebari-landing
+    tag: dev
+    pullPolicy: Never
+
+  oauth2Proxy:
+    # Keycloak realm discovery endpoint — cluster-internal for the pod
+    oidcIssuerUrl: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth/realms/nebari"
+    clientId: "nebari-landingpage"
+    # Secret created by 'make frontend-client', keys: client-secret, cookie-secret
+    existingSecret: "nebari-landing-oauth2-proxy"
+    extraArgs:
+      # Skip TLS verification — self-signed certs in minikube
+      - --insecure-oidc-skip-issuer-verification=true
+      - --insecure-oidc-allow-unverified-email=true
+      # Cookie settings — no HTTPS in local dev
+      - --cookie-secure=false
+      - --cookie-samesite=lax
+      - --cookie-name=_nebari_session
+      # Browser-visible callback URL (via port-forward on PORT_LANDING)
+      - --redirect-url=http://localhost:8080/oauth2/callback
+      # groups is added via a Keycloak client mapper, not a scope
+      - --scope=openid profile email
+      # UX
+      - --skip-provider-button=true
+      - --silence-ping-logging=true
+
+  # Expose via MetalLB LoadBalancer
+  service:
+    type: LoadBalancer
+
+# ---------------------------------------------------------------------------
+# Redis subchart (bitnami/redis)
+# Auth disabled for dev — no password needed
+# Persistence disabled — data is ephemeral; cluster restarts wipe it (fine for dev)
+# ---------------------------------------------------------------------------
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  architecture: standalone
+  master:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+# ---------------------------------------------------------------------------
+# No Envoy Gateway in minikube — disable the HTTPRoute
+# Services are reached via MetalLB LB IPs or kubectl port-forward
+# ---------------------------------------------------------------------------
+httpRoute:
+  enabled: false
