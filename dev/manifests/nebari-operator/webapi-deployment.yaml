@@ -45,16 +45,9 @@ spec:
             # Admin access-control
             - name: ADMIN_GROUP
               value: admin
-            # Persistent stores (bbolt)
-            - name: ACCESS_REQUESTS_DB_PATH
-              value: /data/access_requests.db
-            - name: NOTIFICATIONS_DB_PATH
-              value: /data/notifications.db
-            - name: PINS_DB_PATH
-              value: /data/pins.db
-          volumeMounts:
-            - name: data
-              mountPath: /data
+            # Redis
+            - name: REDIS_ADDR
+              value: "nebari-redis-master.nebari-system.svc.cluster.local:6379"
           resources:
             requests:
               cpu: 10m
@@ -74,9 +67,6 @@ spec:
               port: http
             initialDelaySeconds: 15
             periodSeconds: 20
-      volumes:
-        - name: data
-          emptyDir: {}
 ---
 apiVersion: v1
 kind: ServiceAccount
