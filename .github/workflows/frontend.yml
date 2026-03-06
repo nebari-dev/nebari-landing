@@ -152,7 +152,7 @@ jobs:
           github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: frontend
           file: frontend/Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: true
@@ -185,7 +185,7 @@ jobs:
           github.event_name == 'pull_request'
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: frontend
           file: frontend/Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: true
@@ -199,7 +199,7 @@ jobs:
         if: steps.login.outcome != 'success'
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: frontend
           file: frontend/Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: false
