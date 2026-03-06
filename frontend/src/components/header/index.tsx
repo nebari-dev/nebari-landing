@@ -7,7 +7,7 @@ import { Header as USWDSHeader, Button } from "@trussworks/react-uswds";
 import logoUrlDark from "../../assets/nebari-logo_dark.svg";
 import logoUrlLight from "../../assets/nebari-logo_light.svg";
 
-import { ExternalLink, Moon, Sun, Bell, ChevronDown } from "lucide-react";
+import { ExternalLink, Moon, Sun, Bell, ChevronDown, LogOut } from "lucide-react";
 
 import type { User } from "../../auth/user";
 import { getInitials } from "../../auth/user";
@@ -15,7 +15,45 @@ import { signIn, signOut } from "../../auth/keycloak";
 
 import "./index.scss";
 
-const NOTIFICATION_COUNT = 3;
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type OpenPanel = "notif" | "user" | null;
+
+const MOCK_NOTIFICATIONS = [
+  {
+    id: 1,
+    title: "New service available",
+    subtitle: "JupyterHub has been upgraded to version 4.2 and is ready to use.",
+    initials: "JH",
+  },
+  {
+    id: 2,
+    title: "Access request approved",
+    subtitle: "Your request for MLflow has been approved by the admin.",
+    initials: "ML",
+  },
+  {
+    id: 3,
+    title: "Scheduled maintenance",
+    subtitle: "The cluster will be restarted tonight at 02:00 UTC.",
+    initials: "OP",
+  },
+];
+
+// ── Shared click-away hook ────────────────────────────────────────────────────
+
+function useClickAway(ref: React.RefObject<HTMLElement | null>, onClose: () => void, active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [active, ref, onClose]);
+}
+
+// ── Theme toggle ─────────────────────────────────────────────────────────────
 
 function ThemeToggle({ isDarkMode, onToggle }: { isDarkMode: boolean; onToggle?: () => void }) {
   return (
@@ -33,40 +71,63 @@ function ThemeToggle({ isDarkMode, onToggle }: { isDarkMode: boolean; onToggle?:
   );
 }
 
-function NotificationBell() {
+// ── Notification bell + panel ─────────────────────────────────────────────────
+
+function NotificationBell({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useClickAway(ref, onToggle, open);
+
   return (
-    <div className="app-header__notifWrap">
-      <Button type="button" outline className="app-header__iconBtn" title="Notifications">
+    <div className="app-header__notifWrap" ref={ref}>
+      <Button
+        type="button"
+        outline
+        className="app-header__iconBtn"
+        onClick={onToggle}
+        title="Notifications"
+        aria-expanded={open}
+        aria-haspopup="true"
+      >
         <Bell size={16} className="app-header__btnIcon" />
       </Button>
-      <span className="app-header__badge" aria-label={`${NOTIFICATION_COUNT} notifications`}>
-        {NOTIFICATION_COUNT}
+      <span className="app-header__badge" aria-label={`${MOCK_NOTIFICATIONS.length} notifications`}>
+        {MOCK_NOTIFICATIONS.length}
       </span>
+
+      {open && (
+        <div className="app-header__notifPanel" role="dialog" aria-label="Notifications">
+          {MOCK_NOTIFICATIONS.map((n, i) => (
+            <div
+              key={n.id}
+              className={`app-header__notifItem${i < MOCK_NOTIFICATIONS.length - 1 ? " app-header__notifItem--divided" : ""}`}
+            >
+              <div className="app-header__notifIcon" aria-hidden="true">
+                {n.initials}
+              </div>
+              <div className="app-header__notifText">
+                <div className="app-header__notifTitle">{n.title}</div>
+                <div className="app-header__notifSubtitle">{n.subtitle}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function UserMenu({ user }: { user: User }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+// ── User menu ─────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
+function UserMenu({ user, open, onToggle }: { user: User; open: boolean; onToggle: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useClickAway(ref, onToggle, open);
 
   return (
     <div className="app-header__userMenu" ref={ref}>
       <button
         type="button"
         className="app-header__userBtn"
-        onClick={() => setOpen((v) => !v)}
+        onClick={onToggle}
         aria-expanded={open}
         aria-haspopup="menu"
       >
@@ -74,20 +135,24 @@ function UserMenu({ user }: { user: User }) {
           {getInitials(user.name)}
         </span>
         <span className="app-header__userName">{user.name}</span>
-        <ChevronDown size={14} className={`app-header__chevron${open ? " app-header__chevron--open" : ""}`} />
+        <ChevronDown
+          size={16}
+          className={`app-header__chevron${open ? " app-header__chevron--open" : ""}`}
+        />
       </button>
 
       {open && (
-        <div className="app-header__dropdown" role="menu">
+        <div className="app-header__userDropdown" role="menu">
           {user.email && (
             <span className="app-header__dropdownEmail">{user.email}</span>
           )}
           <button
             type="button"
             role="menuitem"
-            className="app-header__dropdownItem"
+            className="app-header__menuItem app-header__menuItem--danger"
             onClick={signOut}
           >
+            <LogOut size={15} className="app-header__menuIcon" />
             Sign out
           </button>
         </div>
@@ -95,6 +160,8 @@ function UserMenu({ user }: { user: User }) {
     </div>
   );
 }
+
+// ── Header ────────────────────────────────────────────────────────────────────
 
 export default function Header(props: HeaderProps): ReactNode {
   const {
@@ -105,6 +172,11 @@ export default function Header(props: HeaderProps): ReactNode {
     onToggleTheme,
     user,
   } = props;
+
+  const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
+
+  const toggle = (panel: OpenPanel) =>
+    setOpenPanel((cur) => (cur === panel ? null : panel));
 
   const logoSrc = isDarkMode ? logoUrlDark : logoUrlLight;
 
@@ -136,8 +208,15 @@ export default function Header(props: HeaderProps): ReactNode {
 
           {user ? (
             <>
-              <NotificationBell />
-              <UserMenu user={user} />
+              <NotificationBell
+                open={openPanel === "notif"}
+                onToggle={() => toggle("notif")}
+              />
+              <UserMenu
+                user={user}
+                open={openPanel === "user"}
+                onToggle={() => toggle("user")}
+              />
             </>
           ) : (
             <Button type="button" onClick={signIn}>
@@ -158,3 +237,4 @@ export type HeaderProps = {
   onToggleTheme?: () => void;
   user?: User | null;
 };
+

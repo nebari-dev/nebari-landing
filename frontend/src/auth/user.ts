@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 
 export type User = {
-  name: string;
-  email: string;
+    name: string;
+    email: string;
 };
 
 /**
@@ -17,34 +17,34 @@ export type User = {
  *     name: "John Doe", groups: [...] }
  */
 export function useUser(): { user: User | null; loading: boolean } {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState<User | null>(null);
+    const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch("/oauth2/userinfo", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: Record<string, string>) => {
-        const name =
-          data["name"] ||
-          data["preferredUsername"] ||
-          data["user"] ||
-          "User";
-        const email = data["email"] || "";
-        setUser({ name, email });
-      })
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
-  }, []);
+    useEffect(() => {
+        fetch("/oauth2/userinfo", { credentials: "include" })
+            .then((r) => (r.ok ? r.json() : Promise.reject()))
+            .then((data: Record<string, string>) => {
+                const name =
+                    data["name"] ||
+                    data["preferredUsername"] ||
+                    data["user"] ||
+                    "User";
+                const email = data["email"] || "";
+                setUser({ name, email });
+            })
+            .catch(() => setUser(null))
+            .finally(() => setLoading(false));
+    }, []);
 
-  return { user, loading };
+    return { user, loading };
 }
 
 /** Derive up-to-two initials from a display name, e.g. "John Doe" → "JD". */
 export function getInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join("");
+    return name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0].toUpperCase())
+        .join("");
 }
