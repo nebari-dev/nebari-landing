@@ -82,7 +82,9 @@
   flex: 0 0 auto;
 }
 
-.app-header__themeButton {
+// ── Shared icon button (theme toggle, bell) ───────────────────────────────────
+
+.app-header__iconBtn {
   width: 36px;
   min-width: 36px;
   height: 36px;
@@ -97,13 +99,162 @@
   border: 1px solid var(--color-border-default);
   border-radius: 8px;
   color: var(--color-icon-default);
-  text-decoration: none;
+  cursor: pointer;
 }
 
-.app-header__buttonIcon {
+.app-header__btnIcon {
   width: 16px;
   height: 16px;
   margin: 0;
   color: currentColor;
   flex: 0 0 auto;
-} 
+}
+
+// ── Notification bell ─────────────────────────────────────────────────────────
+
+.app-header__notifWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.app-header__badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #e52207;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
+// ── User menu ────────────────────────────────────────────────────────────────
+
+.app-header__userMenu {
+  position: relative;
+}
+
+.app-header__userBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  height: 36px;
+  padding: 0 6px 0 4px;
+
+  // Borderless — blends into navbar
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text-primary, inherit);
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-bg-secondary, rgba(0 0 0 / 0.06));
+  }
+
+  // Reset any USWDS/global button overrides
+  &:focus {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+  &:focus-visible {
+    outline: 2px solid var(--color-border-focus, #2491ff);
+  }
+}
+
+.app-header__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--color-accent-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  flex: 0 0 auto;
+  user-select: none;
+}
+
+.app-header__userName {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.app-header__chevron {
+  flex: 0 0 auto;
+  color: var(--color-icon-default, #71767a);
+  transition: transform 0.15s ease;
+  margin-left: 1px;
+
+  &--open {
+    transform: rotate(180deg);
+  }
+}
+
+// ── Dropdown ──────────────────────────────────────────────────────────────────
+
+.app-header__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+
+  min-width: 180px;
+
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0 0 0 / 0.12);
+  padding: 4px 0;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header__dropdownEmail {
+  padding: 8px 14px 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-header__dropdownItem {
+  width: 100%;
+  padding: 8px 14px;
+
+  background: transparent;
+  border: none;
+  text-align: left;
+  font-size: 14px;
+  color: var(--color-text-primary, inherit);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-bg-secondary, rgba(0 0 0 / 0.05));
+  }
+}
+

@@ -76,6 +76,8 @@ frontend:
       # UX
       - --skip-provider-button=true
       - --silence-ping-logging=true
+      # Public routes — skip auth so unauthenticated users can access /public
+      - --skip-auth-route=^/public
 
   # Expose via MetalLB LoadBalancer
   service:

@@ -1,16 +1,10 @@
-import {
-  useState, useEffect
-} from "react";
+import { useState, useEffect } from "react";
 
-import
-Header
-  from "../components/header";
+import Header from "../components/header";
+import Content from "../components/content";
 
-import
-Content
-  from "../components/content";
-
-import { initKeycloak, signIn, keycloak } from "../auth/keycloak";
+import { initKeycloak } from "../auth/keycloak";
+import { useUser } from "../auth/user";
 
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -22,6 +16,9 @@ export default function App() {
       .catch(err => { console.error(err); setIsAuthReady(true); });
   }, []);
 
+  // Fetch user from oauth2-proxy — null when not logged in.
+  const { user } = useUser();
+
   if (!isAuthReady) {
     return null;
   }
@@ -31,10 +28,9 @@ export default function App() {
       <Header
         isDarkMode={isDarkMode}
         onToggleTheme={() => setIsDarkMode((prev) => !prev)}
-        onSignIn={signIn}
-        signInLabel={keycloak.authenticated ? "Signed in" : "Sign in"}
+        user={user}
       />
       <Content />
     </div>
-  )
+  );
 }

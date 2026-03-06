@@ -61,7 +61,10 @@ frontend:
     emailDomain: "*"
 
     # Extra args passed verbatim to the oauth2-proxy binary.
-    extraArgs: []
+    # Use --skip-auth-route to whitelist paths that must be accessible without auth
+    # (e.g. the public landing page). Regex is matched against the full path.
+    extraArgs:
+      - --skip-auth-route=^/public
     # - --skip-provider-button
 
     # Init container that blocks oauth2-proxy from starting until Keycloak's
