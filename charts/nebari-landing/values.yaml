@@ -23,6 +23,16 @@ frontend:
   # via the OAuth2 Proxy sidecar; not exposed externally).
   port: 80
 
+  # Keycloak connection settings — rendered into /config.json at deploy time
+  # by the frontend ConfigMap. The frontend fetches this file at startup so
+  # the image is config-agnostic (no build-time VITE_* args needed).
+  keycloak:
+    # Full Keycloak base URL including the /auth path.
+    # e.g. https://keycloak.example.com/auth
+    url: ""
+    realm: "nebari"
+    clientId: "nebari-landing"
+
   resources:
     requests:
       cpu: 50m
@@ -61,7 +71,10 @@ frontend:
     emailDomain: "*"
 
     # Extra args passed verbatim to the oauth2-proxy binary.
-    extraArgs: []
+    # Use --skip-auth-route to whitelist paths that must be accessible without auth
+    # (e.g. the public landing page). Regex is matched against the full path.
+    extraArgs:
+      - --skip-auth-route=^/public
     # - --skip-provider-button
 
     # Init container that blocks oauth2-proxy from starting until Keycloak's

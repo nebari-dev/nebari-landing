@@ -9,6 +9,7 @@ RUN npm ci --ignore-scripts
 
 # Copy source and build
 COPY frontend/ .
+
 RUN npm run build
 
 # ── Stage 2: serve ────────────────────────────────────────────────────────────

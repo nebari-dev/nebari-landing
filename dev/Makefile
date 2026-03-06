@@ -265,7 +265,7 @@ keycloak-install:
 	helm repo add codecentric $(KEYCLOAK_CHART) --force-update
 	@MINIKUBE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME)); \
 	 SUBNET=$$(echo "$$MINIKUBE_IP" | sed 's/\.[0-9]*$$//'); \
-	 export KC_HOSTNAME_URL="http://$${SUBNET}.100/auth"; \
+	 export KC_HOSTNAME_URL="http://localhost:8180/auth"; \
 	 echo "→  Keycloak public URL (KC_HOSTNAME_URL): $$KC_HOSTNAME_URL"; \
 	 envsubst < dev/keycloak/values.yaml | \
 	 helm upgrade --install $(HELM_RELEASE_KC) codecentric/$(KEYCLOAK_CHART_NAME) \
