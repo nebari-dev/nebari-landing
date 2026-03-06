@@ -1,0 +1,51 @@
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: webapi
+  namespace: nebari-system
+spec:
+  # Replace with your cluster's actual hostname for this service.
+  hostname: webapi.nic-deploy.nebari.dev
+
+  gateway: public
+
+  service:
+    name: webapi
+    port: 8080
+
+  routing:
+    routes:
+      - pathPrefix: /
+        pathType: PathPrefix
+    tls:
+      enabled: true
+    annotations:
+      argocd.argoproj.io/tracking-id: "httproutes:gateway.networking.k8s.io/HTTPRoute:nebari-system/webapi"
+
+  auth:
+    # enabled: true activates the auth reconciler so the operator provisions
+    # the Keycloak client and stores credentials in a Secret named
+    # "webapi-oidc-client" in the nebari-system namespace.
+    enabled: true
+    provider: keycloak
+    # provisionClient: true (default) — operator creates the Keycloak client.
+    provisionClient: true
+    # enforceAtGateway: false — no SecurityPolicy is created, so the route
+    # is public. The application handles OAuth natively using the provisioned
+    # client credentials from the Secret.
+    enforceAtGateway: false
+
+  landingPage:
+    enabled: true
+    displayName: "Nebari Web API"
+    description: "REST API for the Nebari platform."
+    icon: kubernetes
+    category: Platform
+    priority: 50
+    # externalUrl: "" # Defaults to https://<hostname>
+    visibility: authenticated
+    # requiredGroups:  # Only used when visibility: private
+    #   - admin
+    healthCheck:
+      enabled: true
+      path: /api/v1/health

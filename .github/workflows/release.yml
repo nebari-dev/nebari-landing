@@ -1,0 +1,335 @@
+# Release — Build and publish nebari-landing images + Helm chart
+#
+# Triggered on: GitHub release published
+#
+# Jobs:
+#   validate-webapi  — go vet + unit tests
+#   validate-frontend — ESLint + Vite build
+#   docker-webapi     — multi-arch build of quay.io/nebari/nebari-webapi
+#   docker-frontend   — multi-arch build of quay.io/nebari/nebari-frontend
+#   manifest-webapi   — stitch arch images → semver-tagged manifest
+#   manifest-frontend — stitch arch images → semver-tagged manifest
+#   publish-chart     — package and attach Helm chart to the GitHub release
+
+name: Release
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: quay.io
+  WEBAPI_IMAGE: nebari/nebari-webapi
+  FRONTEND_IMAGE: nebari/nebari-landing
+
+jobs:
+  # ── Validate webapi ────────────────────────────────────────────────────────
+  validate-webapi:
+    name: Validate webapi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test ./internal/... -count=1
+
+  # ── Validate frontend ──────────────────────────────────────────────────────
+  validate-frontend:
+    name: Validate frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Type-check + Vite build
+        run: npm run build
+
+  # ── Multi-arch webapi build ────────────────────────────────────────────────
+  docker-webapi:
+    name: Build webapi (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    needs: validate-webapi
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}
+          cache-from: type=gha,scope=webapi-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=webapi-${{ matrix.arch }}
+          provenance: false
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: webapi-release-digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── Multi-arch frontend build ──────────────────────────────────────────────
+  docker-frontend:
+    name: Build frontend (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    needs: validate-frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}
+          cache-from: type=gha,scope=frontend-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=frontend-${{ matrix.arch }}
+          provenance: false
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-release-digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── Merge webapi arch images → semver-tagged manifest ─────────────────────
+  manifest-webapi:
+    name: Publish webapi manifest
+    runs-on: ubuntu-latest
+    needs: docker-webapi
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Extract metadata (tags)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+            type=raw,value=latest
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: webapi-release-digest-*
+          merge-multiple: true
+
+      - name: Create manifest list and push
+        run: |
+          cd "${{ runner.temp }}/digests"
+          TAGS=$(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' ')
+          TAG_ARGS=""
+          for tag in $TAGS; do
+            TAG_ARGS="$TAG_ARGS --tag $tag"
+          done
+          docker buildx imagetools create \
+            $TAG_ARGS \
+            $(printf '${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect manifest
+        run: |
+          docker buildx imagetools inspect \
+            "${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}:latest"
+
+  # ── Merge frontend arch images → semver-tagged manifest ───────────────────
+  manifest-frontend:
+    name: Publish frontend manifest
+    runs-on: ubuntu-latest
+    needs: docker-frontend
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Extract metadata (tags)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+            type=raw,value=latest
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: frontend-release-digest-*
+          merge-multiple: true
+
+      - name: Create manifest list and push
+        run: |
+          cd "${{ runner.temp }}/digests"
+          TAGS=$(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' ')
+          TAG_ARGS=""
+          for tag in $TAGS; do
+            TAG_ARGS="$TAG_ARGS --tag $tag"
+          done
+          docker buildx imagetools create \
+            $TAG_ARGS \
+            $(printf '${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect manifest
+        run: |
+          docker buildx imagetools inspect \
+            "${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:latest"
+
+  # ── Package and attach Helm chart to the GitHub release ───────────────────
+  publish-chart:
+    name: Publish Helm chart
+    runs-on: ubuntu-latest
+    needs: [manifest-webapi, manifest-frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set chart version from release tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Patch Chart.yaml version and appVersion
+          sed -i "s/^version:.*/version: ${VERSION}/" charts/nebari-landing/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${GITHUB_REF_NAME}\"/" charts/nebari-landing/Chart.yaml
+          # Pin image tags in values.yaml so the packaged chart references this release
+          sed -i "s|tag: \"latest\"|tag: \"${GITHUB_REF_NAME}\"|g" charts/nebari-landing/values.yaml
+
+      - name: Package Helm chart
+        run: |
+          helm package charts/nebari-landing --destination dist/
+
+      - name: Attach chart to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tgz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build summary
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "### Release ${{ github.event.release.tag_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Images published:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}:${{ github.event.release.tag_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ github.event.release.tag_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Helm chart:** \`nebari-landing-${VERSION}.tgz\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Platforms**: linux/amd64, linux/arm64" >> "$GITHUB_STEP_SUMMARY"

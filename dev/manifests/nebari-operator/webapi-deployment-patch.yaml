@@ -32,13 +32,9 @@ spec:
             # Admin access-control
             - name: ADMIN_GROUP
               value: admin
-            # Persistent stores (bbolt)
-            - name: ACCESS_REQUESTS_DB_PATH
-              value: /data/access_requests.db
-            - name: NOTIFICATIONS_DB_PATH
-              value: /data/notifications.db
-            - name: PINS_DB_PATH
-              value: /data/pins.db
+            # Redis
+            - name: REDIS_ADDR
+              value: "nebari-redis-master.nebari-system.svc.cluster.local:6379"
           resources:
             requests:
               cpu: 10m
