@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -21,7 +22,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -36,6 +36,57 @@ var nebariAppGVK = schema.GroupVersionKind{
 	Version: "v1",
 	Kind:    "NebariApp",
 }
+
+// envOrDefault returns the value of the named environment variable, or def if unset.
+func envOrDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// e2e configuration — every coordinate can be overridden via an env var so the
+// suite runs against Kind, minikube, or any other cluster without source edits.
+//
+//	E2E_NAMESPACE               target namespace (default: nebari-system)
+//	E2E_HELM_RELEASE            Helm release name (default: nebari-landing)
+//	E2E_HELM_CHART              path to the chart (default: charts/nebari-landing)
+//	E2E_HELM_VALUES             values override file (default: dev/chart-values.yaml)
+//	E2E_WEBAPI_DEPLOYMENT       webapi Deployment name override (default: <release>-webapi)
+//	E2E_WEBAPI_SERVICE          webapi Service name override (default: <release>-webapi)
+//	E2E_KEYCLOAK_NAMESPACE      namespace where Keycloak runs (default: keycloak)
+//	E2E_KEYCLOAK_SERVICE        Keycloak Service name (default: keycloak-keycloakx-http)
+//	E2E_KEYCLOAK_REALM          Keycloak realm (default: nebari)
+//	E2E_KEYCLOAK_ADMIN_USER     realm admin username (default: admin)
+//	E2E_KEYCLOAK_ADMIN_PASSWORD realm admin password (default: nebari-realm-admin)
+var (
+	e2eNamespace = envOrDefault("E2E_NAMESPACE", "nebari-system")
+
+	// Helm-based deployment coordinates.
+	helmRelease = envOrDefault("E2E_HELM_RELEASE", "nebari-landing")
+	helmChart   = envOrDefault("E2E_HELM_CHART", "charts/nebari-landing")
+	helmValues  = envOrDefault("E2E_HELM_VALUES", "dev/chart-values.yaml")
+
+	// Names follow the chart convention: <release>-webapi.
+	e2eWebapiDeployment = func() string {
+		if v := os.Getenv("E2E_WEBAPI_DEPLOYMENT"); v != "" {
+			return v
+		}
+		return helmRelease + "-webapi"
+	}()
+	e2eWebapiService = func() string {
+		if v := os.Getenv("E2E_WEBAPI_SERVICE"); v != "" {
+			return v
+		}
+		return helmRelease + "-webapi"
+	}()
+
+	kcNamespace     = envOrDefault("E2E_KEYCLOAK_NAMESPACE", "keycloak")
+	kcService       = envOrDefault("E2E_KEYCLOAK_SERVICE", "keycloak-keycloakx-http")
+	kcRealm         = envOrDefault("E2E_KEYCLOAK_REALM", "nebari")
+	kcAdminUser     = envOrDefault("E2E_KEYCLOAK_ADMIN_USER", "admin")
+	kcAdminPassword = envOrDefault("E2E_KEYCLOAK_ADMIN_PASSWORD", "nebari-realm-admin")
+)
 
 // VeryLongTimeout is used for slow cluster operations.
 const VeryLongTimeout = 5 * time.Minute
@@ -68,7 +119,7 @@ func newNebariApp(name, namespace, hostname, visibility string, priority int) *u
 var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 	var (
 		ctx           = context.Background()
-		namespace     = "nebari-system"
+		namespace     = e2eNamespace
 		testAppName   = "test-svc-api-app"
 		keycloakPFCmd *exec.Cmd
 	)
@@ -84,34 +135,89 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		_, err = utils.Run(applyNs)
 		Expect(err).NotTo(HaveOccurred(), "Failed to apply namespace %s", namespace)
 
-		By("Applying webapi manifest (deploy/manifest.yaml)")
-		cmd = exec.Command("kubectl", "apply", "-f", "deploy/manifest.yaml")
-		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to apply deploy/manifest.yaml")
-
-		By("Waiting for webapi deployment to become ready")
-		rollout := exec.Command("kubectl", "rollout", "status", "deployment/webapi",
-			"-n", namespace, "--timeout=2m")
-		_, err = utils.Run(rollout)
-		Expect(err).NotTo(HaveOccurred(), "webapi deployment should become ready")
-
-		By("Starting Keycloak port-forward for auth tests")
+		By("Starting Keycloak port-forward to discover issuer URL")
 		keycloakPFCmd = exec.Command("kubectl", "port-forward",
-			"-n", "keycloak", "svc/keycloak-keycloakx-http",
+			"-n", kcNamespace, fmt.Sprintf("svc/%s", kcService),
 			"18090:80")
 		Expect(keycloakPFCmd.Start()).NotTo(HaveOccurred(), "keycloak port-forward should start")
+		var keycloakIssuer string
 		Eventually(func() error {
-			resp, err := http.Get("http://localhost:18090/auth/realms/nebari/.well-known/openid-configuration")
+			resp, err := http.Get(fmt.Sprintf("http://localhost:18090/auth/realms/%s/.well-known/openid-configuration", kcRealm))
 			if err != nil {
 				return err
 			}
-			resp.Body.Close()
+			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
 				return fmt.Errorf("keycloak not ready: status %d", resp.StatusCode)
 			}
+			var disc struct {
+				Issuer string `json:"issuer"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&disc); err != nil {
+				return fmt.Errorf("failed to decode OIDC discovery: %w", err)
+			}
+			if disc.Issuer == "" {
+				return fmt.Errorf("OIDC discovery returned empty issuer")
+			}
+			// issuer looks like "http://<host>/auth/realms/<realm>";
+			// strip the realm suffix to get the base URL for KEYCLOAK_ISSUER_URL.
+			keycloakIssuer = strings.TrimSuffix(disc.Issuer, fmt.Sprintf("/realms/%s", kcRealm))
 			return nil
 		}, 30*time.Second, time.Second).Should(Succeed(),
 			"keycloak should be reachable via port-forward")
+
+		if !useExistingCluster {
+			By("Installing nebari-landing Helm chart (webapi + Redis, no frontend)")
+			// Split webapiImage into repo and tag for --set overrides.
+			imgRepo, imgTag, found := strings.Cut(webapiImage, ":")
+			if !found {
+				imgTag = "latest"
+			}
+			cmd = exec.Command("helm", "upgrade", "--install", helmRelease, helmChart,
+				"--namespace", namespace,
+				"--create-namespace",
+				"-f", helmValues,
+				"--set", "frontend.enabled=false",
+				"--set", "httpRoute.enabled=false",
+				"--set", "nebariApp.enabled=false",
+				"--set", fmt.Sprintf("webapi.image.repository=%s", imgRepo),
+				"--set", fmt.Sprintf("webapi.image.tag=%s", imgTag),
+				"--set", "webapi.image.pullPolicy=Never",
+			)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "helm upgrade --install should succeed")
+		}
+
+		By("Patching webapi deployment image to configured image")
+		// Always override the image so the deployment uses the locally built
+		// version that matches this codebase.  For existing clusters this
+		// corrects drift; for freshly installed charts it is a no-op when
+		// the helm --set already matched.
+		setImg := exec.Command("kubectl", "set", "image",
+			fmt.Sprintf("deployment/%s", e2eWebapiDeployment),
+			"-n", namespace,
+			fmt.Sprintf("webapi=%s", webapiImage))
+		_, err = utils.Run(setImg)
+		Expect(err).NotTo(HaveOccurred(), "Failed to patch webapi container image")
+
+		By("Patching webapi deployment with discovered KEYCLOAK_ISSUER_URL")
+		// The issuer in tokens is set by KC_HOSTNAME_URL (e.g. http://<minikube-lb-ip>/auth).
+		// The Helm chart value webapi.keycloak.issuerUrl may point to an in-cluster
+		// URL ≠ the token issuer.  Patch the live deployment so the JWT validator
+		// accepts tokens from this cluster regardless of the values file.
+		setEnv := exec.Command("kubectl", "set", "env",
+			fmt.Sprintf("deployment/%s", e2eWebapiDeployment),
+			"-n", namespace,
+			fmt.Sprintf("KEYCLOAK_ISSUER_URL=%s", keycloakIssuer))
+		_, err = utils.Run(setEnv)
+		Expect(err).NotTo(HaveOccurred(), "Failed to patch KEYCLOAK_ISSUER_URL on webapi deployment")
+
+		By("Waiting for webapi deployment to become ready")
+		rollout := exec.Command("kubectl", "rollout", "status",
+			fmt.Sprintf("deployment/%s", e2eWebapiDeployment),
+			"-n", namespace, "--timeout=2m")
+		_, err = utils.Run(rollout)
+		Expect(err).NotTo(HaveOccurred(), "webapi deployment should become ready")
 	})
 
 	AfterAll(func() {
@@ -121,6 +227,13 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			u.SetGroupVersionKind(nebariAppGVK)
 			u.SetName(name)
 			u.SetNamespace(namespace)
+			// Strip operator finalizers before deletion so cleanup is not blocked
+			// when the operator cannot reconcile (e.g. missing cluster dependencies).
+			existing := u.DeepCopy()
+			if getErr := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, existing); getErr == nil {
+				existing.SetFinalizers(nil)
+				_ = k8sClient.Update(ctx, existing)
+			}
 			_ = k8sClient.Delete(ctx, u)
 		}
 
@@ -129,16 +242,18 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			_ = keycloakPFCmd.Process.Kill()
 		}
 
-		By("Removing webapi manifests")
-		cmd := exec.Command("kubectl", "delete", "-f", "deploy/manifest.yaml", "--ignore-not-found")
-		_, _ = utils.Run(cmd)
+		if !useExistingCluster {
+			By("Uninstalling nebari-landing Helm release")
+			cmd := exec.Command("helm", "uninstall", helmRelease, "--namespace", namespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		}
 	})
 
 	Context("Service Discovery", func() {
 		It("should expose a Service object", func() {
 			svc := &corev1.Service{}
 			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      "webapi",
+				Name:      e2eWebapiService,
 				Namespace: namespace,
 			}, svc)
 			Expect(err).NotTo(HaveOccurred(), "webapi Service should exist")
@@ -157,7 +272,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 
 			By("Port-forwarding to webapi")
 			pfCmd := exec.Command("kubectl", "port-forward",
-				"-n", namespace, "svc/webapi", "18082:8080")
+				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18082:8080")
 			Expect(pfCmd.Start()).NotTo(HaveOccurred())
 			DeferCleanup(func() { _ = pfCmd.Process.Kill() })
 
@@ -182,7 +297,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 
 			var result ServiceListResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&result)).To(Succeed())
-			Expect(serviceNames(result)).To(ContainElement(testAppName),
+			Expect(serviceNames(result)).To(ContainElement("Test Service "+testAppName),
 				"Public services must appear when unauthenticated")
 		})
 
@@ -190,25 +305,25 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			By("Acquiring a JWT from Keycloak (host-header override for issuer match)")
 			// The port-forward reaches Keycloak at localhost:18090, but the Host header
 			// must match the in-cluster hostname so the token issuer ("iss") equals
-			// KEYCLOAK_URL/realms/nebari, which is what the webapi validates.
+			// KEYCLOAK_URL/realms/<realm>, which is what the webapi validates.
 			tokenForm := url.Values{
 				"client_id":  {"admin-cli"},
-				"username":   {"admin"},
-				"password":   {"nebari-admin"},
+				"username":   {kcAdminUser},
+				"password":   {kcAdminPassword},
 				"grant_type": {"password"},
 				"scope":      {"openid profile"},
 			}
 			tokenReq, err := http.NewRequest(http.MethodPost,
-				"http://localhost:18090/auth/realms/nebari/protocol/openid-connect/token",
+				fmt.Sprintf("http://localhost:18090/auth/realms/%s/protocol/openid-connect/token", kcRealm),
 				strings.NewReader(tokenForm.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			tokenReq.Host = "keycloak-keycloakx-http.keycloak.svc.cluster.local"
+			tokenReq.Host = fmt.Sprintf("%s.%s.svc.cluster.local", kcService, kcNamespace)
 			tokenResp, err := http.DefaultClient.Do(tokenReq)
 			Expect(err).NotTo(HaveOccurred(), "Should be able to request token from Keycloak")
 			defer tokenResp.Body.Close()
 			Expect(tokenResp.StatusCode).To(Equal(http.StatusOK),
-				"Keycloak token request must succeed (realm=nebari, user=admin/nebari-admin)")
+				fmt.Sprintf("Keycloak token request must succeed (realm=%s, user=%s)", kcRealm, kcAdminUser))
 			var tokenData struct {
 				AccessToken string `json:"access_token"`
 			}
@@ -223,7 +338,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 
 			By("Port-forwarding to webapi (port 18081)")
 			pfCmd := exec.Command("kubectl", "port-forward",
-				"-n", namespace, "svc/webapi", "18081:8080")
+				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18081:8080")
 			Expect(pfCmd.Start()).NotTo(HaveOccurred())
 			DeferCleanup(func() { _ = pfCmd.Process.Kill() })
 
@@ -247,7 +362,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			var unauthResult ServiceListResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&unauthResult)).To(Succeed())
-			Expect(serviceNames(unauthResult)).NotTo(ContainElement("test-auth-visibility"),
+			Expect(serviceNames(unauthResult)).NotTo(ContainElement("Test Service test-auth-visibility"),
 				"Authenticated services must not appear without a token")
 
 			By("Calling /api/v1/services with a valid JWT — auth services must appear")
@@ -260,7 +375,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(authResp.StatusCode).To(Equal(http.StatusOK))
 			var authResult ServiceListResponse
 			Expect(json.NewDecoder(authResp.Body).Decode(&authResult)).To(Succeed())
-			Expect(serviceNames(authResult)).To(ContainElement("test-auth-visibility"),
+			Expect(serviceNames(authResult)).To(ContainElement("Test Service test-auth-visibility"),
 				"The authenticated-visibility NebariApp must appear when a valid JWT is presented")
 		})
 	})
@@ -269,7 +384,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		It("should report healthy status", func() {
 			By("Port-forwarding to webapi (port 18080)")
 			pfCmd := exec.Command("kubectl", "port-forward",
-				"-n", namespace, "svc/webapi", "18080:8080")
+				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18080:8080")
 			Expect(pfCmd.Start()).NotTo(HaveOccurred(), "port-forward should start")
 			DeferCleanup(func() { _ = pfCmd.Process.Kill() })
 
@@ -296,12 +411,6 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				"health response must contain a 'status' field")
 		})
 	})
-
-	Context("Frontend Serving", func() {
-		It("should serve static frontend files", func() {
-			Skip("Covered by unit tests; requires ingress/port-forward setup")
-		})
-	})
 })
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -322,50 +431,3 @@ func serviceNames(r ServiceListResponse) []string {
 	return names
 }
 
-// makeAuthenticatedRequest issues a GET to endpoint, optionally adding a Bearer token.
-func makeAuthenticatedRequest(endpoint, token string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	return (&http.Client{Timeout: 10 * time.Second}).Do(req)
-}
-
-// getServiceList fetches and decodes the unauthenticated service list.
-func getServiceList(endpoint string) (*ServiceListResponse, error) {
-	resp, err := makeAuthenticatedRequest(endpoint, "")
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, body)
-	}
-	var result ServiceListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-// ServiceListUser is kept for completeness; identity is now returned by
-// GET /api/v1/caller-identity.
-type ServiceListUser struct {
-	Authenticated bool     `json:"authenticated"`
-	Username      string   `json:"username,omitempty"`
-	Email         string   `json:"email,omitempty"`
-	Name          string   `json:"name,omitempty"`
-	Groups        []string `json:"groups,omitempty"`
-}
-
-// _ are compile-time checks for unused exported helpers.
-var (
-	_ = makeAuthenticatedRequest
-	_ = getServiceList
-	_ = ServiceListUser{}
-	_ = metav1.ObjectMeta{}
-)

@@ -12,6 +12,13 @@ export default defineConfig({
       usePolling: process.env.VITE_USE_POLLING === "true",
       interval: 500,
     },
+    // When running behind oauth2-proxy the browser connects to the proxy port
+    // (PORT_LANDING, forwarded to 4180), not to Vite's internal port (80).
+    // Setting clientPort to 0 tells Vite to echo back whatever port the
+    // browser used, so the HMR WebSocket upgrade goes to the right place.
+    hmr: process.env.VITE_USE_POLLING === "true"
+      ? { clientPort: Number(process.env.VITE_HMR_CLIENT_PORT ?? 0) || undefined }
+      : undefined,
   },
   css: {
     preprocessorOptions: {

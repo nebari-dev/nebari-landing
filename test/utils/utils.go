@@ -80,3 +80,17 @@ func LoadImageToKindCluster(name string) error {
 	_, err := Run(cmd)
 	return err
 }
+
+// LoadImageToCluster loads a container image into the appropriate cluster based
+// on clusterType ("kind" or "minikube").  profile is used as the minikube
+// profile name when clusterType is "minikube".
+func LoadImageToCluster(name, clusterType, profile string) error {
+	switch clusterType {
+	case "minikube":
+		cmd := exec.Command("minikube", "-p", profile, "image", "load", name)
+		_, err := Run(cmd)
+		return err
+	default: // "kind"
+		return LoadImageToKindCluster(name)
+	}
+}

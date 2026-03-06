@@ -4,11 +4,11 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Install dependencies first to leverage layer caching.
-COPY frontend/package*.json ./
+COPY package*.json ./
 RUN npm ci
 
 # Copy the rest of the frontend source and build.
-COPY frontend/ ./
+COPY ./ ./
 RUN npm run build
 # Vite outputs to /app/dist by default.
 

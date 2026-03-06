@@ -1,4 +1,4 @@
-{{- if .Values.httpRoute.enabled }}
+{{- if and .Values.httpRoute.enabled (not .Values.nebariApp.enabled) }}
 # Gateway API HTTPRoute — attaches to the Envoy Gateway and routes:
 #   /api/*      → webapi Service
 #   /oauth2/*   → frontend Service (OAuth2 Proxy callback routes)

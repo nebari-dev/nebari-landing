@@ -1,3 +1,4 @@
+{{- if .Values.frontend.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,6 +23,51 @@ spec:
         runAsUser: 101    # nginx default non-root uid
         seccompProfile:
           type: RuntimeDefault
+
+      initContainers:
+        {{- if .Values.frontend.oauth2Proxy.waitForKeycloak.enabled }}
+        # Polls the Keycloak OIDC discovery endpoint until it returns HTTP 200.
+        # Prevents oauth2-proxy from crashing when Keycloak is not yet ready.
+        - name: wait-for-keycloak
+          image: "{{ .Values.frontend.oauth2Proxy.waitForKeycloak.image.repository }}:{{ .Values.frontend.oauth2Proxy.waitForKeycloak.image.tag }}"
+          imagePullPolicy: {{ .Values.frontend.oauth2Proxy.waitForKeycloak.image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534   # nobody
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: KEYCLOAK_URL
+              value: {{ required "frontend.oauth2Proxy.oidcIssuerUrl is required" .Values.frontend.oauth2Proxy.oidcIssuerUrl | quote }}
+            - name: TIMEOUT
+              value: {{ .Values.frontend.oauth2Proxy.waitForKeycloak.timeoutSeconds | quote }}
+            - name: PERIOD
+              value: {{ .Values.frontend.oauth2Proxy.waitForKeycloak.periodSeconds | quote }}
+          command:
+            - sh
+            - -c
+            - |
+              DISCOVERY="${KEYCLOAK_URL}/.well-known/openid-configuration"
+              echo "Waiting for Keycloak at ${DISCOVERY} (timeout ${TIMEOUT}s) …"
+              elapsed=0
+              {{- if .Values.frontend.oauth2Proxy.waitForKeycloak.insecure }}
+              WGET_FLAGS="-q --no-check-certificate"
+              {{- else }}
+              WGET_FLAGS="-q"
+              {{- end }}
+              until wget ${WGET_FLAGS} -O /dev/null "${DISCOVERY}" 2>/dev/null; do
+                if [ "${elapsed}" -ge "${TIMEOUT}" ]; then
+                  echo "Timed out waiting for Keycloak after ${TIMEOUT}s"
+                  exit 1
+                fi
+                echo "  Keycloak not ready yet (${elapsed}s elapsed) — retrying in ${PERIOD}s …"
+                sleep "${PERIOD}"
+                elapsed=$((elapsed + PERIOD))
+              done
+              echo "Keycloak is ready."
+        {{- end }}
 
       containers:
         # ---------------------------------------------------------------
@@ -80,7 +126,7 @@ spec:
               drop: [ALL]
 
         # ---------------------------------------------------------------
-        # frontend — serves static Vite build assets.
+        # frontend — serves static Vite build assets via nginx.
         # Only reachable via oauth2-proxy on 127.0.0.1.
         # ---------------------------------------------------------------
         - name: frontend
@@ -97,7 +143,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
-          # nginx needs a writable /tmp and /var/cache/nginx
+          # nginx needs writable /tmp, /var/cache/nginx, and /var/run
           volumeMounts:
             - name: nginx-tmp
               mountPath: /tmp
@@ -115,3 +161,4 @@ spec:
           emptyDir: {}
 
       terminationGracePeriodSeconds: 10
+{{- end }}

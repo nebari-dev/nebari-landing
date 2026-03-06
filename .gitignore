@@ -1,0 +1,18 @@
+# Go test artifacts
+coverage.out
+*.test
+
+# Helm downloaded chart dependencies (lock file is committed; tarballs are not)
+charts/*/charts/
+
+# Node.js
+node_modules/
+frontend/dist/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store

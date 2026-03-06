@@ -24,21 +24,39 @@ import (
 )
 
 var (
-	// USE_EXISTING_CLUSTER=true — skip Kind cluster creation.
+	// USE_EXISTING_CLUSTER=true — skip cluster creation and image loading.
 	useExistingCluster = os.Getenv("USE_EXISTING_CLUSTER") == "true"
 
 	// SKIP_DOCKER_BUILD=true — assume the image is already built/loaded.
 	skipDockerBuild = os.Getenv("SKIP_DOCKER_BUILD") == "true"
+
+	// CLUSTER_TYPE controls how images are loaded when not using an existing
+	// cluster.  Supported values: "kind" (default), "minikube".
+	clusterType = func() string {
+		if v := os.Getenv("CLUSTER_TYPE"); v != "" {
+			return v
+		}
+		return "kind"
+	}()
+
+	// MINIKUBE_PROFILE — minikube profile to target when CLUSTER_TYPE=minikube.
+	minikubeProfile = func() string {
+		if v := os.Getenv("MINIKUBE_PROFILE"); v != "" {
+			return v
+		}
+		return "minikube"
+	}()
 
 	// WEBAPI_IMG — image to deploy.  Defaults to the dev tag.
 	webapiImage = func() string {
 		if v := os.Getenv("WEBAPI_IMG"); v != "" {
 			return v
 		}
-		return "webapi:dev"
+		return "nebari-landing/webapi:dev"
 	}()
 
-	// KIND_CLUSTER — name of the Kind cluster when not using an existing one.
+	// KIND_CLUSTER — name of the Kind cluster when CLUSTER_TYPE=kind and not
+	// using an existing cluster.
 	kindCluster = func() string {
 		if v := os.Getenv("KIND_CLUSTER"); v != "" {
 			return v
@@ -63,30 +81,34 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	if !useExistingCluster {
-		By("creating Kind cluster")
-		cmd := exec.Command("kind", "create", "cluster",
-			"--name", kindCluster,
-			"--wait", "120s")
-		_, err := utils.Run(cmd)
-		if err == nil {
-			isKindClusterCreated = true
+		if clusterType == "kind" {
+			By("creating Kind cluster")
+			cmd := exec.Command("kind", "create", "cluster",
+				"--name", kindCluster,
+				"--wait", "120s")
+			_, err := utils.Run(cmd)
+			if err == nil {
+				isKindClusterCreated = true
+			}
+			ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to create Kind cluster")
+		} else {
+			_, _ = fmt.Fprintf(GinkgoWriter, "CLUSTER_TYPE=%s — skipping cluster creation (must already exist)\n", clusterType)
 		}
-		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to create Kind cluster")
 	} else {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Using existing cluster\n")
+		_, _ = fmt.Fprintf(GinkgoWriter, "USE_EXISTING_CLUSTER=true — using current kubeconfig context\n")
 	}
 
-	if !skipDockerBuild {
+	if !skipDockerBuild && !useExistingCluster {
 		By("building the webapi image")
 		cmd := exec.Command("docker", "build", "-t", webapiImage, ".")
 		_, err := utils.Run(cmd)
 		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build webapi image")
 
-		By("loading webapi image into Kind")
-		ExpectWithOffset(1, utils.LoadImageToKindCluster(webapiImage)).
-			To(Succeed(), "Failed to load webapi image into Kind")
+		By(fmt.Sprintf("loading webapi image into %s cluster", clusterType))
+		ExpectWithOffset(1, utils.LoadImageToCluster(webapiImage, clusterType, minikubeProfile)).
+			To(Succeed(), "Failed to load webapi image into cluster")
 	} else {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Skipping docker build\n")
+		_, _ = fmt.Fprintf(GinkgoWriter, "Skipping docker build/image load\n")
 	}
 
 	// Prerequisites that must already exist in the cluster:
