@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,6 +39,14 @@ var (
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
+
+	// Register NebariApp as unstructured so the controller-runtime cache can build
+	// informers without importing the nebari-operator API package.
+	// The watcher uses unstructured objects internally; this registration only
+	// tells the scheme which Go type to use for the GVK.
+	nebariGV := schema.GroupVersion{Group: "reconcilers.nebari.dev", Version: "v1"}
+	scheme.AddKnownTypeWithName(nebariGV.WithKind("NebariApp"), &unstructured.Unstructured{})
+	scheme.AddKnownTypeWithName(nebariGV.WithKind("NebariAppList"), &unstructured.UnstructuredList{})
 }
 
 func main() {

@@ -1,0 +1,81 @@
+{{- if .Values.nebariApp.enabled }}
+{{- $host := required "httpRoute.hostname is required when nebariApp.enabled=true" .Values.httpRoute.hostname }}
+# ── NebariApp: frontend ────────────────────────────────────────────────────────
+# Routes /oauth2/* (OAuth2-Proxy callbacks) and /* (all SPA traffic) to the
+# oauth2-proxy sidecar in the frontend pod.  Auth is enforced by the sidecar,
+# not by the Gateway, so enforceAtGateway is false.
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: {{ include "nebari-landing.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nebari-landing.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  hostname: {{ $host | quote }}
+
+  service:
+    name: {{ include "nebari-landing.fullname" . }}-frontend
+    port: {{ .Values.frontend.service.port }}
+
+  routing:
+    routes:
+      # OAuth2-Proxy sign-in / callback / sign-out must be matched before the
+      # catch-all so the operator keeps them ordering-stable in the HTTPRoute.
+      - pathPrefix: /oauth2/
+        pathType: PathPrefix
+      - pathPrefix: /
+        pathType: PathPrefix
+    tls:
+      enabled: {{ .Values.httpRoute.tls }}
+
+  # oauth2-proxy handles authentication at the sidecar level; no SecurityPolicy
+  # is needed at the gateway.
+  auth:
+    enabled: false
+    enforceAtGateway: false
+
+  landingPage:
+    enabled: {{ .Values.nebariApp.landingPage.enabled }}
+    displayName: {{ .Values.nebariApp.landingPage.displayName | quote }}
+    description: {{ .Values.nebariApp.landingPage.description | quote }}
+    icon: {{ .Values.nebariApp.landingPage.icon | quote }}
+    category: {{ .Values.nebariApp.landingPage.category | quote }}
+    priority: {{ .Values.nebariApp.landingPage.priority }}
+    visibility: {{ .Values.nebariApp.landingPage.visibility | quote }}
+---
+# ── NebariApp: webapi ─────────────────────────────────────────────────────────
+# Routes /api/* directly to the Go webapi service.  JWT validation is handled
+# in-process by the webapi, so no gateway-level auth enforcement is needed.
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: {{ include "nebari-landing.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nebari-landing.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webapi
+spec:
+  hostname: {{ $host | quote }}
+
+  service:
+    name: {{ include "nebari-landing.fullname" . }}-webapi
+    port: {{ .Values.webapi.service.port }}
+
+  routing:
+    routes:
+      - pathPrefix: /api/
+        pathType: PathPrefix
+    tls:
+      enabled: {{ .Values.httpRoute.tls }}
+
+  auth:
+    enabled: false
+    enforceAtGateway: false
+
+  # The webapi is not represented as a card on the landing page — the landing
+  # page frontend is the user-facing entry point.
+  landingPage:
+    enabled: false
+{{- end }}

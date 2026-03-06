@@ -37,7 +37,7 @@ MINIKUBE_DRIVER    ?= docker
 IMAGE_REPO          ?= nebari-landing
 IMAGE_TAG           ?= dev
 WEBAPI_IMAGE        := $(IMAGE_REPO)/webapi:$(IMAGE_TAG)
-FRONTEND_IMAGE      := $(IMAGE_REPO)/frontend:$(IMAGE_TAG)
+FRONTEND_IMAGE      := $(IMAGE_REPO)/nebari-landing:$(IMAGE_TAG)
 HELM_RELEASE        ?= nebari-landing
 
 HELM_RELEASE_KC    ?= keycloak
@@ -107,7 +107,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
         keycloak keycloak-install keycloak-realm keycloak-client frontend-client \
         operator-install operator-uninstall \
         test-apps \
-        argocd-apps install uninstall info \
+        argocd-apps install uninstall dev-watch stop-dev-watch dev-watch-status info \
         port-forward stop-port-forward \
         minikube-tunnel stop-minikube-tunnel \
         deps-check _minikube
@@ -172,15 +172,12 @@ cluster-delete:
 ## image-build: build webapi and frontend images and load them into minikube
 image-build:
 	@echo "→  Building webapi image $(WEBAPI_IMAGE) …"
-	$(MINIKUBE_BIN) -p $(CLUSTER_NAME) image build \
-	  -t $(WEBAPI_IMAGE) \
-	  -f Dockerfile \
-	  .
+	docker build -t $(WEBAPI_IMAGE) -f Dockerfile .
+	$(MINIKUBE_BIN) -p $(CLUSTER_NAME) image load $(WEBAPI_IMAGE)
 	@echo "→  Building frontend image $(FRONTEND_IMAGE) …"
-	$(MINIKUBE_BIN) -p $(CLUSTER_NAME) image build \
-	  -t $(FRONTEND_IMAGE) \
-	  -f Dockerfile.frontend \
-	  .
+	# Build context is frontend/ — Dockerfile lives there and only touches that tree.
+	docker build -t $(FRONTEND_IMAGE) -f frontend/Dockerfile frontend/
+	$(MINIKUBE_BIN) -p $(CLUSTER_NAME) image load $(FRONTEND_IMAGE)
 	@echo "✔  Images loaded into minikube: $(WEBAPI_IMAGE) $(FRONTEND_IMAGE)"
 
 # ── cert-manager ───────────────────────────────────────────────────────────────────
@@ -191,9 +188,15 @@ CERT_MANAGER_VERSION ?= v1.16.3
 cert-manager:
 	@echo "→  Installing cert-manager $(CERT_MANAGER_VERSION) …"
 	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
-	kubectl rollout status deployment/cert-manager         -n cert-manager --timeout=3m
-	kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=3m
-	kubectl apply -f dev/manifests/cert-manager/selfsigned-clusterissuer.yaml
+	kubectl rollout status deployment/cert-manager              -n cert-manager --timeout=3m
+	kubectl rollout status deployment/cert-manager-webhook       -n cert-manager --timeout=3m
+	kubectl rollout status deployment/cert-manager-cainjector   -n cert-manager --timeout=3m
+	@echo "→  Waiting for cert-manager webhook TLS to be ready …"
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+	  kubectl apply -f dev/manifests/cert-manager/selfsigned-clusterissuer.yaml 2>&1 && break; \
+	  echo "  webhook not ready yet (attempt $$i/10), retrying in 5 s …"; \
+	  sleep 5; \
+	done
 	@echo "✔  cert-manager ready with selfsigned ClusterIssuer"
 
 # ── MetalLB ───────────────────────────────────────────────────────────────────
@@ -260,11 +263,16 @@ keycloak-install:
 	@echo "→  Installing Keycloak (codecentric/keycloakx) …"
 	kubectl create namespace $(NAMESPACE_KC) --dry-run=client -o yaml | kubectl apply -f -
 	helm repo add codecentric $(KEYCLOAK_CHART) --force-update
-	helm upgrade --install $(HELM_RELEASE_KC) codecentric/$(KEYCLOAK_CHART_NAME) \
-	  --version $(KEYCLOAK_VERSION) \
-	  --namespace $(NAMESPACE_KC) \
-	  --values dev/keycloak/values.yaml \
-	  --wait --timeout 10m
+	@MINIKUBE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME)); \
+	 SUBNET=$$(echo "$$MINIKUBE_IP" | sed 's/\.[0-9]*$$//'); \
+	 export KC_HOSTNAME_URL="http://$${SUBNET}.100/auth"; \
+	 echo "→  Keycloak public URL (KC_HOSTNAME_URL): $$KC_HOSTNAME_URL"; \
+	 envsubst < dev/keycloak/values.yaml | \
+	 helm upgrade --install $(HELM_RELEASE_KC) codecentric/$(KEYCLOAK_CHART_NAME) \
+	   --version $(KEYCLOAK_VERSION) \
+	   --namespace $(NAMESPACE_KC) \
+	   --values - \
+	   --wait --timeout 10m
 	@echo "✔  Keycloak deployed"
 
 ## keycloak-realm: run the kcadm Job to create and populate the nebari realm
@@ -304,7 +312,7 @@ frontend-client:
 	kubectl create secret generic nebari-landing-oauth2-proxy \
 	  --namespace $(NAMESPACE_APP) \
 	  --from-literal=client-secret=nebari-frontend-dev-secret \
-	  --from-literal=cookie-secret=$$(python3 -c 'import secrets,base64; print(base64.b64encode(secrets.token_bytes(32)).decode())') \
+	  --from-literal=cookie-secret=$$(openssl rand -hex 16) \
 	  --dry-run=client -o yaml | kubectl apply -f -
 	@echo "✔  Keycloak nebari-landingpage client ready"
 
@@ -361,6 +369,7 @@ argocd-apps:
 install:
 	@echo "→  Deploying nebari-landing Helm chart (release: $(HELM_RELEASE)) …"
 	kubectl create namespace $(NAMESPACE_APP) --dry-run=client -o yaml | kubectl apply -f -
+	helm dependency build charts/nebari-landing
 	helm upgrade --install $(HELM_RELEASE) charts/nebari-landing \
 	  --namespace $(NAMESPACE_APP) \
 	  --values dev/chart-values.yaml \
@@ -373,6 +382,132 @@ uninstall: operator-uninstall
 	-kubectl delete job keycloak-realm-setup -n $(NAMESPACE_KC) --ignore-not-found
 	-helm uninstall $(HELM_RELEASE_KC) -n $(NAMESPACE_KC)
 	-helm uninstall postgresql           -n $(NAMESPACE_KC)
+
+## dev-watch: swap the Helm-managed frontend pod to a Vite HMR dev server.
+## Applies dev/patches/frontend-dev-watch.yaml via 'kubectl patch --type=strategic'
+## to the existing nebari-landing-frontend Deployment — no parallel deployment,
+## no kustomize overlay, no Helm chart modification.
+## File changes on the host are picked up immediately via minikube mount → Vite HMR.
+## Requires a running cluster ('make install'). Stop with: make -f dev/Makefile stop-dev-watch
+dev-watch:
+	@echo "→  Starting minikube mount …"
+	@pkill -f "minikub[e].*mount.*nebari-frontend" 2>/dev/null || true
+	@sleep 1
+	# Launch the mount in a new OS session so it survives Make exiting.
+	@python3 -c "\
+import subprocess, shlex, sys; \
+cmd = shlex.split('$(MINIKUBE_BIN) -p $(CLUSTER_NAME) mount $(CURDIR)/frontend:/mnt/nebari-frontend'); \
+log = open('/tmp/minikube-mount-frontend.log', 'w'); \
+p = subprocess.Popen(cmd, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True); \
+open('/tmp/minikube-mount-frontend.pid', 'w').write(str(p.pid)); \
+print('   Mount PID', p.pid, '— log: /tmp/minikube-mount-frontend.log'); \
+"
+	@echo "   Waiting for mount to establish …"
+	@for i in $$(seq 1 15); do \
+	  if grep -q "Successfully mounted" /tmp/minikube-mount-frontend.log 2>/dev/null; then \
+	    echo "✔  minikube mount active"; break; \
+	  fi; \
+	  sleep 1; \
+	done
+	@if ! grep -q "Successfully mounted" /tmp/minikube-mount-frontend.log 2>/dev/null; then \
+	  echo "✗  minikube mount did not establish within 15 s — check /tmp/minikube-mount-frontend.log"; \
+	  cat /tmp/minikube-mount-frontend.log; \
+	  exit 1; \
+	fi
+	@echo "→  Patching Helm deployment to Vite HMR (dev/patches/frontend-dev-watch.yaml) …"
+	kubectl patch deployment $(HELM_RELEASE)-frontend \
+	  -n $(NAMESPACE_APP) \
+	  --type=strategic \
+	  --patch-file dev/patches/frontend-dev-watch.yaml
+	@echo "   Deleting pods so the new spec takes effect immediately …"
+	@kubectl -n $(NAMESPACE_APP) delete pod -l app.kubernetes.io/component=frontend 2>/dev/null || true
+	@echo "   Waiting for Vite pod to become ready (~2-3 min for npm install + Vite startup) …"
+	kubectl rollout status deployment/$(HELM_RELEASE)-frontend -n $(NAMESPACE_APP) --timeout=8m
+	@pkill -f "kubect[l].*port-forward.*$(HELM_RELEASE)-frontend" 2>/dev/null || true
+	@nohup kubectl -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-frontend $(PORT_LANDING):4180 \
+	  > /tmp/pf-landing.log 2>&1 &
+	@sleep 1
+	@echo ""
+	@echo "✔  Dev-watch active. Edit files in frontend/ — Vite HMR reloads the browser."
+	@echo "   Landing  : http://localhost:$(PORT_LANDING)/"
+	@echo "   Mount log: /tmp/minikube-mount-frontend.log"
+	@echo "   Status   : make -f dev/Makefile dev-watch-status"
+	@echo "   Stop     : make -f dev/Makefile stop-dev-watch"
+
+## stop-dev-watch: restore the Helm-rendered nginx frontend and stop the minikube mount.
+## Deletes the patched deployment first so helm upgrade recreates it cleanly (a plain
+## 'helm upgrade' 3-way-merges and preserves strategic-patch additions like extra init
+## containers and volumes, which prevents the nginx pod from starting).
+stop-dev-watch:
+	@echo "→  Stopping minikube mount …"
+	@pkill -f "minikub[e].*mount.*nebari-frontend" 2>/dev/null && echo "✔  minikube mount stopped" || true
+	@echo "→  Deleting patched frontend deployment so helm recreates it cleanly …"
+	@kubectl delete deployment $(HELM_RELEASE)-frontend -n $(NAMESPACE_APP) --ignore-not-found
+	@echo "→  Restoring Helm-managed nginx frontend (helm upgrade) …"
+	helm upgrade $(HELM_RELEASE) charts/nebari-landing \
+	  --namespace $(NAMESPACE_APP) \
+	  --values dev/chart-values.yaml \
+	  --wait --timeout 5m
+	@echo "✔  dev-watch stopped — nginx frontend restored at http://localhost:$(PORT_LANDING)/"
+	@echo "   Run 'make -f dev/Makefile image-build' to rebuild the prebuilt image if needed."
+
+## dev-watch-status: show the health of all dev-watch components in one shot
+## Checks: minikube mount process, mount log tail, pod phase, init + main container
+## logs (last 30 lines each), and whether Vite is listening on :8080.
+dev-watch-status:
+	@echo ""
+	@echo "╔══════════════════════════════════════════════════════════════╗"
+	@echo "║                  dev-watch status                           ║"
+	@echo "╠══════════════════════════════════════════════════════════════╣"
+	@echo ""
+	@echo "── 1. minikube mount process ──────────────────────────────────"
+	@if pgrep -f "minikub[e].*mount.*nebari-frontend" > /dev/null 2>&1; then \
+	  PID=$$(pgrep -f "minikub[e].*mount.*nebari-frontend" | head -1); \
+	  echo "✔  Running (PID $$PID)"; \
+	else \
+	  echo "✗  NOT running — start with: make -f dev/Makefile dev-watch"; \
+	fi
+	@echo ""
+	@echo "── 2. mount log (last 20 lines) ───────────────────────────────"
+	@if [ -f /tmp/minikube-mount-frontend.log ]; then \
+	  tail -n 20 /tmp/minikube-mount-frontend.log; \
+	else \
+	  echo "   (log file not found: /tmp/minikube-mount-frontend.log)"; \
+	fi
+	@echo ""
+	@echo "── 3. pod status ──────────────────────────────────────────────"
+	@kubectl -n $(NAMESPACE_APP) get pods -l app.kubernetes.io/component=frontend -o wide 2>/dev/null || echo "   (no pods found)"
+	@echo ""
+	@echo "── 4. init container logs (wait-for-mount, last 30 lines) ─────"
+	@POD=$$(kubectl -n $(NAMESPACE_APP) get pods -l app.kubernetes.io/component=frontend \
+	          --field-selector=status.phase=Running \
+	          -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
+	 if [ -n "$$POD" ]; then \
+	   kubectl -n $(NAMESPACE_APP) logs $$POD -c wait-for-mount --tail=30 2>/dev/null \
+	     || echo "   (init container has already completed — no logs)"; \
+	 else \
+	   echo "   (no Running pod found)"; \
+	 fi
+	@echo ""
+	@echo "── 5. Vite container logs (frontend, last 40 lines) ───────────"
+	@POD=$$(kubectl -n $(NAMESPACE_APP) get pods -l app.kubernetes.io/component=frontend \
+	          --field-selector=status.phase=Running \
+	          -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
+	 if [ -n "$$POD" ]; then \
+	   kubectl -n $(NAMESPACE_APP) logs $$POD -c frontend --tail=40 2>/dev/null; \
+	 else \
+	   echo "   (no Running pod found)"; \
+	 fi
+	@echo ""
+	@echo "── 6. HMR reachability (port-forward → :8080) ─────────────────"
+	@if curl -sf --max-time 3 http://localhost:$(PORT_LANDING)/ -o /dev/null; then \
+	  echo "✔  http://localhost:$(PORT_LANDING)/ is reachable"; \
+	else \
+	  echo "✗  http://localhost:$(PORT_LANDING)/ unreachable — Vite may still be starting"; \
+	fi
+	@echo ""
+	@echo "╚══════════════════════════════════════════════════════════════╝"
+	@echo ""
 
 # ── Info / convenience ────────────────────────────────────────────────────────
 
@@ -392,7 +527,6 @@ info:
 	 echo "║  MetalLB subnet   : $${SUBNET:-192.168.49}.0/24 (pool .100–.150)"; \
 	 echo "║"; \
 	 echo "║  MetalLB LoadBalancer IPs:"; \
-	 echo "║    (WSL2: also run 'make minikube-tunnel' for Windows access)"; \
 	 echo "║"; \
 	 echo "║  Landing page + oauth2-proxy:"; \
 	 echo "║    http://$${LAND_IP}/"; \
@@ -409,10 +543,23 @@ info:
 	 echo "║  Operator namespace : $(NAMESPACE_OPERATOR)"; \
 	 echo "║"; \
 	 echo "║  Integration tests:"; \
-	 echo "║    python3 dev/webapi_test.py \\\""; \
-	 echo "║      --webapi-url http://$${API_IP}:8080 \\\""; \
-	 echo "║      --keycloak-url http://$${KC_IP}/auth \\\""; \
-	 echo "║      -u admin -p $(REALM_ADMIN_PASSWORD)"
+	 echo "║    python3 dev/webapi_test.py \\"; \
+	 echo "║      --webapi-url http://$${API_IP}:8080 \\"; \
+	 echo "║      --keycloak-url http://$${KC_IP}/auth \\"; \
+	 echo "║      -u admin -p $(REALM_ADMIN_PASSWORD)"; \
+	 echo "║"; \
+	 echo "║  Hot-reload dev (Vite HMR via minikube mount):"; \
+	 if pgrep -f "minikub[e].*mount.*nebari-frontend" > /dev/null 2>&1; then \
+	   PID=$$(pgrep -f "minikub[e].*mount.*nebari-frontend" | head -1); \
+	   echo "║    ✔  minikube mount active (PID $$PID)"; \
+	   echo "║       http://localhost:$(PORT_LANDING)/  ← Vite dev server"; \
+	   echo "║       Log: /tmp/minikube-mount-frontend.log"; \
+	   echo "║       Stop: make -f dev/Makefile stop-dev-watch"; \
+	 else \
+	   echo "║    ○  Not running  (nginx/prebuilt image active)"; \
+	   echo "║       Start: make -f dev/Makefile dev-watch"; \
+	   echo "║       Status: make -f dev/Makefile dev-watch-status"; \
+	 fi
 	@echo "╚══════════════════════════════════════════════════════════════╝"
 	@echo ""
 
