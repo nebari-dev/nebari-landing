@@ -8,6 +8,10 @@ global:
 # Frontend pod  (static assets + OAuth2 Proxy sidecar)
 # ---------------------------------------------------------------------------
 frontend:
+  # Set to false to skip deploying the frontend (e.g. webapi-only test environments
+  # that do not have the oauth2-proxy Secret pre-created).
+  enabled: true
+
   replicaCount: 1
 
   image:
@@ -59,6 +63,25 @@ frontend:
     # Extra args passed verbatim to the oauth2-proxy binary.
     extraArgs: []
     # - --skip-provider-button
+
+    # Init container that blocks oauth2-proxy from starting until Keycloak's
+    # OIDC discovery endpoint responds with HTTP 200. Prevents the crash-loop
+    # that occurs when oauth2-proxy tries to fetch the JWKS before Keycloak
+    # is ready.
+    waitForKeycloak:
+      enabled: true
+      # busybox is tiny and available on every node without a registry pull.
+      image:
+        repository: busybox
+        tag: "1.37"
+        pullPolicy: IfNotPresent
+      # How long to wait for Keycloak before giving up (seconds).
+      timeoutSeconds: 300
+      # Polling interval (seconds).
+      periodSeconds: 5
+      # Pass --no-check-certificate to wget — useful when Keycloak is behind
+      # a self-signed TLS terminator. Safe to leave true for HTTP endpoints.
+      insecure: false
 
     resources:
       requests:
@@ -117,9 +140,41 @@ webapi:
     port: 8080
 
 # ---------------------------------------------------------------------------
-# Envoy Gateway HTTPRoute
+# NebariApp CRs  (recommended on a full Nebari / nebari-operator deployment)
 # ---------------------------------------------------------------------------
+# When nebariApp.enabled=true the chart creates two NebariApp custom resources
+# instead of managing the HTTPRoute directly:
+#   <release>        — routes /oauth2/* and /* to the oauth2-proxy frontend
+#   <release>-api    — routes /api/*     to the webapi (JWT auth in-process)
+# The nebari-operator reconciles each NebariApp into an HTTPRoute, keeping
+# routing lifecycle in sync with cluster state.
+#
+# Set nebariApp.enabled=false (default) for standalone deployments (local dev,
+# CI) where the nebari-operator is not present.  The chart will create the
+# HTTPRoute directly via httpRoute.* values instead.
+nebariApp:
+  enabled: false
+
+  # Controls whether the landing page registers *itself* as a card on the
+  # landing page.  Usually false — the landing page IS the landing page.
+  landingPage:
+    enabled: false
+    displayName: "Nebari"
+    description: "Nebari platform landing page"
+    icon: "kubernetes"
+    category: "Platform"
+    priority: 0
+    visibility: "public"
+
+# ---------------------------------------------------------------------------
+# Envoy Gateway HTTPRoute  (used when nebariApp.enabled=false)
+# ---------------------------------------------------------------------------
+# When nebariApp.enabled=true this section is ignored — the operator creates
+# HTTPRoutes from the NebariApp CRs above.  hostname and tls are still read
+# by the NebariApp template so keep them set even when switching modes.
 httpRoute:
+  # Automatically disabled when nebariApp.enabled=true.
+  # Explicitly set to false if you want neither HTTPRoute nor NebariApp CRs.
   enabled: true
   # Name of the Gateway to attach to.
   gatewayName: "envoy-gateway"

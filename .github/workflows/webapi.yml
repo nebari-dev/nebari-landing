@@ -1,8 +1,9 @@
 # webapi — CI/CD
 #
 # Triggers:
-#   push to main        → lint → test → build → multi-arch push (:latest + :<sha>)
-#                         chart-lint → (gates docker)
+#   push to main        → lint ─┬─ test ──────────────────────┐
+#                                └─ build (amd64 ‖ arm64) ──┤→ docker → manifest
+#                         chart-lint ──────────────────────────┘
 #   pull_request        → same gates → multi-arch push (:<branch>) → PR comment
 #   workflow_dispatch   → same as push to main
 #
@@ -65,6 +66,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: go.sum
 
       - name: Check formatting
         run: |
@@ -87,6 +89,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
           cache-dependency-path: go.sum
 
       - name: go vet
@@ -117,24 +120,35 @@ jobs:
       - name: Lint Helm chart
         run: helm lint charts/nebari-landing
 
-  # ── Build binary ───────────────────────────────────────────────────────────
+  # ── Build binary — amd64 and arm64 in parallel ─────────────────────────────
+  #
+  # Runs in parallel with `test` (both depend only on `lint`), cutting wall-clock
+  # time. Each arch runs on its native runner so cross-compilation isn't needed.
   build:
-    name: Build
-    runs-on: ubuntu-latest
-    needs: test
+    name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            goarch: amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            goarch: arm64
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
           cache-dependency-path: go.sum
 
-      - name: Build binary (linux/amd64)
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /tmp/webapi ./cmd
-
-      - name: Build binary (linux/arm64)
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/webapi-arm64 ./cmd
+      - name: Build binary (linux/${{ matrix.arch }})
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} go build -o /tmp/webapi-${{ matrix.arch }} ./cmd
 
   # ── Container image — one native-runner job per arch ──────────────────────
   #
@@ -144,7 +158,7 @@ jobs:
   docker:
     name: Docker (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    needs: [build, chart-lint]
+    needs: [test, build, chart-lint]
     strategy:
       fail-fast: false
       matrix:

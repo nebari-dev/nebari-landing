@@ -33,9 +33,10 @@ extraEnv: |
   # KC_HOSTNAME_URL sets the full public-facing base URL that Keycloak embeds in
   # its OIDC discovery doc (issuer, authorization_endpoint, token_endpoint, etc.)
   # and in every redirect. Must match what the browser actually hits.
-  # With 'make port-forward' that is http://localhost:8180/auth.
+  # This placeholder is substituted at deploy time by 'make keycloak-install'
+  # using envsubst, so the value tracks the actual minikube LoadBalancer IP.
   - name: KC_HOSTNAME_URL
-    value: http://localhost:8180/auth
+    value: ${KC_HOSTNAME_URL}
   # Back-channel OIDC calls (token endpoint, jwks) from oauth2-proxy go directly
   # to the cluster-internal service via --oidc-issuer-url in the sidecar args,
   # so KC_HOSTNAME_ADMIN_URL is intentionally omitted — setting it to the internal

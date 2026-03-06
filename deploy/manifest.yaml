@@ -40,9 +40,9 @@ spec:
                     - name: ENABLE_AUTH
                       value: "true"
                     - name: KEYCLOAK_URL
-                      value: https://keycloak.nebari.example.com
+                      value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth
                     - name: KEYCLOAK_ISSUER_URL
-                      value: https://keycloak.nebari.example.com
+                      value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth/realms/nebari
                     - name: KEYCLOAK_REALM
                       value: nebari
                     # Keycloak admin credentials — same Secret + namespace as the operator.
@@ -63,6 +63,8 @@ spec:
                       value: /data/notifications.db
                     - name: PINS_DB_PATH
                       value: /data/pins.db
+                    - name: REDIS_ADDR
+                      value: "nebari-landing-redis-master.nebari-system.svc.cluster.local:6379"
                     - name: PORT
                       value: "8080"
                     - name: HEALTH_INTERVAL

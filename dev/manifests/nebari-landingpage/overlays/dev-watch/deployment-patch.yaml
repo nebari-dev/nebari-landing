@@ -1,0 +1,129 @@
+# Strategic merge patch — swaps the nginx landing page container for a Vite HMR dev server.
+#
+# The local frontend/ directory is made available inside the minikube VM via
+# 'minikube mount frontend/:/mnt/nebari-frontend' (started by 'make dev-watch') and
+# mounted into the pod as a hostPath volume.
+#
+# KEY DESIGN NOTES:
+#
+# 1. node_modules isolation:
+#    The macOS host's node_modules (darwin binaries) is mounted into the Linux
+#    container via the 9p/hostPath volume.  npm treats these as up-to-date and
+#    skips reinstall, causing Vite to silently exit when it tries to load a darwin
+#    native binary on Linux.
+#    Fix: an emptyDir volume is mounted at /app/node_modules, shadowing the macOS
+#    node_modules.  npm install then fetches Linux-native binaries into the emptyDir.
+#
+# 2. Polling file watcher:
+#    9p (minikube mount) does not support inotify, so chokidar must fall back to
+#    polling.  VITE_USE_POLLING=true is passed to vite.config.ts which enables
+#    server.watch.usePolling when that env var is set.
+#
+# Vite detects file changes in the mount and hot-reloads the browser with no pod restart.
+# oauth2-proxy is unchanged — Vite is forced to listen on the same port (8080) as nginx.
+#
+# Apply : make -f dev/Makefile dev-watch
+# Revert: make -f dev/Makefile stop-dev-watch
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nebari-landingpage
+spec:
+  template:
+    spec:
+      # node:22-alpine defaults to root; relax the pod-level non-root requirement.
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+        fsGroup: 0
+      initContainers:
+        # Wait for the minikube mount to be established before starting Vite.
+        # Without this, the main container starts before /mnt/nebari-frontend is populated
+        # and npm fails with ENOENT on package.json.
+        - name: wait-for-mount
+          image: node:22-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for /app/package.json (minikube mount must be running)…"
+              until [ -f /app/package.json ]; do
+                sleep 1
+              done
+              echo "Mount ready — package.json found."
+          volumeMounts:
+            - name: frontend-src
+              mountPath: /app
+            - name: node-modules
+              mountPath: /app/node_modules
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+      containers:
+        - name: nebari-landingpage
+          image: node:22-alpine
+          # Override the imagePullPolicy:Never inherited from the parent dev overlay.
+          # node:22-alpine must be pulled from the registry; it is not loaded into minikube.
+          imagePullPolicy: IfNotPresent
+          # npm install populates the emptyDir node-modules volume with Linux-native
+          # binaries (the macOS node_modules from the 9p mount is shadowed by emptyDir).
+          # VITE_USE_POLLING=true enables chokidar polling for the 9p filesystem.
+          # --force bypasses Vite's module cache to avoid stale transforms on first run.
+          command:
+            - sh
+            - -c
+            - "npm install && exec npm run dev -- --host 0.0.0.0 --port 8080 --force"
+          workingDir: /app
+          env:
+            - name: VITE_USE_POLLING
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: frontend-src
+              mountPath: /app
+            - name: node-modules
+              mountPath: /app/node_modules
+          # npm install + Vite startup on the first run takes ~2-3 min;
+          # use generous initial delays so the probe doesn't kill the pod prematurely.
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 180
+            periodSeconds: 15
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            failureThreshold: 12
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: []
+      volumes:
+        - name: frontend-src
+          hostPath:
+            # Path inside the minikube VM populated by:
+            #   minikube -p <cluster> mount <repo>/frontend:/mnt/nebari-frontend
+            path: /mnt/nebari-frontend
+            type: DirectoryOrCreate
+        - name: node-modules
+          # emptyDir shadows the macOS node_modules from the 9p mount so that
+          # npm install fetches Linux-native binaries into this volume instead.
+          emptyDir: {}

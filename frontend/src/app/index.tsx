@@ -3,12 +3,12 @@ import {
 } from "react";
 
 import
-  Header
-from "../components/header";
+Header
+  from "../components/header";
 
 import
-  Content
-from "../components/content";
+Content
+  from "../components/content";
 
 import { initKeycloak, signIn, keycloak } from "../auth/keycloak";
 
