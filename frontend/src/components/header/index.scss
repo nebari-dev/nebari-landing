@@ -11,6 +11,7 @@ $shadow-3: 0 12px 32px rgba(0 0 0 / 0.14), 0 4px 12px rgba(0 0 0 / 0.08);
     opacity: 0;
     transform: translateY(-6px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -55,7 +56,9 @@ $shadow-3: 0 12px 32px rgba(0 0 0 / 0.14), 0 4px 12px rgba(0 0 0 / 0.08);
   min-width: 0;
   color: inherit;
 
-  &:focus { outline: none; }
+  &:focus {
+    outline: none;
+  }
 }
 
 .app-header__logo {
@@ -79,8 +82,15 @@ $shadow-3: 0 12px 32px rgba(0 0 0 / 0.14), 0 4px 12px rgba(0 0 0 / 0.08);
   text-decoration: none;
   color: inherit;
 
-  &:visited, &:hover, &:active { color: inherit; }
-  &:hover { text-decoration: underline; }
+  &:visited,
+  &:hover,
+  &:active {
+    color: inherit;
+  }
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 .app-header__right {
@@ -255,8 +265,13 @@ $shadow-3: 0 12px 32px rgba(0 0 0 / 0.14), 0 4px 12px rgba(0 0 0 / 0.08);
     background: var(--color-bg-secondary, rgba(0 0 0 / 0.06));
   }
 
-  &:focus { outline: 2px solid transparent; }
-  &:focus-visible { outline: 2px solid var(--color-border-focus, #2491ff); }
+  &:focus {
+    outline: 2px solid transparent;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-border-focus, #2491ff);
+  }
 }
 
 .app-header__avatar {
