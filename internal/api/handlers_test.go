@@ -318,6 +318,7 @@ func TestHandleRequestAccess_NotImplemented(t *testing.T) {
 
 func TestCORSHeaders_PresentOnAllRequests(t *testing.T) {
 	rr := doGet(t, newTestHandler(cache.NewServiceCache()).Routes(), "/api/v1/health")
+	// Default allowedOrigins is ["*"] so the wildcard header must be present.
 	if rr.Header().Get("Access-Control-Allow-Origin") != "*" {
 		t.Error("expected CORS origin header")
 	}
@@ -329,6 +330,38 @@ func TestCORSHeaders_OptionsReturns200(t *testing.T) {
 	newTestHandler(cache.NewServiceCache()).Routes().ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected 200 for OPTIONS, got %d", rr.Code)
+	}
+}
+
+func TestCORSHeaders_AllowedOriginWhitelist_Match(t *testing.T) {
+	h := NewHandler(cache.NewServiceCache(), nil, false, nil, nil,
+		WithAllowedOrigins([]string{"https://nebari.example.com", "http://localhost:5173"}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	req.Header.Set("Origin", "https://nebari.example.com")
+	rr := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rr, req)
+
+	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "https://nebari.example.com" {
+		t.Errorf("expected specific origin in ACAO header, got %q", got)
+	}
+	if rr.Header().Get("Vary") == "" {
+		t.Error("expected Vary: Origin header when using origin whitelist")
+	}
+}
+
+func TestCORSHeaders_AllowedOriginWhitelist_NoMatch(t *testing.T) {
+	h := NewHandler(cache.NewServiceCache(), nil, false, nil, nil,
+		WithAllowedOrigins([]string{"https://nebari.example.com"}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	req.Header.Set("Origin", "https://evil.example.com")
+	rr := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rr, req)
+
+	// Origin not in whitelist — no Access-Control-Allow-Origin header
+	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("expected no ACAO header for unlisted origin, got %q", got)
 	}
 }
 

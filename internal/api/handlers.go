@@ -36,6 +36,13 @@ type Handler struct {
 	// adminGroup is the Keycloak group name whose members may access admin-only endpoints.
 	// Defaults to "admin" when not set.
 	adminGroup string
+	// allowedOrigins is the list of Origins permitted by the CORS middleware.
+	// Use ["*"] (default) to allow all origins, or supply specific origins such
+	// as ["https://nebari.example.com"] for stricter enforcement.
+	// In production the browser always hits the same external hostname whether
+	// it talks to the frontend or /api/*, so CORS is not triggered. This flag
+	// is primarily useful for local Vite dev (localhost:5173 → localhost:8080).
+	allowedOrigins []string
 }
 
 // HandlerOption configures optional Handler fields.
@@ -67,16 +74,30 @@ func WithKeycloakAdminClient(c *webkeycloak.Client) HandlerOption {
 	return func(h *Handler) { h.keycloakClient = c }
 }
 
+// WithAllowedOrigins sets the list of Origins the CORS middleware will accept.
+// Pass ["*"] (the default) to allow all origins, or one or more explicit
+// origins (e.g. ["https://nebari.example.com", "http://localhost:5173"]) to
+// enforce a whitelist. Requests whose Origin header is not in the list will
+// not receive Access-Control-Allow-Origin in the response.
+func WithAllowedOrigins(origins []string) HandlerOption {
+	return func(h *Handler) {
+		if len(origins) > 0 {
+			h.allowedOrigins = origins
+		}
+	}
+}
+
 // NewHandler creates a new API handler.
 // pinStore may be nil; when nil the /api/v1/pins endpoints return 501.
 func NewHandler(serviceCache *cache.ServiceCache, jwtValidator *auth.JWTValidator, enableAuth bool, hub *wshub.Hub, pinStore *pins.PinStore, opts ...HandlerOption) *Handler {
 	h := &Handler{
-		cache:        serviceCache,
-		jwtValidator: jwtValidator,
-		enableAuth:   enableAuth,
-		hub:          hub,
-		pinStore:     pinStore,
-		adminGroup:   "admin",
+		cache:          serviceCache,
+		jwtValidator:   jwtValidator,
+		enableAuth:     enableAuth,
+		hub:            hub,
+		pinStore:       pinStore,
+		adminGroup:     "admin",
+		allowedOrigins: []string{"*"},
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -120,7 +141,7 @@ func (h *Handler) Routes() http.Handler {
 		http.NotFound(w, r)
 	})
 
-	return corsMiddleware(mux)
+	return corsMiddleware(h.allowedOrigins)(mux)
 }
 
 // ServiceView is the client-facing representation of a service.
@@ -891,17 +912,37 @@ func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.Cla
 	return claims, true
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	allowAll := len(allowedOrigins) == 1 && allowedOrigins[0] == "*"
+	allowedSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		allowedSet[o] = struct{}{}
+	}
 
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
 
-		next.ServeHTTP(w, r)
-	})
+			if allowAll {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else if origin != "" {
+				if _, ok := allowedSet[origin]; ok {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					// Vary: Origin tells caches the response differs by origin
+					w.Header().Add("Vary", "Origin")
+				}
+				// Origin not in whitelist → no ACAO header; browser blocks the response
+			}
+
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
