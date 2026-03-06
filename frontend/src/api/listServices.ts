@@ -19,7 +19,12 @@ export
 async function listServices(): Promise<Service[]> {
   
   // get the API_BASE_URL from the environment file
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+  // This section should be passed in as an environment vatiable
+  // const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+  // Temporary url for the backend
+  const API_BASE_URL= "http://webapi.nebari-system.svc.cluster.local:8080"
 
   // Guard against API url missing
   if (!API_BASE_URL) {
@@ -29,6 +34,7 @@ async function listServices(): Promise<Service[]> {
   // Fetch the resource
   const resp = await fetch(`${API_BASE_URL}/services`, {
     method: "GET",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
     },
