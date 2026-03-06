@@ -1,21 +1,9 @@
-import Keycloak from "keycloak-js";
-
-export const keycloak = new Keycloak({
-  url: import.meta.env.VITE_KEYCLOAK_URL,
-  realm: import.meta.env.VITE_KEYCLOAK_REALM,
-  clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID,
-});
-
-let keycloakInitPromise: Promise<boolean> | null = null;
-
-export function initKeycloak() {
-  if (!keycloakInitPromise) {
-    keycloakInitPromise = keycloak.init({
-      onLoad: "check-sso",
-    });
-  }
-  return keycloakInitPromise;
-}
+// Keycloak connection settings — baked in at build time via Vite.
+// Defined as ARG/ENV in dev/Dockerfile; see VITE_KEYCLOAK_* in dev/Makefile
+// for local defaults.
+export const KEYCLOAK_URL       = import.meta.env.VITE_KEYCLOAK_URL       ?? "";
+export const KEYCLOAK_REALM     = import.meta.env.VITE_KEYCLOAK_REALM     ?? "";
+export const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID ?? "";
 
 export function signIn() {
   // rd = where to send the browser after auth finishes

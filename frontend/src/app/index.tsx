@@ -1,27 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 import Header from "../components/header";
 import Content from "../components/content";
 
-import { initKeycloak } from "../auth/keycloak";
 import { useUser } from "../auth/user";
 
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isAuthReady, setIsAuthReady] = useState(false);
 
-  useEffect(() => {
-    initKeycloak()
-      .then(() => setIsAuthReady(true))
-      .catch(err => { console.error(err); setIsAuthReady(true); });
-  }, []);
-
-  // Fetch user from oauth2-proxy — null when not logged in.
+  // oauth2-proxy enforces auth at the network level — the app only renders
+  // for authenticated users, so there is no auth-init gate needed here.
   const { user } = useUser();
-
-  if (!isAuthReady) {
-    return null;
-  }
 
   return (
     <div className={isDarkMode ? "app-shell app-shell--dark" : "app-shell app-shell--light"}>
