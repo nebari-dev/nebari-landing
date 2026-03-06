@@ -3,28 +3,12 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-ARG VITE_KEYCLOAK_URL
-ARG VITE_KEYCLOAK_REALM
-ARG VITE_KEYCLOAK_CLIENT_ID
-
-ENV VITE_KEYCLOAK_URL=$VITE_KEYCLOAK_URL
-ENV VITE_KEYCLOAK_REALM=$VITE_KEYCLOAK_REALM
-ENV VITE_KEYCLOAK_CLIENT_ID=$VITE_KEYCLOAK_CLIENT_ID
-
 # Install dependencies first (cache layer)
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci --ignore-scripts
 
 # Copy source and build
 COPY frontend/ .
-
-RUN test -n "$VITE_KEYCLOAK_URL" \
-&& test -n "$VITE_KEYCLOAK_REALM" \
-&& test -n "$VITE_KEYCLOAK_CLIENT_ID"
-
-RUN echo "BUILD VITE_KEYCLOAK_URL=$VITE_KEYCLOAK_URL" \
-&& echo "BUILD VITE_KEYCLOAK_REALM=$VITE_KEYCLOAK_REALM" \
-&& echo "BUILD VITE_KEYCLOAK_CLIENT_ID=$VITE_KEYCLOAK_CLIENT_ID"
 
 RUN npm run build
 

@@ -23,6 +23,16 @@ frontend:
   # via the OAuth2 Proxy sidecar; not exposed externally).
   port: 80
 
+  # Keycloak connection settings — rendered into /config.json at deploy time
+  # by the frontend ConfigMap. The frontend fetches this file at startup so
+  # the image is config-agnostic (no build-time VITE_* args needed).
+  keycloak:
+    # Full Keycloak base URL including the /auth path.
+    # e.g. https://keycloak.example.com/auth
+    url: ""
+    realm: "nebari"
+    clientId: "nebari-landing"
+
   resources:
     requests:
       cpu: 50m

@@ -151,6 +151,12 @@ spec:
               mountPath: /var/cache/nginx
             - name: nginx-run
               mountPath: /var/run
+            # Mounts the Helm-rendered config.json from the ConfigMap, overriding
+            # the placeholder baked into the image at build time.
+            - name: frontend-config
+              mountPath: /usr/share/nginx/html/config.json
+              subPath: config.json
+              readOnly: true
 
       volumes:
         - name: nginx-tmp
@@ -159,6 +165,9 @@ spec:
           emptyDir: {}
         - name: nginx-run
           emptyDir: {}
+        - name: frontend-config
+          configMap:
+            name: {{ include "nebari-landing.fullname" . }}-frontend-config
 
       terminationGracePeriodSeconds: 10
 {{- end }}

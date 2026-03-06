@@ -169,10 +169,6 @@ cluster-delete:
 
 # ── Image build & load ────────────────────────────────────────────────────────
 
-VITE_KEYCLOAK_URL      ?= http://localhost:8180/auth
-VITE_KEYCLOAK_REALM    ?= nebari
-VITE_KEYCLOAK_CLIENT_ID?= nebari-landingpage
-
 ## image-build: build webapi and frontend images and load them into minikube
 image-build:
 	@echo "→  Building webapi image $(WEBAPI_IMAGE) …"

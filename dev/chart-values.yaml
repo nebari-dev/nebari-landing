@@ -55,6 +55,12 @@ frontend:
     tag: dev
     pullPolicy: Never
 
+  keycloak:
+    # Browser-visible Keycloak URL — exposed via port-forward at localhost:8180
+    url: "http://localhost:8180/auth"
+    realm: "nebari"
+    clientId: "nebari-landingpage"
+
   oauth2Proxy:
     # Keycloak realm discovery endpoint — cluster-internal for the pod
     oidcIssuerUrl: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth/realms/nebari"

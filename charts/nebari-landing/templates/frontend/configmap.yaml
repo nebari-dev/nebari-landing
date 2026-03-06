@@ -1,0 +1,21 @@
+{{- if .Values.frontend.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nebari-landing.fullname" . }}-frontend-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nebari-landing.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+data:
+  # Served by nginx at /config.json. The frontend fetches this file at startup
+  # so that Keycloak connection settings can be changed without rebuilding the image.
+  config.json: |
+    {
+      "keycloak": {
+        "url":      {{ .Values.frontend.keycloak.url      | quote }},
+        "realm":    {{ .Values.frontend.keycloak.realm     | quote }},
+        "clientId": {{ .Values.frontend.keycloak.clientId | quote }}
+      }
+    }
+{{- end }}

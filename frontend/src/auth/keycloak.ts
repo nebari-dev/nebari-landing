@@ -1,9 +1,25 @@
-// Keycloak connection settings — baked in at build time via Vite.
-// Defined as ARG/ENV in dev/Dockerfile; see VITE_KEYCLOAK_* in dev/Makefile
-// for local defaults.
-export const KEYCLOAK_URL       = import.meta.env.VITE_KEYCLOAK_URL       ?? "";
-export const KEYCLOAK_REALM     = import.meta.env.VITE_KEYCLOAK_REALM     ?? "";
-export const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID ?? "";
+// Keycloak connection settings are served at runtime from /config.json,
+// which is rendered by the Helm chart (values.yaml → frontend.keycloak.*)
+// and mounted by the frontend ConfigMap into the nginx container.
+// In local dev (Vite dev server / dev-watch) the file comes from
+// frontend/public/config.json, which holds local defaults.
+
+type KeycloakConfig = { url: string; realm: string; clientId: string };
+
+let _config: KeycloakConfig | null = null;
+
+/**
+ * Load Keycloak connection settings from the runtime config endpoint.
+ * Cached after the first successful fetch — safe to call multiple times.
+ */
+export async function loadKeycloakConfig(): Promise<KeycloakConfig> {
+    if (_config) return _config;
+    const res = await fetch("/config.json");
+    if (!res.ok) throw new Error(`Failed to load /config.json: ${res.status}`);
+    const data = await res.json();
+    _config = data.keycloak as KeycloakConfig;
+    return _config;
+}
 
 export function signIn() {
   // rd = where to send the browser after auth finishes
