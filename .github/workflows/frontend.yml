@@ -17,14 +17,12 @@ on:
     paths:
       - frontend/**
       - charts/**
-      - Dockerfile.frontend
       - .github/workflows/frontend.yml
   pull_request:
     branches: [main]
     paths:
       - frontend/**
       - charts/**
-      - Dockerfile.frontend
       - .github/workflows/frontend.yml
   workflow_dispatch:
 
@@ -109,7 +107,7 @@ jobs:
 
   # ── Container image — one native-runner job per arch ──────────────────────
   #
-  # Uses Dockerfile.frontend (multi-stage: node build → nginx serve).
+  # Uses frontend/Dockerfile (multi-stage: node build → nginx serve).
   # Runs on push-to-main AND pull_request.
   # Quay login uses continue-on-error so fork PRs (no secrets) still pass.
   docker:
@@ -155,7 +153,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.frontend
+          file: frontend/Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -188,7 +186,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.frontend
+          file: frontend/Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.branch.outputs.tag }}-${{ matrix.arch }}
@@ -202,7 +200,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.frontend
+          file: frontend/Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.branch.outputs.tag }}
