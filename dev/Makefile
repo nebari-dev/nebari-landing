@@ -58,23 +58,13 @@ KEYCLOAK_CHART_NAME := keycloakx
 KEYCLOAK_VERSION    ?= 7.1.6
 POSTGRESQL_CHART    := oci://registry-1.docker.io/bitnamicharts/postgresql
 POSTGRESQL_VERSION  ?= 18.2.0
+METALLB_VERSION     ?= 0.14.9
 ENVOY_GATEWAY_VERSION ?= v1.3.2
 
 # Dev-only passwords — override via environment or .env file
 KEYCLOAK_ADMIN_PASSWORD ?= nebari-admin-secret
 KEYCLOAK_DB_PASSWORD    ?= keycloak-db-secret
 REALM_ADMIN_PASSWORD    ?= nebari-realm-admin
-
-# MetalLB pinned IPs.
-# These default to the standard minikube docker-driver subnet for the 'nebari-local'
-# profile.  The 'metallb' target auto-detects the actual subnet at runtime via
-# 'minikube ip', so these variables are used only for the 'info' output and for
-# the optional service annotations wired into Helm/kustomize overlays.
-# If you rename the cluster via CLUSTER_NAME the auto-detection handles it;
-# only override these manually if you use a non-docker minikube driver.
-LB_IP_KEYCLOAK  ?= 192.168.49.100
-LB_IP_WEBAPI    ?= 192.168.49.101
-LB_IP_LANDING   ?= 192.168.49.102
 
 # ── Port-forward mode ────────────────────────────────────────────────────────
 # Services are exposed as NodePort. 'make port-forward' (run automatically by
@@ -110,7 +100,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
 
 .PHONY: setup cluster-start cluster-delete \
         image-build \
-        cert-manager metallb envoy-gateway \
+        cert-manager metallb envoy-gateway mkcert-certs \
         postgresql postgresql-secrets \
         keycloak keycloak-install keycloak-realm keycloak-client frontend-client \
         operator-install operator-uninstall \
@@ -123,7 +113,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
 # ── Main entry point ─────────────────────────────────────────────────────────
 
 ## setup: full end-to-end setup (cluster + image + keycloak + app)
-setup: _minikube cluster-start image-build cert-manager metallb envoy-gateway keycloak keycloak-client frontend-client operator-install install test-apps port-forward info
+setup: _minikube cluster-start image-build cert-manager metallb envoy-gateway mkcert-certs keycloak keycloak-client frontend-client operator-install install test-apps info
 	@echo ""
 	@echo "✅  Setup complete. Run 'make info' at any time for URLs."
 
@@ -231,32 +221,26 @@ cert-manager:
 
 # ── MetalLB ───────────────────────────────────────────────────────────────────
 
-## metallb: enable MetalLB minikube addon and configure the local IP pool
-## Auto-detects the minikube node subnet from 'minikube ip' at runtime so the
-## pool is always valid regardless of CLUSTER_NAME or driver-assigned subnet.
-## On WSL2 (mirrored mode) also run 'make minikube-tunnel' so Windows gets routes.
+## metallb: install MetalLB via helm and configure an IPAddressPool + L2Advertisement
+## Uses the CRD-based API (MetalLB v0.13+). Auto-detects the minikube node subnet
+## from 'minikube ip' so the pool is valid regardless of driver or profile.
+## OrbStack, Docker driver, and QEMU driver are all supported.
 metallb:
-	@echo "→  Enabling MetalLB addon …"
-	$(MINIKUBE_BIN) addons enable metallb -p $(CLUSTER_NAME)
-	@echo "→  Waiting for MetalLB controller to become ready …"
-	kubectl rollout status deployment/controller -n metallb-system --timeout=3m
+	@echo "→  Installing MetalLB $(METALLB_VERSION) …"
+	helm repo add metallb https://metallb.github.io/metallb --force-update
+	helm upgrade --install metallb metallb/metallb \
+	  --version $(METALLB_VERSION) \
+	  --namespace metallb-system --create-namespace \
+	  --wait --timeout 3m
 	@MINIKUBE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME)); \
 	 SUBNET=$$(echo "$$MINIKUBE_IP" | sed 's/\.[0-9]*$$//'); \
 	 POOL_START=$${SUBNET}.100; \
 	 POOL_END=$${SUBNET}.150; \
 	 echo "→  Detected minikube subnet: $${SUBNET}.0/24"; \
-	 echo "→  Configuring IP pool $${POOL_START}-$${POOL_END} …"; \
-	 printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  namespace: metallb-system\n  name: config\ndata:\n  config: |\n    address-pools:\n    - name: nebari-local\n      protocol: layer2\n      addresses:\n      - %s-%s\n' \
+	 echo "→  Configuring pool $${POOL_START}–$${POOL_END} …"; \
+	 printf 'apiVersion: metallb.io/v1beta1\nkind: IPAddressPool\nmetadata:\n  name: nebari-local\n  namespace: metallb-system\nspec:\n  addresses:\n  - %s-%s\n---\napiVersion: metallb.io/v1beta1\nkind: L2Advertisement\nmetadata:\n  name: nebari-local\n  namespace: metallb-system\nspec:\n  ipAddressPools:\n  - nebari-local\n' \
 	   "$${POOL_START}" "$${POOL_END}" | kubectl apply -f -; \
-	 echo "✔  MetalLB ready. Pinned IPs:"; \
-	 echo "     Keycloak : $${SUBNET}.100 (override: LB_IP_KEYCLOAK)"; \
-	 echo "     WebAPI   : $${SUBNET}.101 (override: LB_IP_WEBAPI)"; \
-	 echo "     Landing  : $${SUBNET}.102 (override: LB_IP_LANDING)"; \
-	 echo ""; \
-	 echo "     NOTE (WSL2 mirrored mode): the docker bridge is not automatically"; \
-	 echo "     routable from Windows even in mirrored mode. Run:"; \
-	 echo "       make -f dev/Makefile minikube-tunnel"; \
-	 echo "     to inject routes into the Windows networking stack."
+	 echo "✔  MetalLB ready.  pool: $${POOL_START}–$${POOL_END}"
 
 # ── Envoy Gateway ─────────────────────────────────────────────────────────────
 
@@ -285,6 +269,43 @@ envoy-gateway:
 	  echo "   Waiting for IP … (attempt $$i/30)"; \
 	  sleep 3; \
 	done
+
+# ── TLS (mkcert) ─────────────────────────────────────────────────────────────
+
+## mkcert-certs: generate browser-trusted TLS certs for the nip.io hostnames
+## Installs mkcert (via brew) and its local CA into the macOS Keychain, then
+## generates a cert covering both nebari.<ip>.nip.io and keycloak.<ip>.nip.io.
+## Stores the cert as a TLS Secret in envoy-gateway-system, patches the Gateway
+## to add an HTTPS listener on 443, and installs an HTTP→HTTPS redirect route.
+## Requires: Envoy Gateway must already have a LoadBalancer IP.
+mkcert-certs:
+	@echo "→  Checking mkcert …"
+	@command -v mkcert > /dev/null 2>&1 || { echo "→  Installing mkcert …"; brew install mkcert nss; }
+	@mkcert -install
+	@GW_IP=$$(kubectl get gateway envoy-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
+	  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
+	if [ -z "$$GW_IP" ]; then \
+	  echo "✗  Envoy Gateway has no IP yet — run: make -f dev/Makefile envoy-gateway"; exit 1; \
+	fi; \
+	APP_HOST="nebari.$${GW_IP}.nip.io"; \
+	KC_HOST="keycloak.$${GW_IP}.nip.io"; \
+	echo "→  Generating TLS cert for $$APP_HOST and $$KC_HOST …"; \
+	TMPDIR=$$(mktemp -d); \
+	mkcert -cert-file "$$TMPDIR/tls.crt" -key-file "$$TMPDIR/tls.key" "$$APP_HOST" "$$KC_HOST"; \
+	kubectl create secret tls nebari-gateway-tls \
+	  --cert="$$TMPDIR/tls.crt" --key="$$TMPDIR/tls.key" \
+	  --namespace $(ENVOY_GATEWAY_NAMESPACE) \
+	  --dry-run=client -o yaml | kubectl apply -f -; \
+	rm -rf "$$TMPDIR"; \
+	echo "→  Patching Gateway to add HTTPS listener on 443 …"; \
+	kubectl patch gateway envoy-gateway -n $(ENVOY_GATEWAY_NAMESPACE) --type=merge \
+	  -p '{"spec":{"listeners":[{"allowedRoutes":{"namespaces":{"from":"All"}},"name":"http","port":80,"protocol":"HTTP"},{"allowedRoutes":{"namespaces":{"from":"All"}},"name":"https","port":443,"protocol":"HTTPS","tls":{"certificateRefs":[{"name":"nebari-gateway-tls"}],"mode":"Terminate"}}]}}'; \
+	echo "→  Applying HTTP→HTTPS redirect route …"; \
+	printf 'apiVersion: gateway.networking.k8s.io/v1\nkind: HTTPRoute\nmetadata:\n  name: https-redirect\n  namespace: %s\nspec:\n  parentRefs:\n  - name: envoy-gateway\n    sectionName: http\n  rules:\n  - filters:\n    - type: RequestRedirect\n      requestRedirect:\n        scheme: https\n        statusCode: 301\n' \
+	  "$(ENVOY_GATEWAY_NAMESPACE)" | kubectl apply -f -; \
+	echo "✔  TLS ready — browser will trust certs via mkcert local CA"; \
+	echo "   App    : https://$$APP_HOST/"; \
+	echo "   Keycloak: https://$$KC_HOST/auth"
 
 ## keycloak: install PostgreSQL + Keycloak and configure the nebari realm
 keycloak: postgresql keycloak-install keycloak-realm
@@ -323,7 +344,7 @@ keycloak-install:
 	@GW_IP=$$(kubectl get gateway envoy-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
 	  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
 	 if [ -n "$$GW_IP" ]; then \
-	   KC_HOSTNAME_URL="http://keycloak.$${GW_IP}.nip.io/auth"; \
+	   KC_HOSTNAME_URL="https://keycloak.$${GW_IP}.nip.io/auth"; \
 	 else \
 	   KC_HOSTNAME_URL="http://localhost:$(PORT_KEYCLOAK)/auth"; \
 	 fi; \
@@ -372,7 +393,12 @@ keycloak-client:
 frontend-client:
 	@echo "→  Creating nebari-landingpage Keycloak client (dev fallback) …"
 	kubectl delete job keycloak-frontend-client-setup -n $(NAMESPACE_KC) --ignore-not-found
-	PORT_LANDING=$(PORT_LANDING) LANDING_HOST=$(LANDING_HOST) envsubst '$${PORT_LANDING} $${LANDING_HOST}' < dev/keycloak/frontend-client-job.yaml | kubectl apply -f -
+	@GW_IP=$$(kubectl get gateway envoy-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
+	  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
+	LHOST="$(LANDING_HOST)"; \
+	if [ -n "$$GW_IP" ] && [ -z "$$LHOST" ]; then LHOST="nebari.$${GW_IP}.nip.io"; fi; \
+	PORT_LANDING=$(PORT_LANDING) LANDING_HOST="$$LHOST" \
+	  envsubst '$${PORT_LANDING} $${LANDING_HOST}' < dev/keycloak/frontend-client-job.yaml | kubectl apply -f -
 	kubectl wait --for=condition=complete job/keycloak-frontend-client-setup \
 	  -n $(NAMESPACE_KC) --timeout=3m
 	@echo "→  Writing nebari-landing-oauth2-proxy Secret (Helm chart oauth2-proxy input) …"
@@ -426,10 +452,10 @@ install:
 	  HOSTNAME="nebari.$${GW_IP}.nip.io"; \
 	  KC_HOSTNAME="keycloak.$${GW_IP}.nip.io"; \
 	  echo "→  Envoy Gateway at $$GW_IP — app: $$HOSTNAME  keycloak: $$KC_HOSTNAME"; \
-	  ROUTE_ARGS="--set nebariApp.enabled=true --set httpRoute.hostname=$$HOSTNAME --set httpRoute.tls=false"; \
-	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.oauth2Proxy.redirectUrl=http://$${HOSTNAME}/oauth2/callback"; \
-	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.keycloak.url=http://$${KC_HOSTNAME}/auth"; \
-	  ROUTE_ARGS="$$ROUTE_ARGS --set webapi.keycloak.issuerUrl=http://$${KC_HOSTNAME}/auth/realms/nebari"; \
+	  ROUTE_ARGS="--set nebariApp.enabled=true --set httpRoute.hostname=$$HOSTNAME --set httpRoute.tls=true"; \
+	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.oauth2Proxy.redirectUrl=https://$${HOSTNAME}/oauth2/callback"; \
+	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.keycloak.url=https://$${KC_HOSTNAME}/auth"; \
+	  ROUTE_ARGS="$$ROUTE_ARGS --set webapi.keycloak.issuerUrl=https://$${KC_HOSTNAME}/auth/realms/nebari"; \
 	else \
 	  echo "→  No Envoy Gateway found — NebariApp disabled, services via port-forward"; \
 	  ROUTE_ARGS="--set nebariApp.enabled=false"; \
@@ -470,10 +496,10 @@ info:
 	 echo "║  MetalLB : $${SUBNET:-192.168.49}.0/24  pool .100–.150"; \
 	 echo "║"; \
 	 if [ -n "$$GW_IP" ]; then \
-	   echo "║  Landing page  : http://nebari.$${GW_IP}.nip.io/"; \
-	   echo "║  WebAPI        : http://nebari.$${GW_IP}.nip.io/api/v1/"; \
-	   echo "║  Keycloak      : http://keycloak.$${GW_IP}.nip.io/auth"; \
-	   echo "║  Keycloak admin: http://keycloak.$${GW_IP}.nip.io/auth/admin"; \
+	   echo "║  Landing page  : https://nebari.$${GW_IP}.nip.io/"; \
+	   echo "║  WebAPI        : https://nebari.$${GW_IP}.nip.io/api/v1/"; \
+	   echo "║  Keycloak      : https://keycloak.$${GW_IP}.nip.io/auth"; \
+	   echo "║  Keycloak admin: https://keycloak.$${GW_IP}.nip.io/auth/admin"; \
 	   echo "║    admin / $(KEYCLOAK_ADMIN_PASSWORD)   realm user: admin / $(REALM_ADMIN_PASSWORD)"; \
 	   echo "║  Gateway IP    : $$GW_IP  (Envoy Gateway LoadBalancer)"; \
 	 else \

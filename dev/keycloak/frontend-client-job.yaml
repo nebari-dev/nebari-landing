@@ -40,14 +40,11 @@ spec:
             # to the k8s Secret by the Makefile after this job completes.
             - name: CLIENT_SECRET
               value: "nebari-frontend-dev-secret"
-            # MetalLB pinned IP for the landing page service
-            - name: LANDING_IP
-              value: "192.168.49.102"
             # Localhost port used by 'make port-forward' — must match PORT_LANDING (default 8080).
             - name: LOCALHOST_PORT
               value: "${PORT_LANDING}"
-            # Production domain (e.g. nebari.example.com) — leave empty for dev-only installs.
-            # Set via: make frontend-client LANDING_HOST=nebari.example.com
+            # nip.io hostname for the landing page, e.g. nebari.<gw-ip>.nip.io
+            # Populated automatically by 'make frontend-client' from the Gateway IP.
             - name: LANDING_HOST
               value: "${LANDING_HOST}"
             # Must match the NebariApp name — that's the convention the operator uses.
@@ -79,8 +76,8 @@ spec:
               # Always register both port-forward (localhost) and MetalLB IP variants so
               # either dev mode works without re-running this job.
               # Also register the production domain if LANDING_HOST is set.
-              REDIRECT_URIS="[\"http://localhost:${LOCALHOST_PORT}/oauth2/callback\",\"http://${LANDING_IP}/oauth2/callback\""
-              WEB_ORIGINS="[\"http://localhost:${LOCALHOST_PORT}\",\"http://${LANDING_IP}\""
+              REDIRECT_URIS="[\"http://localhost:${LOCALHOST_PORT}/oauth2/callback\""
+              WEB_ORIGINS="[\"http://localhost:${LOCALHOST_PORT}\""
               if [ -n "${LANDING_HOST}" ]; then
                 REDIRECT_URIS="${REDIRECT_URIS},\"https://${LANDING_HOST}/oauth2/callback\""
                 WEB_ORIGINS="${WEB_ORIGINS},\"https://${LANDING_HOST}\""
@@ -165,14 +162,11 @@ spec:
             # Static dev secret — safe only for local minikube
             - name: CLIENT_SECRET
               value: "nebari-frontend-dev-secret"
-            # MetalLB pinned IP for the landing page service
-            - name: LANDING_IP
-              value: "192.168.49.102"
             # Localhost port used by 'make port-forward' — must match PORT_LANDING (default 8080).
             - name: LOCALHOST_PORT
               value: "${PORT_LANDING}"
-            # Production domain (e.g. nebari.example.com) — leave empty for dev-only installs.
-            # Set via: make frontend-client LANDING_HOST=nebari.example.com
+            # nip.io hostname for the landing page, e.g. nebari.<gw-ip>.nip.io
+            # Populated automatically by 'make frontend-client' from the Gateway IP.
             - name: LANDING_HOST
               value: "${LANDING_HOST}"
           command:
@@ -198,11 +192,9 @@ spec:
                 | cut -d'"' -f4)
 
               # Build allowed redirect URI and web origin lists.
-              # Always register both port-forward (localhost) and MetalLB IP variants so
-              # either dev mode works without re-running this job.
-              # Also register the production domain if LANDING_HOST is set.
-              REDIRECT_URIS="[\"http://localhost:${LOCALHOST_PORT}/oauth2/callback\",\"http://${LANDING_IP}/oauth2/callback\""
-              WEB_ORIGINS="[\"http://localhost:${LOCALHOST_PORT}\",\"http://${LANDING_IP}\""
+              # Registers localhost (port-forward) and, if available, the nip.io hostname.
+              REDIRECT_URIS="[\"http://localhost:${LOCALHOST_PORT}/oauth2/callback\""
+              WEB_ORIGINS="[\"http://localhost:${LOCALHOST_PORT}\""
               if [ -n "${LANDING_HOST}" ]; then
                 REDIRECT_URIS="${REDIRECT_URIS},\"https://${LANDING_HOST}/oauth2/callback\""
                 WEB_ORIGINS="${WEB_ORIGINS},\"https://${LANDING_HOST}\""
