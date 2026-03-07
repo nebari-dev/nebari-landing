@@ -8,8 +8,9 @@ metadata:
     {{- include "nebari-landing.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
 data:
-  # Served by nginx at /config.json. The frontend fetches this file at startup
-  # so that Keycloak connection settings can be changed without rebuilding the image.
+  # Served by nginx at /config.json (mounted over /usr/share/nginx/html/config.json).
+  # The frontend fetches this file at startup so that Keycloak connection
+  # settings can be changed without rebuilding the image.
   config.json: |
     {
       "keycloak": {
@@ -19,16 +20,14 @@ data:
       }
     }
 
-  # nginx configuration for the frontend pod.
+  # nginx configuration — injected at runtime so the image stays config-agnostic.
   #
-  # Traffic flow (production):
-  #   Browser → Gateway → frontend Service (oauth2-proxy:4180)
-  #     → oauth2-proxy validates session cookie, injects Authorization: Bearer <token>
+  # Traffic flow:
+  #   Browser → Gateway → oauth2-proxy (4180)
+  #     → injects Authorization: Bearer <token>
   #       → nginx (127.0.0.1:{{ .Values.frontend.port }})
-  #         ├─ /api/*  → proxy_pass to webapi ClusterIP (cluster DNS, never public)
-  #         └─ /*      → serve SPA index.html
-  #
-  # The webapi is never exposed through the Gateway.
+  #           ├─ /api/*  → proxy_pass to webapi ClusterIP (token forwarded)
+  #           └─ /*      → serve SPA index.html
   nginx.conf: |
     worker_processes auto;
     pid /tmp/nginx.pid;
@@ -73,6 +72,8 @@ data:
             gzip_min_length 1024;
 
             # Proxy /api/* to the webapi ClusterIP — never exposed publicly.
+            # oauth2-proxy has already injected Authorization: Bearer <token>
+            # into the request before it reaches nginx.
             location /api/ {
                 proxy_pass         http://{{ include "nebari-landing.fullname" . }}-webapi.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.webapi.service.port }}/api/;
                 proxy_set_header   Authorization      $http_authorization;

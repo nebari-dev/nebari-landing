@@ -131,6 +131,8 @@ spec:
         # ---------------------------------------------------------------
         # frontend — serves static Vite build assets via nginx.
         # Only reachable via oauth2-proxy on 127.0.0.1.
+        # nginx.conf is injected by the Helm ConfigMap; it proxy_passes
+        # /api/* to the webapi ClusterIP with the Authorization header.
         # ---------------------------------------------------------------
         - name: frontend
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
@@ -146,7 +148,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
-          # nginx needs writable /tmp, /var/cache/nginx, and /var/run
+          # nginx needs writable /tmp, /var/cache/nginx, and /var/run.
           volumeMounts:
             - name: nginx-tmp
               mountPath: /tmp
@@ -154,14 +156,12 @@ spec:
               mountPath: /var/cache/nginx
             - name: nginx-run
               mountPath: /var/run
-            # Helm-rendered nginx.conf — includes /api/ proxy_pass to the webapi
-            # ClusterIP so the browser never reaches the webapi directly.
+            # Helm-rendered nginx.conf — proxy_pass /api/ to webapi ClusterIP.
             - name: frontend-config
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
               readOnly: true
-            # Mounts the Helm-rendered config.json from the ConfigMap, overriding
-            # the placeholder baked into the image at build time.
+            # Helm-rendered config.json — overrides the baked-in placeholder.
             - name: frontend-config
               mountPath: /usr/share/nginx/html/config.json
               subPath: config.json

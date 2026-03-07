@@ -19,8 +19,8 @@ frontend:
     tag: "latest"
     pullPolicy: IfNotPresent
 
-  # Port the static file server listens on *inside the pod* (reachable only
-  # via the OAuth2 Proxy sidecar; not exposed externally).
+  # Port the static file server (nginx) listens on *inside the pod*
+  # (reachable only via the OAuth2 Proxy sidecar; not exposed externally).
   # Must be > 1024 — the nginx container runs as non-root (UID 101) with all
   # capabilities dropped and cannot bind privileged ports.
   port: 8080

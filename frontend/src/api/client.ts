@@ -6,6 +6,7 @@
  *     → oauth2-proxy validates session cookie, injects Authorization: Bearer <token>
  *       → nginx (127.0.0.1:8080)
  *         → /api/* proxy_pass → webapi ClusterIP (cluster DNS, never public)
+ *         → /*     try_files  → SPA index.html
  *
  * The browser never communicates with the webapi directly. All auth token
  * forwarding happens server-side: oauth2-proxy → nginx → webapi.

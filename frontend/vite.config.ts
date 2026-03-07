@@ -49,6 +49,19 @@ export default defineConfig({
       ? { clientPort: Number(process.env.VITE_HMR_CLIENT_PORT ?? 0) || undefined }
       : undefined,
   },
+  // vite preview — allows developers to test the production build locally
+  // with `npm run preview`. This is NOT used in production (nginx handles
+  // proxying in the cluster). Set VITE_WEBAPI_URL to point at a local webapi.
+  preview: {
+    proxy: {
+      "/api": {
+        target: process.env.VITE_WEBAPI_URL ?? "http://localhost:8090",
+        changeOrigin: true,
+        ws: true,
+      },
+    },
+  },
+
   css: {
     preprocessorOptions: {
       scss: {
