@@ -19,5 +19,7 @@ export async function listNotifications(): Promise<Notification[]> {
     throw new Error(`Response: ${resp.status} ${resp.statusText}`);
   }
 
-  return resp.json();
+  // webapi wraps the array: { "notifications": [...] }
+  const json = await resp.json();
+  return Array.isArray(json) ? json : (json.notifications ?? []);
 }
