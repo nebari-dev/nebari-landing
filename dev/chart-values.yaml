@@ -27,8 +27,10 @@ webapi:
   keycloak:
     # Cluster-internal URL for back-channel calls (JWKS fetch, admin API)
     url: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth"
-    # Issuer URL that Keycloak stamps in JWTs (matches KC_HOSTNAME_URL in values.yaml)
-    issuerUrl: "http://localhost:8180/auth"
+    # Issuer URL that Keycloak stamps in JWTs — overridden by 'make install'
+    # via --set with the live nip.io hostname (KC_HOSTNAME_URL in Keycloak values).
+    # Placeholder only; 'make install' sets this to http://keycloak.<ip>.nip.io/auth
+    issuerUrl: "http://keycloak.local/auth"
     realm: "nebari"
     enableAuth: true
     adminGroup: "admin"
@@ -58,8 +60,10 @@ frontend:
     pullPolicy: Never
 
   keycloak:
-    # Browser-visible Keycloak URL — exposed via port-forward at localhost:8180
-    url: "http://localhost:8180/auth"
+    # Browser-visible Keycloak URL — overridden by 'make install' via --set
+    # with the live nip.io hostname (http://keycloak.<gateway-ip>.nip.io/auth).
+    # Placeholder only; ensure 'make install' has run before using the app.
+    url: "http://keycloak.local/auth"
     realm: "nebari"
     clientId: "nebari-landingpage"
 
@@ -77,10 +81,6 @@ frontend:
       - --cookie-secure=false
       - --cookie-samesite=lax
       - --cookie-name=_nebari_session
-      # Browser-visible callback URL — derived from the Envoy Gateway's
-      # nip.io hostname, injected by 'make install' via --set httpRoute.hostname.
-      # Placeholder here; 'make install' always overrides with the live Gateway IP.
-      - --redirect-url=http://localhost:8080/oauth2/callback
       # groups is added via a Keycloak client mapper, not a scope
       - --scope=openid profile email
       # UX

@@ -87,6 +87,9 @@ spec:
             - --email-domain={{ .Values.frontend.oauth2Proxy.emailDomain }}
             - --pass-access-token={{ .Values.frontend.oauth2Proxy.passAccessToken }}
             - --set-authorization-header={{ .Values.frontend.oauth2Proxy.passAccessToken }}
+            {{- if .Values.frontend.oauth2Proxy.redirectUrl }}
+            - --redirect-url={{ .Values.frontend.oauth2Proxy.redirectUrl }}
+            {{- end }}
             {{- range .Values.frontend.oauth2Proxy.extraArgs }}
             - {{ . }}
             {{- end }}

@@ -320,16 +320,27 @@ keycloak-install:
 	@echo "→  Installing Keycloak (codecentric/keycloakx) …"
 	kubectl create namespace $(NAMESPACE_KC) --dry-run=client -o yaml | kubectl apply -f -
 	helm repo add codecentric $(KEYCLOAK_CHART) --force-update
-	@MINIKUBE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME)); \
-	 SUBNET=$$(echo "$$MINIKUBE_IP" | sed 's/\.[0-9]*$$//'); \
-	 export KC_HOSTNAME_URL="http://localhost:8180/auth"; \
+	@GW_IP=$$(kubectl get gateway envoy-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
+	  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
+	 if [ -n "$$GW_IP" ]; then \
+	   KC_HOSTNAME_URL="http://keycloak.$${GW_IP}.nip.io/auth"; \
+	 else \
+	   KC_HOSTNAME_URL="http://localhost:$(PORT_KEYCLOAK)/auth"; \
+	 fi; \
+	 export KC_HOSTNAME_URL; \
 	 echo "→  Keycloak public URL (KC_HOSTNAME_URL): $$KC_HOSTNAME_URL"; \
 	 envsubst < dev/keycloak/values.yaml | \
 	 helm upgrade --install $(HELM_RELEASE_KC) codecentric/$(KEYCLOAK_CHART_NAME) \
 	   --version $(KEYCLOAK_VERSION) \
 	   --namespace $(NAMESPACE_KC) \
 	   --values - \
-	   --wait --timeout 10m
+	   --wait --timeout 10m; \
+	 if [ -n "$$GW_IP" ]; then \
+	   KEYCLOAK_HOSTNAME="keycloak.$${GW_IP}.nip.io"; \
+	   export KEYCLOAK_HOSTNAME; \
+	   echo "→  Applying Keycloak HTTPRoute ($$KEYCLOAK_HOSTNAME) …"; \
+	   envsubst '$$KEYCLOAK_HOSTNAME' < dev/manifests/envoy-gateway/keycloak-httproute.yaml | kubectl apply -f -; \
+	 fi
 	@echo "✔  Keycloak deployed"
 
 ## keycloak-realm: run the kcadm Job to create and populate the nebari realm
@@ -413,8 +424,12 @@ install:
 	  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
 	if [ -n "$$GW_IP" ]; then \
 	  HOSTNAME="nebari.$${GW_IP}.nip.io"; \
-	  echo "→  Envoy Gateway at $$GW_IP — hostname: $$HOSTNAME"; \
+	  KC_HOSTNAME="keycloak.$${GW_IP}.nip.io"; \
+	  echo "→  Envoy Gateway at $$GW_IP — app: $$HOSTNAME  keycloak: $$KC_HOSTNAME"; \
 	  ROUTE_ARGS="--set httpRoute.enabled=true --set httpRoute.hostname=$$HOSTNAME --set httpRoute.tls=false"; \
+	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.oauth2Proxy.redirectUrl=http://$${HOSTNAME}/oauth2/callback"; \
+	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.keycloak.url=http://$${KC_HOSTNAME}/auth"; \
+	  ROUTE_ARGS="$$ROUTE_ARGS --set webapi.keycloak.issuerUrl=http://$${KC_HOSTNAME}/auth/realms/nebari"; \
 	else \
 	  echo "→  No Envoy Gateway found — HTTPRoute disabled, services via port-forward"; \
 	  ROUTE_ARGS="--set httpRoute.enabled=false"; \
@@ -450,32 +465,20 @@ info:
 	@echo "║  Cluster profile : $(CLUSTER_NAME)"
 	@MINIKUBE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME) 2>/dev/null || echo ""); \
 	 SUBNET=$$(echo "$$MINIKUBE_IP" | sed 's/\.[0-9]*$$//'); \
-	 KC_IP=$${SUBNET:-192.168.49}.100; \
-	 API_IP=$${SUBNET:-192.168.49}.101; \
-	 LAND_IP=$${SUBNET:-192.168.49}.102; \
 	 echo "║  Cluster IP      : $$MINIKUBE_IP"; \
 	 echo "║  MetalLB subnet   : $${SUBNET:-192.168.49}.0/24 (pool .100–.150)"; \
-	 echo "║"; \
-	 echo "║  MetalLB LoadBalancer IPs:"; \
-	 echo "║"; \
-	 echo "║  Landing page + oauth2-proxy:"; \
-	 echo "║    http://$${LAND_IP}/"; \
-	 echo "║    SPA token endpoint: http://$${LAND_IP}/auth-token"; \
-	 echo "║"; \
-	 echo "║  WebAPI:"; \
-	 echo "║    http://$${API_IP}:8080/api/v1/services"; \
-	 echo "║    http://$${API_IP}:8080/api/v1/health"; \
-	 echo "║"; \
-	 echo "║  Keycloak admin console:"; \
-	 echo "║    http://$${KC_IP}/auth/admin  (admin / $(KEYCLOAK_ADMIN_PASSWORD))"; \
-	 echo "║    Realm: $(KEYCLOAK_REALM)  /  test user: admin / $(REALM_ADMIN_PASSWORD)"; \
+	 echo "║    Keycloak (LB)  : $${SUBNET:-192.168.49}.100  (gateway traffic only — ClusterIP app svc)"; \
+	 echo "║    Envoy Gateway  : next available IP in pool"; \
 	 echo "║"; \
 	 echo "║  Envoy Gateway:"; \
 	 GW_IP=$$(kubectl get gateway envoy-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
 	   -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
 	 if [ -n "$$GW_IP" ]; then \
-	   echo "║    http://nebari.$${GW_IP}.nip.io/          ← landing page"; \
+	   echo "║    http://nebari.$${GW_IP}.nip.io/          ← landing page (oauth2-proxy)"; \
 	   echo "║    http://nebari.$${GW_IP}.nip.io/api/v1/   ← webapi"; \
+	   echo "║    http://keycloak.$${GW_IP}.nip.io/auth    ← Keycloak"; \
+	   echo "║    http://keycloak.$${GW_IP}.nip.io/auth/admin  (admin / $(KEYCLOAK_ADMIN_PASSWORD))"; \
+	   echo "║    Realm: $(KEYCLOAK_REALM)  /  test user: admin / $(REALM_ADMIN_PASSWORD)"; \
 	   echo "║    (MetalLB IP: $$GW_IP — no port-forward needed)"; \
 	 else \
 	   echo "║    Not running — run: make -f dev/Makefile envoy-gateway"; \
@@ -485,8 +488,8 @@ info:
 	 echo "║"; \
 	 echo "║  Integration tests:"; \
 	 echo "║    python3 dev/webapi_test.py \\"; \
-	 echo "║      --webapi-url http://$${API_IP}:8080 \\"; \
-	 echo "║      --keycloak-url http://$${KC_IP}/auth \\"; \
+	 echo "║      --webapi-url http://nebari.$${GW_IP:-127.0.0.1}.nip.io \\"; \
+	 echo "║      --keycloak-url http://keycloak.$${GW_IP:-127.0.0.1}.nip.io/auth \\"; \
 	 echo "║      -u admin -p $(REALM_ADMIN_PASSWORD)"; \
 	 echo "║"; \
 	 echo "║  Frontend dev (Vite HMR — no cluster required):"; \

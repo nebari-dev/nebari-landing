@@ -72,6 +72,12 @@ frontend:
     # Email domain restriction ("*" allows any authenticated user).
     emailDomain: "*"
 
+    # Callback URL that Keycloak redirects back to after login.
+    # Must match the redirect URI registered for the OIDC client.
+    # Example: https://nebari.example.com/oauth2/callback
+    # 'make install' overrides this via --set with the live nip.io hostname.
+    redirectUrl: ""
+
     # Extra args passed verbatim to the oauth2-proxy binary.
     # Use --skip-auth-route to whitelist paths that must be accessible without auth
     # (e.g. the public landing page). Regex is matched against the full path.

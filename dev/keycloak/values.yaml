@@ -79,10 +79,10 @@ startupProbe: |
   failureThreshold: 60
 
 service:
-  # MetalLB LoadBalancer — pinned to 192.168.49.100, exposed on port 80
-  type: LoadBalancer
+  # ClusterIP — traffic enters via the Envoy Gateway HTTPRoute at
+  # keycloak.<gateway-ip>.nip.io, applied by 'make keycloak-install'.
+  type: ClusterIP
   httpPort: 80
-  loadBalancerIP: "192.168.49.100"
 
 ingress:
   enabled: false
