@@ -17,7 +17,6 @@
 # make frontend-client – create the nebari-landingpage confidential OIDC client + k8s Secret
 #   make operator-install – deploy nebari-operator controller (CRDs + controller manager)
 #   make test-apps      – apply sample NebariApp CRs for local testing
-#   make argocd-apps    – apply ArgoCD Application manifests directly
 #   make install        – deploy nebari-landing via Helm chart (webapi + frontend + Redis)
 #   make uninstall      – delete deployed resources
 #   make cluster-delete – delete the minikube cluster
@@ -115,7 +114,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
         keycloak keycloak-install keycloak-realm keycloak-client frontend-client \
         operator-install operator-uninstall \
         test-apps \
-        argocd-apps install uninstall info \
+        install uninstall info \
         port-forward stop-port-forward \
         minikube-tunnel stop-minikube-tunnel \
         deps-check _minikube
@@ -346,18 +345,6 @@ frontend-client:
 	  --dry-run=client -o yaml | kubectl apply -f -
 	@echo "✔  Keycloak nebari-landingpage client ready"
 
-# ── ArgoCD Application manifests ─────────────────────────────────────────────
-# These are plain Kubernetes CRs (argoproj.io/v1alpha1 Application).
-# The files contain Go-template placeholders ({{ .GitRepoURL }} etc.) that
-# must be substituted before applying.  Use envsubst or your infrastructure
-# templating tool, then run: kubectl apply -f <rendered-file>
-#
-# Example with envsubst:
-#   export GIT_REPO_URL=https://github.com/nebari-dev/nebari-landing
-#   export GIT_BRANCH=main
-#   export GIT_PATH=""
-#   envsubst < manifests/argocd/nebari-landingpage-app.yaml | kubectl apply -f -
-
 # ── Operator + WebAPI ────────────────────────────────────────────────────────
 # Uses kustomize overlays that pull resources directly from the nebari-operator
 # repo (remote URL).  Edit the kustomization.yaml files under
@@ -386,12 +373,6 @@ test-apps:
 	@echo "→  Applying test NebariApp resources …"
 	kubectl apply -f dev/manifests/test-nebariapps.yaml
 	@echo "✔  Test NebariApps applied"
-
-## argocd-apps: apply the rendered ArgoCD Application manifests
-argocd-apps:
-	@echo "→  Applying ArgoCD Application manifests …"
-	kubectl apply -f dev/manifests/argocd/
-	@echo "✔  ArgoCD Application manifests applied"
 
 # ── Landing page ──────────────────────────────────────────────────────────────
 

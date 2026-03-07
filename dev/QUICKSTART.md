@@ -410,12 +410,10 @@ dev/
     │           ├── service-patch.yaml     ← Changes service to LoadBalancer (LB_IP_LANDING)
     │           └── oauth2proxy-secret.yaml
     │
-    ├── nebari-operator/
-    │   ├── operator/               ← Pulls from nebari-operator repo (kustomize remote)
-    │   ├── webapi/                 ← Pulls webapi manifest; patches env + service type (LoadBalancer)
-    │   └── webapi-wsl/             ← Same but NodePort + localhost OIDC URLs (make wsl-setup)
-    │
-    └── argocd/                     ← ArgoCD Application CRs (for GitOps; use envsubst)
+    └── nebari-operator/
+        ├── operator/               ← Pulls from nebari-operator repo (kustomize remote)
+        ├── webapi/                 ← Pulls webapi manifest; patches env + service type (LoadBalancer)
+        └── webapi-wsl/             ← Same but NodePort + localhost OIDC URLs (make wsl-setup)
 ```
 
 
