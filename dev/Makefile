@@ -399,7 +399,10 @@ keycloak: postgresql keycloak-install keycloak-realm
 ## postgresql-secrets: create the k8s secrets required by PostgreSQL and Keycloak
 postgresql-secrets:
 	kubectl create namespace $(NAMESPACE_KC) --dry-run=client -o yaml | kubectl apply -f -
+	# keycloak-admin-credentials: master-realm admin used by Keycloak helm + webapi
+	# admin Keycloak calls (username + admin-password keys).
 	kubectl create secret generic keycloak-admin-credentials \
+	  --from-literal=username=admin \
 	  --from-literal=admin-password=$(KEYCLOAK_ADMIN_PASSWORD) \
 	  --namespace $(NAMESPACE_KC) \
 	  --dry-run=client -o yaml | kubectl apply -f -
@@ -407,7 +410,10 @@ postgresql-secrets:
 	  --from-literal=password=$(KEYCLOAK_DB_PASSWORD) \
 	  --namespace $(NAMESPACE_KC) \
 	  --dry-run=client -o yaml | kubectl apply -f -
+	# nebari-realm-admin-credentials: password for the 'admin' user in the nebari
+	# realm (set by the realm-setup-job via REALM_ADMIN_PASSWORD).
 	kubectl create secret generic nebari-realm-admin-credentials \
+	  --from-literal=username=admin \
 	  --from-literal=password=$(REALM_ADMIN_PASSWORD) \
 	  --namespace $(NAMESPACE_KC) \
 	  --dry-run=client -o yaml | kubectl apply -f -

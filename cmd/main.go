@@ -226,8 +226,8 @@ func main() {
 	mux := handler.Routes()
 
 	server := &http.Server{
-		Addr:        fmt.Sprintf(":%d", port),
-		Handler:     mux,
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: httpAccessLog(mux),
 		ReadTimeout: 15 * time.Second,
 		// WriteTimeout must be 0 when WebSocket connections are active — a non-zero
 		// value causes the http.Server to cancel upgraded connections after the timeout
@@ -259,6 +259,35 @@ func main() {
 	}
 
 	setupLog.Info("Server stopped")
+}
+
+// statusRecorder wraps http.ResponseWriter to capture the written HTTP status code.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+// httpAccessLog is a middleware that logs every HTTP request with method, path,
+// status code, and elapsed duration using the structured logger.
+func httpAccessLog(next http.Handler) http.Handler {
+	log := ctrl.Log.WithName("http")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		log.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", rec.status,
+			"duration", time.Since(start).String(),
+			"remote", r.RemoteAddr,
+		)
+	})
 }
 
 // envStr returns the value of the named environment variable, or def if unset/empty.

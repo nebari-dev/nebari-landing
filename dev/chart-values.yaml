@@ -34,7 +34,10 @@ webapi:
     realm: "nebari"
     enableAuth: true
     adminGroup: "admin"
-    adminSecretName: "nebari-realm-admin-credentials"
+    # keycloak-admin-credentials holds the master-realm admin credentials
+    # (username: admin, admin-password: nebari-admin-secret) that the webapi
+    # uses to call the Keycloak Admin API (e.g. add approved users to groups).
+    adminSecretName: "keycloak-admin-credentials"
     adminSecretNamespace: "keycloak"
 
   # Traffic enters via Envoy Gateway (HTTPRoute); ClusterIP is sufficient.
