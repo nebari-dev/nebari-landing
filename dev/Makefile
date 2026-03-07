@@ -339,17 +339,21 @@ hosts-remove:
 	sudo sed -i '' '/$(APP_HOSTNAME)\|$(KC_HOSTNAME)/d' /etc/hosts
 	@echo "✔  Removed $(APP_HOSTNAME) and $(KC_HOSTNAME) from /etc/hosts"
 
-# ── socat port-forward (macOS OrbStack workaround) ────────────────────────────
-# MetalLB VIP (192.168.49.100) is not reachable from macOS via OrbStack's bridge
-# because the minikube container drops packets to an IP not bound on its eth0.
-# NodePorts on the actual node IP (192.168.49.2) DO work.
-# socat-forward bridges 127.0.0.1:80/443 → node:NODEPORT_80/NODEPORT_443.
-# /etc/hosts points nebari.test/keycloak.test at 127.0.0.1 (hosts-add above).
-# Ports 80 and 443 require sudo on macOS.
+# ── socat port-forward (macOS + OrbStack workaround) ────────────────────────
+# MetalLB assigns the Gateway a VIP (e.g. 192.168.49.100) via L2/ARP, and
+# kube-proxy installs iptables rules for it — but the minikube container's
+# kernel rejects incoming packets destined for that IP because it isn't bound
+# to any interface on eth0. NodePorts on the actual node IP (192.168.49.2)
+# work fine (confirmed: curl to nodeIP:nodePort gets a 301 from Envoy).
+# Solution: socat on 127.0.0.1 bridges the privileged ports to the NodePorts;
+# /etc/hosts maps nebari.test → 127.0.0.1 so the browser hits socat.
+# Ports 80/443 require sudo on macOS. socat-forward re-reads NodePorts each
+# time via label selector, so it doesn't go stale across cluster restarts.
 
 ## socat-forward: forward 127.0.0.1:80 and :443 to the Gateway NodePorts via socat
-## Requires socat (brew install socat) and sudo for privileged ports.
-## Run automatically by 'make setup'. Kill with: make stop-socat-forward
+## Requires socat (brew install socat) and sudo for privileged ports 80/443.
+## Run automatically by 'make setup'. Must be re-run after cluster restart.
+## Kill with: make stop-socat-forward
 socat-forward:
 	@command -v socat > /dev/null 2>&1 || { echo "→  Installing socat …"; brew install socat; }
 	@pkill -f "socat.*$(APP_HOSTNAME)\|socat.*envoy-gateway" 2>/dev/null || true
@@ -560,7 +564,8 @@ info:
 	   echo "║  Keycloak      : https://$(KC_HOSTNAME)/auth"; \
 	   echo "║  Keycloak admin: https://$(KC_HOSTNAME)/auth/admin"; \
 	   echo "║    admin / $(KEYCLOAK_ADMIN_PASSWORD)   realm user: admin / $(REALM_ADMIN_PASSWORD)"; \
-	   echo "║  Gateway IP (MetalLB): $$GW_IP → $(APP_HOSTNAME) $(KC_HOSTNAME)"; \
+	   echo "║  Gateway IP (MetalLB): $$GW_IP → $(APP_HOSTNAME) $(KC_HOSTNAME) (via socat)"; \
+	   echo "║  socat: make stop-socat-forward / make socat-forward to restart"; \
 	 else \
 	   echo "║  Envoy Gateway not found — run: make -f dev/Makefile envoy-gateway"; \
 	   echo "║  Until then, use: make -f dev/Makefile port-forward"; \
