@@ -84,6 +84,20 @@ frontend:
       - --silence-ping-logging=true
       # Public routes — skip auth so unauthenticated users can access /public
       - --skip-auth-route=^/public
+      # Static assets must bypass auth so the browser can load JS/CSS chunks
+      # for public routes without being redirected to Keycloak login.
+      - --skip-auth-route=^/assets/
+      - --skip-auth-route=^/favicon
+      - --skip-auth-route=^/config\.json$
+      # Vite dev-server internal paths (dev-watch mode only).
+      # In production nginx serves pre-built bundles from /assets/ — these
+      # paths don't exist. In dev-watch Vite serves source files directly and
+      # oauth2-proxy would intercept them, breaking HMR and initial page load.
+      - --skip-auth-route=^/@vite/
+      - --skip-auth-route=^/@react-refresh
+      - --skip-auth-route=^/@fs/
+      - --skip-auth-route=^/src/
+      - --skip-auth-route=^/node_modules/
 
   # Expose via MetalLB LoadBalancer
   service:

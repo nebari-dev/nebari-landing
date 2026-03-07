@@ -29,9 +29,9 @@
 #
 # 3. oauth2-proxy upstream port
 #    The upstream arg passed to oauth2-proxy in the chart is
-#    http://127.0.0.1:<frontend.port>. This patch keeps the same
-#    containerPort as the chart default (80), so no chart value needs to
-#    change. Vite is started with --port 80 to match.
+#    http://127.0.0.1:<frontend.port>. frontend.port is set to 8080 (non-root
+#    nginx cannot bind privileged ports). Vite is started with --port 8080 to
+#    match, and containerPort/probe ports are set to 8080 accordingly.
 
 spec:
   template:
@@ -77,11 +77,16 @@ spec:
           command:
             - sh
             - -c
-            - "npm install && exec npm run dev -- --host 0.0.0.0 --port 80 --force"
+            - "npm install && exec npm run dev -- --host 0.0.0.0 --port 8080 --force"
           workingDir: /app
           env:
             - name: VITE_USE_POLLING
               value: "true"
+            # Webapi ClusterIP — Vite proxies /api/ to this URL so the browser's
+            # relative API calls are forwarded server-side with the Authorization
+            # header that oauth2-proxy injects (mirrors what nginx does in prod).
+            - name: WEBAPI_URL
+              value: "http://nebari-landing-webapi.nebari-system.svc.cluster.local:8080"
             # oauth2-proxy injects large auth/cookie headers that exceed Node's
             # default 8 KB HTTP header buffer, causing Vite to respond 431.
             # Raise the limit to 64 KB.
@@ -91,19 +96,19 @@ spec:
             # frontend/public/config.json in dev mode — no VITE_* vars needed).
           ports:
             - name: http
-              containerPort: 80
+              containerPort: 8080
           # Generous probes — npm install + Vite startup takes ~2-3 min.
           livenessProbe:
             httpGet:
               path: /
-              port: 80
+              port: 8080
             initialDelaySeconds: 180
             periodSeconds: 15
             failureThreshold: 6
           readinessProbe:
             httpGet:
               path: /
-              port: 80
+              port: 8080
             initialDelaySeconds: 90
             periodSeconds: 10
             failureThreshold: 12
