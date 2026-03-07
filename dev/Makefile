@@ -462,39 +462,30 @@ info:
 	@echo "╔══════════════════════════════════════════════════════════════╗"
 	@echo "║              Nebari Local Cluster – Quick Info               ║"
 	@echo "╠══════════════════════════════════════════════════════════════╣"
-	@echo "║  Cluster profile : $(CLUSTER_NAME)"
 	@MINIKUBE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME) 2>/dev/null || echo ""); \
 	 SUBNET=$$(echo "$$MINIKUBE_IP" | sed 's/\.[0-9]*$$//'); \
-	 echo "║  Cluster IP      : $$MINIKUBE_IP"; \
-	 echo "║  MetalLB subnet   : $${SUBNET:-192.168.49}.0/24 (pool .100–.150)"; \
-	 echo "║    Keycloak (LB)  : $${SUBNET:-192.168.49}.100  (gateway traffic only — ClusterIP app svc)"; \
-	 echo "║    Envoy Gateway  : next available IP in pool"; \
-	 echo "║"; \
-	 echo "║  Envoy Gateway:"; \
 	 GW_IP=$$(kubectl get gateway envoy-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
 	   -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
+	 echo "║  Cluster : $(CLUSTER_NAME)  ($$MINIKUBE_IP)"; \
+	 echo "║  MetalLB : $${SUBNET:-192.168.49}.0/24  pool .100–.150"; \
+	 echo "║"; \
 	 if [ -n "$$GW_IP" ]; then \
-	   echo "║    http://nebari.$${GW_IP}.nip.io/          ← landing page (oauth2-proxy)"; \
-	   echo "║    http://nebari.$${GW_IP}.nip.io/api/v1/   ← webapi"; \
-	   echo "║    http://keycloak.$${GW_IP}.nip.io/auth    ← Keycloak"; \
-	   echo "║    http://keycloak.$${GW_IP}.nip.io/auth/admin  (admin / $(KEYCLOAK_ADMIN_PASSWORD))"; \
-	   echo "║    Realm: $(KEYCLOAK_REALM)  /  test user: admin / $(REALM_ADMIN_PASSWORD)"; \
-	   echo "║    (MetalLB IP: $$GW_IP — no port-forward needed)"; \
+	   echo "║  Landing page  : http://nebari.$${GW_IP}.nip.io/"; \
+	   echo "║  WebAPI        : http://nebari.$${GW_IP}.nip.io/api/v1/"; \
+	   echo "║  Keycloak      : http://keycloak.$${GW_IP}.nip.io/auth"; \
+	   echo "║  Keycloak admin: http://keycloak.$${GW_IP}.nip.io/auth/admin"; \
+	   echo "║    admin / $(KEYCLOAK_ADMIN_PASSWORD)   realm user: admin / $(REALM_ADMIN_PASSWORD)"; \
+	   echo "║  Gateway IP    : $$GW_IP  (Envoy Gateway LoadBalancer)"; \
 	 else \
-	   echo "║    Not running — run: make -f dev/Makefile envoy-gateway"; \
+	   echo "║  Envoy Gateway not found — run: make -f dev/Makefile envoy-gateway"; \
+	   echo "║  Until then, use: make -f dev/Makefile port-forward"; \
 	 fi; \
 	 echo "║"; \
-	 echo "║  Operator namespace : $(NAMESPACE_OPERATOR)"; \
+	 echo "║  Operator : $(NAMESPACE_OPERATOR)"; \
 	 echo "║"; \
-	 echo "║  Integration tests:"; \
-	 echo "║    python3 dev/webapi_test.py \\"; \
-	 echo "║      --webapi-url http://nebari.$${GW_IP:-127.0.0.1}.nip.io \\"; \
-	 echo "║      --keycloak-url http://keycloak.$${GW_IP:-127.0.0.1}.nip.io/auth \\"; \
-	 echo "║      -u admin -p $(REALM_ADMIN_PASSWORD)"; \
-	 echo "║"; \
-	 echo "║  Frontend dev (Vite HMR — no cluster required):"; \
+	 echo "║  docker-compose (no cluster):"; \
 	 echo "║    make -f dev/Makefile compose-up"; \
-	 echo "║    http://localhost:$(PORT_FRONTEND)/ (keycloak :$(PORT_KEYCLOAK), mockapi :$(PORT_MOCKAPI))"
+	 echo "║    http://localhost:$(PORT_FRONTEND)/  keycloak: :$(PORT_KEYCLOAK)  mockapi: :$(PORT_MOCKAPI)"
 	@echo "╚══════════════════════════════════════════════════════════════╝"
 	@echo ""
 
