@@ -151,6 +151,12 @@ spec:
               mountPath: /var/cache/nginx
             - name: nginx-run
               mountPath: /var/run
+            # Helm-rendered nginx.conf — includes /api/ proxy_pass to the webapi
+            # ClusterIP so the browser never reaches the webapi directly.
+            - name: frontend-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
             # Mounts the Helm-rendered config.json from the ConfigMap, overriding
             # the placeholder baked into the image at build time.
             - name: frontend-config

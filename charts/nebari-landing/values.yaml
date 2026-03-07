@@ -21,7 +21,9 @@ frontend:
 
   # Port the static file server listens on *inside the pod* (reachable only
   # via the OAuth2 Proxy sidecar; not exposed externally).
-  port: 80
+  # Must be > 1024 — the nginx container runs as non-root (UID 101) with all
+  # capabilities dropped and cannot bind privileged ports.
+  port: 8080
 
   # Keycloak connection settings — rendered into /config.json at deploy time
   # by the frontend ConfigMap. The frontend fetches this file at startup so
@@ -75,6 +77,11 @@ frontend:
     # (e.g. the public landing page). Regex is matched against the full path.
     extraArgs:
       - --skip-auth-route=^/public
+      # Static assets must bypass auth so the browser can load JS/CSS chunks
+      # for public routes without being redirected to Keycloak login.
+      - --skip-auth-route=^/assets/
+      - --skip-auth-route=^/favicon
+      - --skip-auth-route=^/config\.json$
     # - --skip-provider-button
 
     # Init container that blocks oauth2-proxy from starting until Keycloak's
