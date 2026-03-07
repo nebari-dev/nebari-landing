@@ -133,6 +133,13 @@ webapi:
     adminSecretName: "nebari-realm-admin-credentials"
     adminSecretNamespace: "keycloak"
 
+  # Comma-separated list of Origins the webapi CORS middleware will accept.
+  # "*" (default) allows all origins — safe because the webapi is ClusterIP-only
+  # and never exposed through the Gateway. Set explicit origins only when running
+  # the Vite dev server directly against a port-forwarded webapi, e.g.:
+  #   allowedOrigins: "http://localhost:5173"
+  allowedOrigins: "*"
+
   healthInterval: 30
 
   resources:

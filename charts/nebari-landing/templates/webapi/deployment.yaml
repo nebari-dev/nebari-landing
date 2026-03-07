@@ -75,6 +75,11 @@ spec:
               value: {{ .Values.webapi.keycloak.adminSecretNamespace | quote }}
             - name: ADMIN_GROUP
               value: {{ .Values.webapi.keycloak.adminGroup | quote }}
+            # CORS — comma-separated allowed origins; "*" permits all.
+            # The webapi is ClusterIP-only (never exposed by the Gateway); this
+            # setting matters only when using a Vite dev server with port-forward.
+            - name: ALLOWED_ORIGINS
+              value: {{ .Values.webapi.allowedOrigins | quote }}
             # Health
             - name: HEALTH_INTERVAL
               value: {{ .Values.webapi.healthInterval | quote }}

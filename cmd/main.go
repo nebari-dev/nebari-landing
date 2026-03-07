@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -60,6 +61,7 @@ func main() {
 		redisAddr      string
 		redisPassword  string
 		redisDB        int
+		allowedOrigins string
 	)
 
 	// Flags fall back to environment variables so the binary works naturally when
@@ -84,6 +86,8 @@ func main() {
 		"Redis password, if any (env: REDIS_PASSWORD)")
 	flag.IntVar(&redisDB, "redis-db", envInt("REDIS_DB", 0),
 		"Redis database index (env: REDIS_DB)")
+	flag.StringVar(&allowedOrigins, "allowed-origins", envStr("ALLOWED_ORIGINS", "*"),
+		"Comma-separated list of allowed CORS origins, or * for all (env: ALLOWED_ORIGINS)")
 
 	opts := zap.Options{
 		Development: true,
@@ -97,6 +101,7 @@ func main() {
 		"port", port,
 		"authEnabled", enableAuth,
 		"healthInterval", healthInterval,
+		"allowedOrigins", allowedOrigins,
 	)
 
 	config, err := ctrl.GetConfig()
@@ -215,6 +220,7 @@ func main() {
 		api.WithAdminGroup(adminGroup),
 		api.WithNotificationStore(notificationStore),
 		api.WithKeycloakAdminClient(keycloakAdminClient),
+		api.WithAllowedOrigins(splitOrigins(allowedOrigins)),
 	)
 
 	mux := handler.Routes()
@@ -288,4 +294,21 @@ func envBool(name string, def bool) bool {
 		return def
 	}
 	return b
+}
+
+// splitOrigins splits a comma-separated ALLOWED_ORIGINS string into a trimmed slice.
+// "*" is returned as a single-element slice so the CORS middleware recognises it
+// as "allow all".
+func splitOrigins(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	if len(out) == 0 {
+		return []string{"*"}
+	}
+	return out
 }
