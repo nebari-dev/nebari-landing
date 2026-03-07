@@ -271,45 +271,47 @@ back to the landing page.
 
 ## Day-to-day workflow
 
-### Hot-reload frontend changes with Vite HMR (dev-watch)
+### Frontend development (docker-compose — no cluster required)
 
-For a tight edit-refresh loop, swap the nginx container for a Vite dev server backed by a live `minikube mount`. File
-changes on the host are picked up instantly — no image rebuild, no pod restart.
-
-```sh
-make -f dev/Makefile dev-watch
-```
-
-What happens:
-1. `minikube mount frontend/:/mnt/nebari-frontend` starts in the background, keeping the host `frontend/` directory in
-   sync with `/mnt/nebari-frontend` inside the minikube VM.
-2. The `dev-watch` kustomize overlay is applied: the `nebari-landingpage` container is replaced by `node:22-alpine`
-   running `npm install && vite --host 0.0.0.0 --port 8080`. The `oauth2-proxy` sidecar is unchanged.
-3. A `wait-for-mount` init container blocks until `package.json` appears under the hostPath volume, preventing Vite from
-   starting before the mount is populated.
-4. Port-forwards are (re)started so the page is available at `http://localhost:8080/`.
-
-Open `http://localhost:8080/`, edit any file under `frontend/src/`, and the browser hot-reloads automatically.
-
-**Check status at any time:**
+For everyday UI work you do **not** need a running cluster. The compose stack
+starts Keycloak, a lightweight mock API (reads `dev/manifests/test-nebariapps.yaml`
+from disk), and the Vite dev server — all with a single command:
 
 ```sh
-make -f dev/Makefile dev-watch-status
+# From the repository root:
+make -f dev/Makefile compose-up
+# — or —
+docker compose -f dev/docker-compose.yaml up --build
 ```
 
-This prints: mount process health, last 20 lines of the mount log, pod phase, init container logs, Vite container logs
-(last 40 lines), and whether `http://localhost:8080/` is reachable.
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Frontend (Vite HMR) | `http://localhost:5173/` | log in as `admin` / `nebari-realm-admin` or `user` / `nebari-user-secret` |
+| Mock API | `http://localhost:8090/api/v1/` | — |
+| Keycloak admin | `http://localhost:8180/auth/admin` | `admin` / `nebari-admin-secret` |
 
-**Revert to the standard nginx image:**
+Edit any file under `frontend/src/` and the browser hot-reloads automatically.
+
+To run the API backend in compose but the frontend natively (fastest HMR):
 
 ```sh
-make -f dev/Makefile stop-dev-watch
+make -f dev/Makefile compose-up-api
+# In a separate terminal:
+VITE_API_URL=http://localhost:8090 npm --prefix frontend run dev
 ```
 
-This restores the `dev` overlay (prebuilt nginx image) and stops the `minikube mount` process.
+Stop the stack:
 
-> **Note:** Vite takes up to ~60 s to start (npm install + initial build). The pod's readiness probe has a 30 s initial
-> delay; if the probe fires before Vite is ready the pod will restart once — that is normal.
+```sh
+make -f dev/Makefile compose-down
+```
+
+To change which services appear in the UI, edit `dev/manifests/test-nebariapps.yaml`
+and restart the `mockapi` container:
+
+```sh
+docker compose -f dev/docker-compose.yaml restart mockapi
+```
 
 
 
@@ -370,16 +372,18 @@ make -f dev/Makefile cluster-delete       # destroy the minikube cluster entirel
 ```
 dev/
 ├── QUICKSTART.md                   ← you are here
-├── Dockerfile                      ← multi-stage: node build → nginx:alpine
-├── nginx.conf                      ← non-root nginx; exposes /auth-token for SPA
 ├── Makefile                        ← all automation targets
 ├── webapi_test.py                  ← integration test suite
+│
+├── docker-compose.yaml             ← compose stack: keycloak + mockapi + frontend
+├── Dockerfile.mockapi              ← multi-stage build for cmd/mockapi
+├── compose/
+│   └── realm.json                  ← Keycloak realm import (nebari-frontend-spa PKCE
+│                                      client, admin + user test accounts)
 │
 ├── keycloak/
 │   ├── values.yaml                 ← Helm values for keycloakx chart
 │   │                                  (LoadBalancer, KC_HOSTNAME_URL)
-│   ├── values-wsl.yaml             ← Overlay for WSL port-forward mode
-│   │                                  (NodePort, localhost URLs, proxy.mode=none)
 │   ├── postgresql-values.yaml      ← Helm values for PostgreSQL chart
 │   ├── realm-setup-job.yaml        ← Job: creates realm, users, groups via kcadm
 │   ├── webapi-client-job.yaml      ← Job: creates 'webapi' public OIDC client
@@ -395,23 +399,15 @@ dev/
     ├── metallb/
     │   └── config.yaml             ← IP pool 192.168.49.100-150 (ConfigMap, v0.9)
     │
-    ├── test-nebariapps.yaml        ← Sample NebariApp CRs loaded into webapi cache
+    ├── test-nebariapps.yaml        ← Sample NebariApp CRs (used by cluster + mockapi)
     │
     ├── nebari-landingpage/
     │   ├── base/                   ← Deployment + Service + ServiceAccount + NebariApp CR
     │   └── overlays/
-    │       ├── dev/                ← MetalLB LoadBalancer overlay (default)
-    │       │   ├── kustomization.yaml
-    │       │   ├── deployment-patch.yaml  ← Adds oauth2-proxy sidecar container
-    │       │   ├── service-patch.yaml     ← Changes service to LoadBalancer (LB_IP_LANDING)
-    │       │   └── oauth2proxy-secret.yaml
-    │       ├── dev-watch/          ← Hot-reload overlay (make dev-watch)
-    │       │   ├── kustomization.yaml     ← Extends dev overlay
-    │       │   └── deployment-patch.yaml  ← Swaps nginx for Vite dev server + hostPath volume
-    │       └── wsl/                ← NodePort + localhost overlay (make wsl-setup)
+    │       └── dev/                ← MetalLB LoadBalancer overlay (default)
     │           ├── kustomization.yaml
-    │           ├── deployment-patch.yaml  ← oauth2-proxy with cluster-internal KC URL
-    │           ├── service-patch.yaml     ← NodePort 30080
+    │           ├── deployment-patch.yaml  ← Adds oauth2-proxy sidecar container
+    │           ├── service-patch.yaml     ← Changes service to LoadBalancer (LB_IP_LANDING)
     │           └── oauth2proxy-secret.yaml
     │
     ├── nebari-operator/
