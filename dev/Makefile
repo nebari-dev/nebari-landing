@@ -77,6 +77,9 @@ LB_IP_LANDING   ?= 192.168.49.102
 PORT_KEYCLOAK  ?= 8180
 PORT_WEBAPI    ?= 8090
 PORT_LANDING   ?= 8080
+# docker-compose dev stack ports
+PORT_MOCKAPI   ?= 8090
+PORT_FRONTEND  ?= 5173
 # Optional production domain (e.g. nebari.example.com) — leave empty for local-only installs.
 # Set via: make frontend-client LANDING_HOST=nebari.example.com
 LANDING_HOST   ?=
@@ -633,3 +636,76 @@ stop-minikube-tunnel:
 ## help: list all documented targets
 help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## //' | column -t -s ':'
+
+# ── docker-compose dev stack ──────────────────────────────────────────────────
+# Lightweight alternative to the full minikube cluster for frontend development.
+# No Kubernetes required — just Docker.
+#
+# Services:
+#   keycloak   http://localhost:8180/auth  (admin / nebari-admin-secret)
+#   mockapi    http://localhost:8090       (reads test-nebariapps.yaml from disk)
+#   frontend   http://localhost:5173       (Vite HMR, bind-mount from ./frontend)
+#
+# Run all three:     make -f dev/Makefile compose-up
+# Skip the frontend container (run npm run dev locally instead):
+#   make -f dev/Makefile compose-up-api
+# Then in a separate terminal:
+#   VITE_API_URL=http://localhost:8090 npm --prefix frontend run dev
+
+COMPOSE_FILE := dev/docker-compose.yaml
+
+.PHONY: compose-up compose-up-api compose-down compose-build compose-logs compose-info
+
+## compose-up: start the full docker-compose dev stack (keycloak + mockapi + frontend)
+compose-up:
+	@echo "→  Starting docker-compose dev stack …"
+	docker compose -f $(COMPOSE_FILE) up --build -d
+	@$(MAKE) -f dev/Makefile compose-info
+
+## compose-up-api: start only keycloak + mockapi (run frontend locally with npm)
+compose-up-api:
+	@echo "→  Starting keycloak + mockapi …"
+	docker compose -f $(COMPOSE_FILE) up --build -d keycloak mockapi
+	@echo ""
+	@echo "✔  Backend services running. Start the frontend locally:"
+	@echo "     VITE_API_URL=http://localhost:8090 npm --prefix frontend run dev"
+	@echo ""
+	@$(MAKE) -f dev/Makefile compose-info
+
+## compose-down: stop and remove all compose containers
+compose-down:
+	docker compose -f $(COMPOSE_FILE) down
+	@echo "✔  docker-compose stack stopped"
+
+## compose-build: rebuild images without starting
+compose-build:
+	docker compose -f $(COMPOSE_FILE) build
+
+## compose-logs: tail logs from all compose services
+compose-logs:
+	docker compose -f $(COMPOSE_FILE) logs -f
+
+## compose-info: print URLs and credentials for the docker-compose stack
+compose-info:
+	@echo ""
+	@echo "╔══════════════════════════════════════════════════════════════╗"
+	@echo "║           Nebari docker-compose Dev Stack                    ║"
+	@echo "╠══════════════════════════════════════════════════════════════╣"
+	@echo "║  Keycloak admin console:                                     ║"
+	@echo "║    http://localhost:$(PORT_KEYCLOAK)/auth/admin              ║"
+	@echo "║    master admin : admin / $${KEYCLOAK_ADMIN_PASSWORD:-nebari-admin-secret}"
+	@echo "║    Realm: nebari                                              ║"
+	@echo "║      user: admin / nebari-realm-admin  (group: /admin)       ║"
+	@echo "║      user: user  / nebari-user-secret  (group: /users)       ║"
+	@echo "║                                                               ║"
+	@echo "║  Mock API:                                                    ║"
+	@echo "║    http://localhost:$(PORT_MOCKAPI)/api/v1/services           ║"
+	@echo "║    http://localhost:$(PORT_MOCKAPI)/api/v1/health             ║"
+	@echo "║                                                               ║"
+	@echo "║  Frontend (Vite HMR):                                         ║"
+	@echo "║    http://localhost:$(PORT_FRONTEND)/                          ║"
+	@echo "║    (or run locally: VITE_API_URL=http://localhost:$(PORT_MOCKAPI) npm --prefix frontend run dev)"
+	@echo "║                                                               ║"
+	@echo "║  Stop stack: make -f dev/Makefile compose-down               ║"
+	@echo "╚══════════════════════════════════════════════════════════════╝"
+	@echo ""

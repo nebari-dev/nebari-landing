@@ -1,0 +1,173 @@
+{
+    "realm": "nebari",
+    "enabled": true,
+    "displayName": "Nebari",
+    "displayNameHtml": "<strong>Nebari</strong>",
+    "sslRequired": "none",
+    "registrationAllowed": false,
+    "loginWithEmailAllowed": true,
+    "duplicateEmailsAllowed": false,
+    "resetPasswordAllowed": false,
+    "editUsernameAllowed": false,
+    "bruteForceProtected": false,
+    "accessTokenLifespan": 3600,
+    "refreshTokenMaxReuse": 0,
+    "offlineSessionMaxLifespanEnabled": false,
+    "accessCodeLifespan": 60,
+    "roles": {
+        "realm": [
+            {
+                "name": "admin",
+                "description": "Nebari administrator role"
+            },
+            {
+                "name": "user",
+                "description": "Standard Nebari user role"
+            }
+        ]
+    },
+    "groups": [
+        {
+            "name": "admin",
+            "path": "/admin",
+            "realmRoles": [
+                "admin"
+            ]
+        },
+        {
+            "name": "users",
+            "path": "/users",
+            "realmRoles": [
+                "user"
+            ]
+        }
+    ],
+    "clients": [
+        {
+            "clientId": "nebari-frontend-spa",
+            "name": "Nebari Frontend SPA",
+            "description": "Public PKCE client for the Nebari landing page React SPA",
+            "enabled": true,
+            "publicClient": true,
+            "protocol": "openid-connect",
+            "standardFlowEnabled": true,
+            "implicitFlowEnabled": false,
+            "directAccessGrantsEnabled": false,
+            "serviceAccountsEnabled": false,
+            "attributes": {
+                "pkce.code.challenge.method": "S256"
+            },
+            "redirectUris": [
+                "http://localhost:*",
+                "http://127.0.0.1:*",
+                "https://nebari.example.com/*"
+            ],
+            "webOrigins": [
+                "http://localhost:*",
+                "http://127.0.0.1:*",
+                "https://nebari.example.com"
+            ],
+            "fullScopeAllowed": false,
+            "defaultClientScopes": [
+                "openid",
+                "profile",
+                "email"
+            ],
+            "optionalClientScopes": [
+                "roles"
+            ],
+            "protocolMappers": [
+                {
+                    "name": "groups",
+                    "protocol": "openid-connect",
+                    "protocolMapper": "oidc-group-membership-mapper",
+                    "consentRequired": false,
+                    "config": {
+                        "full.path": "false",
+                        "id.token.claim": "true",
+                        "access.token.claim": "true",
+                        "userinfo.token.claim": "true",
+                        "claim.name": "groups"
+                    }
+                },
+                {
+                    "name": "audience",
+                    "protocol": "openid-connect",
+                    "protocolMapper": "oidc-audience-mapper",
+                    "consentRequired": false,
+                    "config": {
+                        "included.client.audience": "nebari-frontend-spa",
+                        "id.token.claim": "false",
+                        "access.token.claim": "true"
+                    }
+                }
+            ]
+        },
+        {
+            "clientId": "nebari-webapi",
+            "name": "Nebari WebAPI",
+            "description": "Backend client for token validation",
+            "enabled": true,
+            "publicClient": true,
+            "protocol": "openid-connect",
+            "standardFlowEnabled": false,
+            "implicitFlowEnabled": false,
+            "directAccessGrantsEnabled": false,
+            "serviceAccountsEnabled": false,
+            "bearerOnly": true,
+            "fullScopeAllowed": false
+        }
+    ],
+    "users": [
+        {
+            "username": "admin",
+            "enabled": true,
+            "email": "admin@nebari.local",
+            "emailVerified": true,
+            "firstName": "Nebari",
+            "lastName": "Admin",
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "nebari-realm-admin",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "admin"
+            ],
+            "groups": [
+                "/admin"
+            ]
+        },
+        {
+            "username": "user",
+            "enabled": true,
+            "email": "user@nebari.local",
+            "emailVerified": true,
+            "firstName": "Nebari",
+            "lastName": "User",
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "nebari-user-secret",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "user"
+            ],
+            "groups": [
+                "/users"
+            ]
+        }
+    ],
+    "smtpServer": {},
+    "eventsEnabled": false,
+    "adminEventsEnabled": false,
+    "internationalizationEnabled": false,
+    "supportedLocales": [
+        "en"
+    ],
+    "defaultLocale": "en"
+}

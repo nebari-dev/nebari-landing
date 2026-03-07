@@ -33,12 +33,16 @@
     {
       "name": "admin",
       "path": "/admin",
-      "realmRoles": ["admin"]
+      "realmRoles": [
+        "admin"
+      ]
     },
     {
       "name": "users",
       "path": "/users",
-      "realmRoles": ["user"]
+      "realmRoles": [
+        "user"
+      ]
     }
   ],
   "clients": [
@@ -76,7 +80,9 @@
   "adminEventsEnabled": false,
   "adminEventsDetailsEnabled": false,
   "internationalizationEnabled": false,
-  "supportedLocales": ["en"],
+  "supportedLocales": [
+    "en"
+  ],
   "defaultLocale": "en",
   "accessTokenLifespan": 300,
   "refreshTokenMaxReuse": 0,

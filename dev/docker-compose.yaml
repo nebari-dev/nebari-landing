@@ -1,0 +1,110 @@
+##############################################################################
+# Nebari Landing – docker-compose dev stack
+#
+# Replaces the full minikube cluster for frontend development.
+# No Kubernetes required — just Docker.
+#
+# Usage:
+#   docker compose -f dev/docker-compose.yaml up
+#
+# Services:
+#   keycloak  → http://localhost:8180/auth    (admin: admin / nebari-admin-secret)
+#   mockapi   → http://localhost:8090        (reads dev/manifests/test-nebariapps.yaml)
+#   frontend  → http://localhost:5173        (Vite HMR, bind-mounted from ./frontend/src)
+#
+# Credentials (dev-only defaults):
+#   Keycloak master admin : admin / nebari-admin-secret
+#   Nebari realm user     : admin / nebari-realm-admin   (member of /admin group)
+#   Nebari realm user     : user  / nebari-user-secret   (member of /users group)
+#
+# The frontend SPA authenticates directly via Keycloak PKCE (no oauth2-proxy
+# needed for dev). Config is read from frontend/public/config.json at browser
+# load time; the Keycloak URL there must be reachable from the browser:
+#   http://localhost:8180/auth  ← correct for this compose stack
+#
+# To run the frontend natively instead (faster startup, same HMR):
+#   docker compose -f dev/docker-compose.yaml up keycloak mockapi
+#   VITE_API_URL=http://localhost:8090 npm --prefix frontend run dev
+##############################################################################
+
+name: nebari-dev
+
+services:
+
+  # ── Keycloak ────────────────────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      # Master realm bootstrap credentials
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:-nebari-admin-secret}"
+      # HTTP / hostname
+      KC_HTTP_PORT: "8080"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      # Use H2 embedded DB for dev (no PostgreSQL dependency)
+      KC_DB: dev-mem
+    volumes:
+      # realm.json is automatically imported by --import-realm on first start.
+      - ./compose/realm.json:/opt/keycloak/data/import/nebari-realm.json:ro
+    ports:
+      - "${PORT_KEYCLOAK:-8180}:8080"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          curl -sf http://localhost:8080/auth/health/ready \
+            -o /dev/null 2>&1 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+
+  # ── Mock API ────────────────────────────────────────────────────────────────
+  # Serves the same endpoints as the real nebari-landing webapi but uses local
+  # YAML fixtures instead of a live Kubernetes cluster. JWT signatures are NOT
+  # validated (payload is decoded to extract username / groups for visibility
+  # filtering, so the auth UX is realistic without needing JWKS connectivity).
+  mockapi:
+    build:
+      context: ..
+      dockerfile: dev/Dockerfile.mockapi
+    environment:
+      PORT: "8090"
+      SERVICES_FILE: /data/services.yaml
+    volumes:
+      - ../dev/manifests/test-nebariapps.yaml:/data/services.yaml:ro
+    ports:
+      - "${PORT_MOCKAPI:-8090}:8090"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+  # Vite dev server with HMR. Source files are bind-mounted from the host so
+  # any edit is reflected in the browser immediately without a container rebuild.
+  #
+  # Alternatively, run npm --prefix frontend run dev locally (faster startup)
+  # and skip this service:
+  #   docker compose -f dev/docker-compose.yaml up keycloak mockapi
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      # Proxy /api/* to the mockapi container (picked up by vite.config.ts).
+      VITE_API_URL: "http://mockapi:8090"
+    volumes:
+      # Bind-mount source; node_modules lives in a named volume to avoid the
+      # host overwriting the container's native binaries on Linux.
+      - ../frontend:/app
+      - frontend_nm:/app/node_modules
+    ports:
+      - "${PORT_FRONTEND:-5173}:5173"
+    depends_on:
+      - mockapi
+
+volumes:
+  frontend_nm:

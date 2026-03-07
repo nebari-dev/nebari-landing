@@ -1,3 +1,6 @@
+# Go build artifacts
+/mockapi
+
 # Go test artifacts
 coverage.out
 *.test
