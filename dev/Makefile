@@ -426,13 +426,13 @@ install:
 	  HOSTNAME="nebari.$${GW_IP}.nip.io"; \
 	  KC_HOSTNAME="keycloak.$${GW_IP}.nip.io"; \
 	  echo "→  Envoy Gateway at $$GW_IP — app: $$HOSTNAME  keycloak: $$KC_HOSTNAME"; \
-	  ROUTE_ARGS="--set httpRoute.enabled=true --set httpRoute.hostname=$$HOSTNAME --set httpRoute.tls=false"; \
+	  ROUTE_ARGS="--set nebariApp.enabled=true --set httpRoute.hostname=$$HOSTNAME --set httpRoute.tls=false"; \
 	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.oauth2Proxy.redirectUrl=http://$${HOSTNAME}/oauth2/callback"; \
 	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.keycloak.url=http://$${KC_HOSTNAME}/auth"; \
 	  ROUTE_ARGS="$$ROUTE_ARGS --set webapi.keycloak.issuerUrl=http://$${KC_HOSTNAME}/auth/realms/nebari"; \
 	else \
-	  echo "→  No Envoy Gateway found — HTTPRoute disabled, services via port-forward"; \
-	  ROUTE_ARGS="--set httpRoute.enabled=false"; \
+	  echo "→  No Envoy Gateway found — NebariApp disabled, services via port-forward"; \
+	  ROUTE_ARGS="--set nebariApp.enabled=false"; \
 	fi; \
 	helm upgrade --install $(HELM_RELEASE) charts/nebari-landing \
 	  --namespace $(NAMESPACE_APP) \

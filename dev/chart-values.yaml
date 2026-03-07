@@ -44,10 +44,18 @@ webapi:
     type: ClusterIP
 
 # ---------------------------------------------------------------------------
-# NebariApp CRs — disabled for local dev (nebari-operator not running)
+# NebariApp CRs — operator creates the HTTPRoutes from these
 # ---------------------------------------------------------------------------
+# With nebariApp.enabled=true the chart emits NebariApp CRs for frontend
+# and webapi. The nebari-operator reconciles them into Gateway API HTTPRoutes
+# attached to the Envoy Gateway. The chart's own httproute.yaml template is
+# skipped when nebariApp.enabled=true (see the template guard).
+#
+# httpRoute.hostname is still required here — the NebariApp template uses it
+# for spec.hostname. 'make install' overrides it via --set with the live
+# nip.io address derived from the Gateway's MetalLB IP.
 nebariApp:
-  enabled: false
+  enabled: true
 
 # ---------------------------------------------------------------------------
 # Frontend + oauth2-proxy sidecar
@@ -131,15 +139,15 @@ redis:
 # ---------------------------------------------------------------------------
 # Envoy Gateway HTTPRoute
 # ---------------------------------------------------------------------------
-# httpRoute.enabled and httpRoute.hostname are injected at helm-install time
-# by 'make install', which queries the Gateway's LoadBalancer IP and builds
-# a nip.io hostname (e.g. nebari.192-168-49-101.nip.io).
-# If Envoy Gateway is absent, 'make install' sets enabled=false and the
-# individual services fall back to port-forward access.
+# With nebariApp.enabled=true above, the chart's httproute.yaml template is
+# NOT rendered (guard: httpRoute.enabled && !nebariApp.enabled).
+# The operator creates the actual HTTPRoutes by reconciling the NebariApp CRs.
 #
-# TLS is terminated by the Gateway; set tls=true when the listener uses HTTPS.
+# httpRoute.hostname and httpRoute.tls are still read by the NebariApp
+# template (spec.hostname / spec.routing.tls.enabled), so they must be set.
+# 'make install' injects them via --set at deploy time.
 httpRoute:
-  enabled: false          # overridden by 'make install' at deploy time
+  enabled: false          # never enable — operator owns routing when nebariApp=true
   gatewayName: "envoy-gateway"
   gatewayNamespace: "envoy-gateway-system"
   hostname: "nebari.local" # overridden by 'make install' with live nip.io hostname
