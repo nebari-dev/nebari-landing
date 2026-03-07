@@ -22,9 +22,7 @@ export default function App() {
       .catch((err) => {
         console.error("listServices failed", err);
       });
-  })
-
-  console.log(services)
+  }, [])
 
   return (
     <div className={isDarkMode ? "app-shell app-shell--dark" : "app-shell app-shell--light"}>
@@ -33,7 +31,7 @@ export default function App() {
         onToggleTheme={() => setIsDarkMode((prev) => !prev)}
         user={user}
       />
-      <Content />
+      <Content services={services} />
     </div>
   );
 }
