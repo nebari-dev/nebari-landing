@@ -106,6 +106,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
 .PHONY: setup cluster-start cluster-delete \
         image-build \
         cert-manager metallb envoy-gateway mkcert-certs hosts-add hosts-remove \
+        socat-forward stop-socat-forward \
         postgresql postgresql-secrets \
         keycloak keycloak-install keycloak-realm keycloak-client frontend-client \
         operator-install operator-uninstall \
@@ -118,7 +119,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
 # ── Main entry point ─────────────────────────────────────────────────────────
 
 ## setup: full end-to-end setup (cluster + image + keycloak + app)
-setup: _minikube cluster-start image-build cert-manager metallb envoy-gateway mkcert-certs hosts-add keycloak keycloak-client frontend-client operator-install install test-apps info
+setup: _minikube cluster-start image-build cert-manager metallb envoy-gateway mkcert-certs hosts-add socat-forward keycloak keycloak-client frontend-client operator-install install test-apps info
 	@echo ""
 	@echo "✅  Setup complete. Run 'make info' at any time for URLs."
 
@@ -325,23 +326,57 @@ mkcert-certs:
 
 # ── /etc/hosts management ─────────────────────────────────────────────────────
 
-## hosts-add: add $(APP_HOSTNAME) and $(KC_HOSTNAME) to /etc/hosts pointing at the Gateway IP
-## Called automatically by 'make setup'. Re-run if the Gateway IP changes.
-## Requires sudo to write /etc/hosts.
+## hosts-add: add $(APP_HOSTNAME) and $(KC_HOSTNAME) to /etc/hosts pointing at 127.0.0.1
+## (socat-forward binds on 127.0.0.1 and forwards to the Gateway NodePorts)
+## Called automatically by 'make setup'. Requires sudo to write /etc/hosts.
 hosts-add:
-	@GW_IP=$$(kubectl get gateway nebari-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
-	  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
-	if [ -z "$$GW_IP" ]; then \
-	  echo "✗  Gateway IP not found — run: make -f dev/Makefile envoy-gateway"; exit 1; \
-	fi; \
-	sudo sed -i '' '/$(APP_HOSTNAME)\|$(KC_HOSTNAME)/d' /etc/hosts; \
-	printf '%s %s %s\n' "$$GW_IP" "$(APP_HOSTNAME)" "$(KC_HOSTNAME)" | sudo tee -a /etc/hosts; \
-	echo "✔  /etc/hosts: $$GW_IP → $(APP_HOSTNAME) $(KC_HOSTNAME)"
+	sudo sed -i '' '/$(APP_HOSTNAME)\|$(KC_HOSTNAME)/d' /etc/hosts
+	printf '127.0.0.1 %s %s\n' "$(APP_HOSTNAME)" "$(KC_HOSTNAME)" | sudo tee -a /etc/hosts
+	@echo "✔  /etc/hosts: 127.0.0.1 → $(APP_HOSTNAME) $(KC_HOSTNAME)"
 
 ## hosts-remove: remove dev hostnames ($(APP_HOSTNAME), $(KC_HOSTNAME)) from /etc/hosts
 hosts-remove:
 	sudo sed -i '' '/$(APP_HOSTNAME)\|$(KC_HOSTNAME)/d' /etc/hosts
 	@echo "✔  Removed $(APP_HOSTNAME) and $(KC_HOSTNAME) from /etc/hosts"
+
+# ── socat port-forward (macOS OrbStack workaround) ────────────────────────────
+# MetalLB VIP (192.168.49.100) is not reachable from macOS via OrbStack's bridge
+# because the minikube container drops packets to an IP not bound on its eth0.
+# NodePorts on the actual node IP (192.168.49.2) DO work.
+# socat-forward bridges 127.0.0.1:80/443 → node:NODEPORT_80/NODEPORT_443.
+# /etc/hosts points nebari.test/keycloak.test at 127.0.0.1 (hosts-add above).
+# Ports 80 and 443 require sudo on macOS.
+
+## socat-forward: forward 127.0.0.1:80 and :443 to the Gateway NodePorts via socat
+## Requires socat (brew install socat) and sudo for privileged ports.
+## Run automatically by 'make setup'. Kill with: make stop-socat-forward
+socat-forward:
+	@command -v socat > /dev/null 2>&1 || { echo "→  Installing socat …"; brew install socat; }
+	@pkill -f "socat.*$(APP_HOSTNAME)\|socat.*envoy-gateway" 2>/dev/null || true
+	@NODE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME)); \
+	NP_HTTP=$$(kubectl get svc -n $(ENVOY_GATEWAY_NAMESPACE) \
+	  -l 'gateway.envoyproxy.io/owning-gateway-name=nebari-gateway' \
+	  -o jsonpath='{.items[0].spec.ports[?(@.port==80)].nodePort}' 2>/dev/null || echo ""); \
+	NP_HTTPS=$$(kubectl get svc -n $(ENVOY_GATEWAY_NAMESPACE) \
+	  -l 'gateway.envoyproxy.io/owning-gateway-name=nebari-gateway' \
+	  -o jsonpath='{.items[0].spec.ports[?(@.port==443)].nodePort}' 2>/dev/null || echo ""); \
+	if [ -z "$$NP_HTTP" ] || [ -z "$$NP_HTTPS" ]; then \
+	  echo "✗  Could not find Gateway NodePorts — is envoy-gateway running?"; exit 1; \
+	fi; \
+	echo "→  Forwarding 127.0.0.1:80  → $$NODE_IP:$$NP_HTTP"; \
+	sudo nohup socat TCP-LISTEN:80,bind=127.0.0.1,fork TCP:$$NODE_IP:$$NP_HTTP \
+	  > /tmp/socat-http.log 2>&1 & echo $$! | sudo tee /tmp/socat-http.pid > /dev/null; \
+	echo "→  Forwarding 127.0.0.1:443 → $$NODE_IP:$$NP_HTTPS"; \
+	sudo nohup socat TCP-LISTEN:443,bind=127.0.0.1,fork TCP:$$NODE_IP:$$NP_HTTPS \
+	  > /tmp/socat-https.log 2>&1 & echo $$! | sudo tee /tmp/socat-https.pid > /dev/null; \
+	echo "✔  socat running — http: :80 → :$$NP_HTTP  https: :443 → :$$NP_HTTPS"
+
+## stop-socat-forward: kill the background socat processes
+stop-socat-forward:
+	@if [ -f /tmp/socat-http.pid ];  then sudo kill $$(cat /tmp/socat-http.pid)  2>/dev/null; sudo rm -f /tmp/socat-http.pid;  fi
+	@if [ -f /tmp/socat-https.pid ]; then sudo kill $$(cat /tmp/socat-https.pid) 2>/dev/null; sudo rm -f /tmp/socat-https.pid; fi
+	@sudo pkill -f 'socat TCP-LISTEN:(80|443),bind=127\.0\.0\.1' 2>/dev/null || true
+	@echo "✔  socat port-forwards stopped"
 
 ## keycloak: install PostgreSQL + Keycloak and configure the nebari realm
 keycloak: postgresql keycloak-install keycloak-realm
