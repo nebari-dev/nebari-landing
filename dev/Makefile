@@ -170,14 +170,36 @@ cluster-delete:
 # ── Image build & load ────────────────────────────────────────────────────────
 
 ## image-build: build webapi and frontend images and load them into minikube
+# _minikube-reload: evict pods, remove stale image, load fresh one, restore replicas.
+# $(1) = deployment name suffix (e.g. webapi, frontend)
+# $(2) = pod label selector (e.g. app.kubernetes.io/component=webapi)
+# $(3) = image ref (e.g. $(WEBAPI_IMAGE))
+define _minikube-reload
+	@REPLICAS=$$(kubectl get deploy $(HELM_RELEASE)-$(1) -n $(NAMESPACE_APP) \
+	  -o jsonpath='{.spec.replicas}' 2>/dev/null || echo 0); \
+	if [ "$$REPLICAS" -gt 0 ] 2>/dev/null; then \
+	  echo "→  Scaling $(HELM_RELEASE)-$(1) to 0 to release the stale image …"; \
+	  kubectl scale deployment $(HELM_RELEASE)-$(1) -n $(NAMESPACE_APP) --replicas=0; \
+	  kubectl wait --for=delete pod -l $(2) -n $(NAMESPACE_APP) --timeout=60s 2>/dev/null || true; \
+	fi; \
+	echo "→  Removing old $(3) from minikube (if present) …"; \
+	$(MINIKUBE_BIN) -p $(CLUSTER_NAME) image rm $(3) 2>/dev/null || true; \
+	echo "→  Loading $(3) into minikube …"; \
+	$(MINIKUBE_BIN) -p $(CLUSTER_NAME) image load $(3); \
+	if [ "$$REPLICAS" -gt 0 ] 2>/dev/null; then \
+	  echo "→  Restoring $(HELM_RELEASE)-$(1) to $$REPLICAS replica(s) …"; \
+	  kubectl scale deployment $(HELM_RELEASE)-$(1) -n $(NAMESPACE_APP) --replicas=$$REPLICAS; \
+	fi
+endef
+
 image-build:
 	@echo "→  Building webapi image $(WEBAPI_IMAGE) …"
 	docker build -t $(WEBAPI_IMAGE) -f Dockerfile .
-	$(MINIKUBE_BIN) -p $(CLUSTER_NAME) image load $(WEBAPI_IMAGE)
+	$(call _minikube-reload,webapi,app.kubernetes.io/component=webapi,$(WEBAPI_IMAGE))
 	@echo "→  Building frontend image $(FRONTEND_IMAGE) …"
 	# Build context is frontend/ — Dockerfile lives there and only touches that tree.
 	docker build -t $(FRONTEND_IMAGE) -f frontend/Dockerfile frontend/
-	$(MINIKUBE_BIN) -p $(CLUSTER_NAME) image load $(FRONTEND_IMAGE)
+	$(call _minikube-reload,frontend,app.kubernetes.io/component=frontend,$(FRONTEND_IMAGE))
 	@echo "✔  Images loaded into minikube: $(WEBAPI_IMAGE) $(FRONTEND_IMAGE)"
 
 # ── cert-manager ───────────────────────────────────────────────────────────────────
@@ -374,6 +396,12 @@ install:
 	  --namespace $(NAMESPACE_APP) \
 	  --values dev/chart-values.yaml \
 	  --wait --timeout 5m
+	# Force pods to restart so pullPolicy:Never always picks up the freshly loaded :dev image.
+	# This is a no-op on first install (pods already started above) but essential on re-runs.
+	-kubectl rollout restart deployment/$(HELM_RELEASE)-webapi    -n $(NAMESPACE_APP) 2>/dev/null || true
+	-kubectl rollout restart deployment/$(HELM_RELEASE)-frontend  -n $(NAMESPACE_APP) 2>/dev/null || true
+	-kubectl rollout status  deployment/$(HELM_RELEASE)-webapi    -n $(NAMESPACE_APP) --timeout=2m 2>/dev/null || true
+	-kubectl rollout status  deployment/$(HELM_RELEASE)-frontend  -n $(NAMESPACE_APP) --timeout=2m 2>/dev/null || true
 	@echo "✔  nebari-landing deployed in namespace '$(NAMESPACE_APP)'"
 
 ## uninstall: remove deployed resources (does not delete the cluster)

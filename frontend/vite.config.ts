@@ -4,6 +4,18 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: {
+    // When running in the dev-watch pod (VITE_USE_POLLING=true), Vite takes
+    // nginx's place. Proxy /api/ to the webapi ClusterIP so the browser's
+    // relative-URL API calls are forwarded server-side, with the Authorization
+    // header that oauth2-proxy injected preserved end-to-end.
+    proxy: process.env.VITE_USE_POLLING === "true" ? {
+      "/api": {
+        target: process.env.WEBAPI_URL ?? "http://nebari-landing-webapi.nebari-system.svc.cluster.local:8080",
+        changeOrigin: true,
+        // Forward WebSocket connections for the notifications hub.
+        ws: true,
+      },
+    } : undefined,
     // usePolling is required when the source directory is on a network-mounted
     // filesystem (9p via minikube mount, NFS, etc.) where inotify is not
     // supported.  The VITE_USE_POLLING env var lets us opt-in only inside the
