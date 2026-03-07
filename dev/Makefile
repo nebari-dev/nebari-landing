@@ -61,6 +61,11 @@ POSTGRESQL_VERSION  ?= 18.2.0
 METALLB_VERSION     ?= 0.14.9
 ENVOY_GATEWAY_VERSION ?= v1.3.2
 
+# Dev hostnames — entries are added to /etc/hosts by 'make hosts-add'
+# Override via environment if you prefer different names.
+APP_HOSTNAME       ?= nebari.test
+KC_HOSTNAME        ?= keycloak.test
+
 # Dev-only passwords — override via environment or .env file
 KEYCLOAK_ADMIN_PASSWORD ?= nebari-admin-secret
 KEYCLOAK_DB_PASSWORD    ?= keycloak-db-secret
@@ -100,7 +105,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
 
 .PHONY: setup cluster-start cluster-delete \
         image-build \
-        cert-manager metallb envoy-gateway mkcert-certs \
+        cert-manager metallb envoy-gateway mkcert-certs hosts-add hosts-remove \
         postgresql postgresql-secrets \
         keycloak keycloak-install keycloak-realm keycloak-client frontend-client \
         operator-install operator-uninstall \
@@ -113,7 +118,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
 # ── Main entry point ─────────────────────────────────────────────────────────
 
 ## setup: full end-to-end setup (cluster + image + keycloak + app)
-setup: _minikube cluster-start image-build cert-manager metallb envoy-gateway mkcert-certs keycloak keycloak-client frontend-client operator-install install test-apps info
+setup: _minikube cluster-start image-build cert-manager metallb envoy-gateway mkcert-certs hosts-add keycloak keycloak-client frontend-client operator-install install test-apps info
 	@echo ""
 	@echo "✅  Setup complete. Run 'make info' at any time for URLs."
 
@@ -266,7 +271,7 @@ envoy-gateway:
 	  IP=$$(kubectl get gateway nebari-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
 	    -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
 	  if [ -n "$$IP" ]; then \
-	    echo "✔  Envoy Gateway IP: $$IP  (hostname: nebari.$${IP}.nip.io)"; \
+	    echo "✔  Envoy Gateway IP: $$IP  (run 'make hosts-add' to update /etc/hosts)"; \
 	    break; \
 	  fi; \
 	  echo "   Waiting for IP … (attempt $$i/30)"; \
@@ -275,12 +280,12 @@ envoy-gateway:
 
 # ── TLS (mkcert) ─────────────────────────────────────────────────────────────
 
-## mkcert-certs: generate browser-trusted TLS certs for the nip.io hostnames
+## mkcert-certs: generate browser-trusted TLS certs for $(APP_HOSTNAME) / $(KC_HOSTNAME)
 ## Installs mkcert (via brew) and its local CA into the macOS Keychain, then
-## generates a cert covering both nebari.<ip>.nip.io and keycloak.<ip>.nip.io.
+## generates a cert covering both $(APP_HOSTNAME) and $(KC_HOSTNAME).
 ## Stores the cert as a TLS Secret in envoy-gateway-system, patches the Gateway
 ## to add an HTTPS listener on 443, and installs an HTTP→HTTPS redirect route.
-## MetalLB assigns the Gateway a real IP — no port-forwarding or socat needed.
+## Run 'make hosts-add' to point the hostnames at the Gateway IP in /etc/hosts.
 mkcert-certs:
 	@echo "→  Checking mkcert …"
 	@command -v mkcert > /dev/null 2>&1 || { echo "→  Installing mkcert …"; brew install mkcert nss; }
@@ -299,12 +304,10 @@ mkcert-certs:
 	if [ -z "$$GW_IP" ]; then \
 	  echo "✗  Gateway never received a LoadBalancer IP — is MetalLB running?"; exit 1; \
 	fi; \
-	APP_HOST="nebari.$${GW_IP}.nip.io"; \
-	KC_HOST="keycloak.$${GW_IP}.nip.io"; \
 	echo "→  Gateway IP: $$GW_IP"; \
-	echo "→  Generating TLS cert for $$APP_HOST and $$KC_HOST …"; \
+	echo "→  Generating TLS cert for $(APP_HOSTNAME) and $(KC_HOSTNAME) …"; \
 	CERT_DIR=$$(mktemp -d); \
-	mkcert -cert-file "$$CERT_DIR/tls.crt" -key-file "$$CERT_DIR/tls.key" "$$APP_HOST" "$$KC_HOST"; \
+	mkcert -cert-file "$$CERT_DIR/tls.crt" -key-file "$$CERT_DIR/tls.key" "$(APP_HOSTNAME)" "$(KC_HOSTNAME)"; \
 	kubectl create secret tls nebari-gateway-tls \
 	  --cert="$$CERT_DIR/tls.crt" --key="$$CERT_DIR/tls.key" \
 	  --namespace $(ENVOY_GATEWAY_NAMESPACE) \
@@ -317,8 +320,28 @@ mkcert-certs:
 	printf 'apiVersion: gateway.networking.k8s.io/v1\nkind: HTTPRoute\nmetadata:\n  name: https-redirect\n  namespace: %s\nspec:\n  parentRefs:\n  - name: nebari-gateway\n    sectionName: http\n  rules:\n  - filters:\n    - type: RequestRedirect\n      requestRedirect:\n        scheme: https\n        statusCode: 301\n' \
 	  "$(ENVOY_GATEWAY_NAMESPACE)" | kubectl apply -f -; \
 	echo "✔  TLS ready — browser will trust certs via mkcert local CA"; \
-	echo "   App    : https://$$APP_HOST/"; \
-	echo "   Keycloak: https://$$KC_HOST/auth"
+	echo "   App    : https://$(APP_HOSTNAME)/"; \
+	echo "   Keycloak: https://$(KC_HOSTNAME)/auth"
+
+# ── /etc/hosts management ─────────────────────────────────────────────────────
+
+## hosts-add: add $(APP_HOSTNAME) and $(KC_HOSTNAME) to /etc/hosts pointing at the Gateway IP
+## Called automatically by 'make setup'. Re-run if the Gateway IP changes.
+## Requires sudo to write /etc/hosts.
+hosts-add:
+	@GW_IP=$$(kubectl get gateway nebari-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
+	  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
+	if [ -z "$$GW_IP" ]; then \
+	  echo "✗  Gateway IP not found — run: make -f dev/Makefile envoy-gateway"; exit 1; \
+	fi; \
+	sudo sed -i '' '/$(APP_HOSTNAME)\|$(KC_HOSTNAME)/d' /etc/hosts; \
+	printf '%s %s %s\n' "$$GW_IP" "$(APP_HOSTNAME)" "$(KC_HOSTNAME)" | sudo tee -a /etc/hosts; \
+	echo "✔  /etc/hosts: $$GW_IP → $(APP_HOSTNAME) $(KC_HOSTNAME)"
+
+## hosts-remove: remove dev hostnames ($(APP_HOSTNAME), $(KC_HOSTNAME)) from /etc/hosts
+hosts-remove:
+	sudo sed -i '' '/$(APP_HOSTNAME)\|$(KC_HOSTNAME)/d' /etc/hosts
+	@echo "✔  Removed $(APP_HOSTNAME) and $(KC_HOSTNAME) from /etc/hosts"
 
 ## keycloak: install PostgreSQL + Keycloak and configure the nebari realm
 keycloak: postgresql keycloak-install keycloak-realm
@@ -354,13 +377,7 @@ keycloak-install:
 	@echo "→  Installing Keycloak (codecentric/keycloakx) …"
 	kubectl create namespace $(NAMESPACE_KC) --dry-run=client -o yaml | kubectl apply -f -
 	helm repo add codecentric $(KEYCLOAK_CHART) --force-update
-	@GW_IP=$$(kubectl get gateway nebari-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
-	  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
-	 if [ -n "$$GW_IP" ]; then \
-	   KC_HOSTNAME_URL="https://keycloak.$${GW_IP}.nip.io/auth"; \
-	 else \
-	   KC_HOSTNAME_URL="http://localhost:$(PORT_KEYCLOAK)/auth"; \
-	 fi; \
+	@KC_HOSTNAME_URL="https://$(KC_HOSTNAME)/auth"; \
 	 export KC_HOSTNAME_URL; \
 	 echo "→  Keycloak public URL (KC_HOSTNAME_URL): $$KC_HOSTNAME_URL"; \
 	 envsubst < dev/keycloak/values.yaml | \
@@ -368,13 +385,11 @@ keycloak-install:
 	   --version $(KEYCLOAK_VERSION) \
 	   --namespace $(NAMESPACE_KC) \
 	   --values - \
-	   --wait --timeout 10m; \
-	 if [ -n "$$GW_IP" ]; then \
-	   KEYCLOAK_HOSTNAME="keycloak.$${GW_IP}.nip.io"; \
-	   export KEYCLOAK_HOSTNAME; \
-	   echo "→  Applying Keycloak HTTPRoute ($$KEYCLOAK_HOSTNAME) …"; \
-	   envsubst '$$KEYCLOAK_HOSTNAME' < dev/manifests/envoy-gateway/keycloak-httproute.yaml | kubectl apply -f -; \
-	 fi
+	   --wait --timeout 10m
+	@KEYCLOAK_HOSTNAME="$(KC_HOSTNAME)"; \
+	 export KEYCLOAK_HOSTNAME; \
+	 echo "→  Applying Keycloak HTTPRoute ($$KEYCLOAK_HOSTNAME) …"; \
+	 envsubst '$$KEYCLOAK_HOSTNAME' < dev/manifests/envoy-gateway/keycloak-httproute.yaml | kubectl apply -f -
 	@echo "✔  Keycloak deployed"
 
 ## keycloak-realm: run the kcadm Job to create and populate the nebari realm
@@ -406,10 +421,8 @@ keycloak-client:
 frontend-client:
 	@echo "→  Creating nebari-landingpage Keycloak client (dev fallback) …"
 	kubectl delete job keycloak-frontend-client-setup -n $(NAMESPACE_KC) --ignore-not-found
-	@GW_IP=$$(kubectl get gateway nebari-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
-	  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
-	LHOST="$(LANDING_HOST)"; \
-	if [ -n "$$GW_IP" ] && [ -z "$$LHOST" ]; then LHOST="nebari.$${GW_IP}.nip.io"; fi; \
+	@LHOST="$(LANDING_HOST)"; \
+	if [ -z "$$LHOST" ]; then LHOST="$(APP_HOSTNAME)"; fi; \
 	PORT_LANDING=$(PORT_LANDING) LANDING_HOST="$$LHOST" \
 	  envsubst '$${PORT_LANDING} $${LANDING_HOST}' < dev/keycloak/frontend-client-job.yaml | kubectl apply -f -
 	kubectl wait --for=condition=complete job/keycloak-frontend-client-setup \
@@ -462,13 +475,11 @@ install:
 	@GW_IP=$$(kubectl get gateway nebari-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
 	  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
 	if [ -n "$$GW_IP" ]; then \
-	  HOSTNAME="nebari.$${GW_IP}.nip.io"; \
-	  KC_HOSTNAME="keycloak.$${GW_IP}.nip.io"; \
-	  echo "→  Envoy Gateway at $$GW_IP — app: $$HOSTNAME  keycloak: $$KC_HOSTNAME"; \
-	  ROUTE_ARGS="--set nebariApp.enabled=false --set httpRoute.enabled=true --set httpRoute.hostname=$$HOSTNAME --set httpRoute.tls=true"; \
-	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.oauth2Proxy.redirectUrl=https://$${HOSTNAME}/oauth2/callback"; \
-	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.keycloak.url=https://$${KC_HOSTNAME}/auth"; \
-	  ROUTE_ARGS="$$ROUTE_ARGS --set webapi.keycloak.issuerUrl=https://$${KC_HOSTNAME}/auth/realms/nebari"; \
+	  echo "→  Envoy Gateway at $$GW_IP — app: $(APP_HOSTNAME)  keycloak: $(KC_HOSTNAME)"; \
+	  ROUTE_ARGS="--set nebariApp.enabled=false --set httpRoute.enabled=true --set httpRoute.hostname=$(APP_HOSTNAME) --set httpRoute.tls=true"; \
+	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.oauth2Proxy.redirectUrl=https://$(APP_HOSTNAME)/oauth2/callback"; \
+	  ROUTE_ARGS="$$ROUTE_ARGS --set frontend.keycloak.url=https://$(KC_HOSTNAME)/auth"; \
+	  ROUTE_ARGS="$$ROUTE_ARGS --set webapi.keycloak.issuerUrl=https://$(KC_HOSTNAME)/auth/realms/nebari"; \
 	else \
 	  echo "→  No Envoy Gateway found — NebariApp disabled, services via port-forward"; \
 	  ROUTE_ARGS="--set nebariApp.enabled=false"; \
@@ -509,12 +520,12 @@ info:
 	 echo "║  MetalLB : $${SUBNET:-192.168.49}.0/24  pool .100–.150"; \
 	 echo "║"; \
 	 if [ -n "$$GW_IP" ]; then \
-	   echo "║  Landing page  : https://nebari.$${GW_IP}.nip.io/"; \
-	   echo "║  WebAPI        : https://nebari.$${GW_IP}.nip.io/api/v1/"; \
-	   echo "║  Keycloak      : https://keycloak.$${GW_IP}.nip.io/auth"; \
-	   echo "║  Keycloak admin: https://keycloak.$${GW_IP}.nip.io/auth/admin"; \
+	   echo "║  Landing page  : https://$(APP_HOSTNAME)/"; \
+	   echo "║  WebAPI        : https://$(APP_HOSTNAME)/api/v1/"; \
+	   echo "║  Keycloak      : https://$(KC_HOSTNAME)/auth"; \
+	   echo "║  Keycloak admin: https://$(KC_HOSTNAME)/auth/admin"; \
 	   echo "║    admin / $(KEYCLOAK_ADMIN_PASSWORD)   realm user: admin / $(REALM_ADMIN_PASSWORD)"; \
-	   echo "║  Gateway IP (MetalLB): $$GW_IP"; \
+	   echo "║  Gateway IP (MetalLB): $$GW_IP → $(APP_HOSTNAME) $(KC_HOSTNAME)"; \
 	 else \
 	   echo "║  Envoy Gateway not found — run: make -f dev/Makefile envoy-gateway"; \
 	   echo "║  Until then, use: make -f dev/Makefile port-forward"; \
