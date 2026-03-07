@@ -52,16 +52,16 @@ func init() {
 
 func main() {
 	var (
-		port             int
-		keycloakURL      string
-		keycloakRealm    string
-		enableAuth       bool
-		healthInterval   int
-		adminGroup       string
-		redisAddr        string
-		redisPassword    string
-		redisDB          int
-		allowedOrigins   string
+		port           int
+		keycloakURL    string
+		keycloakRealm  string
+		enableAuth     bool
+		healthInterval int
+		adminGroup     string
+		redisAddr      string
+		redisPassword  string
+		redisDB        int
+		allowedOrigins string
 	)
 
 	// Flags fall back to environment variables so the binary works naturally when
