@@ -330,13 +330,23 @@ mkcert-certs:
 ## (socat-forward binds on 127.0.0.1 and forwards to the Gateway NodePorts)
 ## Called automatically by 'make setup'. Requires sudo to write /etc/hosts.
 hosts-add:
-	sudo sed -i '' '/$(APP_HOSTNAME)\|$(KC_HOSTNAME)/d' /etc/hosts
-	printf '127.0.0.1 %s %s\n' "$(APP_HOSTNAME)" "$(KC_HOSTNAME)" | sudo tee -a /etc/hosts
+	@# BSD sed (macOS) does not support \| alternation — use python3 to filter safely.
+	sudo python3 -c "\
+import sys; \
+h='$(APP_HOSTNAME)'; kc='$(KC_HOSTNAME)'; \
+lines=open('/private/etc/hosts').readlines(); \
+lines=[l for l in lines if h not in l and kc not in l]; \
+lines.append('127.0.0.1 {} {}\n'.format(h,kc)); \
+open('/private/etc/hosts','w').writelines(lines)"
 	@echo "✔  /etc/hosts: 127.0.0.1 → $(APP_HOSTNAME) $(KC_HOSTNAME)"
 
 ## hosts-remove: remove dev hostnames ($(APP_HOSTNAME), $(KC_HOSTNAME)) from /etc/hosts
 hosts-remove:
-	sudo sed -i '' '/$(APP_HOSTNAME)\|$(KC_HOSTNAME)/d' /etc/hosts
+	@sudo python3 -c "\
+h='$(APP_HOSTNAME)'; kc='$(KC_HOSTNAME)'; \
+lines=open('/private/etc/hosts').readlines(); \
+lines=[l for l in lines if h not in l and kc not in l]; \
+open('/private/etc/hosts','w').writelines(lines)"
 	@echo "✔  Removed $(APP_HOSTNAME) and $(KC_HOSTNAME) from /etc/hosts"
 
 # ── socat port-forward (macOS + OrbStack workaround) ────────────────────────
