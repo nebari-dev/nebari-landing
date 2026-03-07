@@ -375,7 +375,7 @@ socat-forward:
 stop-socat-forward:
 	@if [ -f /tmp/socat-http.pid ];  then sudo kill $$(cat /tmp/socat-http.pid)  2>/dev/null; sudo rm -f /tmp/socat-http.pid;  fi
 	@if [ -f /tmp/socat-https.pid ]; then sudo kill $$(cat /tmp/socat-https.pid) 2>/dev/null; sudo rm -f /tmp/socat-https.pid; fi
-	@sudo pkill -f 'socat TCP-LISTEN:(80|443),bind=127\.0\.0\.1' 2>/dev/null || true
+	@sudo pkill -f 'socat TCP-LISTEN:(80|443)' 2>/dev/null || true
 	@echo "✔  socat port-forwards stopped"
 
 ## keycloak: install PostgreSQL + Keycloak and configure the nebari realm
