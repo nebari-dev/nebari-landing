@@ -132,14 +132,23 @@ func NewFromEnvWithK8sClient(ctx context.Context, k8sClient client.Client) (*Cli
 				user = string(u)
 			} else if u, ok := secret.Data["admin-username"]; ok {
 				user = string(u)
+			} else if user != "" {
+				// Secret has no username key; keep the value from KEYCLOAK_ADMIN_USERNAME.
+				log.Info("Keycloak admin secret has no 'username'/'admin-username' key — using KEYCLOAK_ADMIN_USERNAME",
+					"secret", secretName, "namespace", secretNS)
+			} else {
+				log.Info("Keycloak admin secret has no username key and KEYCLOAK_ADMIN_USERNAME is unset; add a 'username' key to the secret",
+					"secret", secretName, "namespace", secretNS)
 			}
 			if p, ok := secret.Data["password"]; ok {
 				pass = string(p)
 			} else if p, ok := secret.Data["admin-password"]; ok {
 				pass = string(p)
 			}
-			log.Info("Loaded Keycloak admin credentials from Kubernetes secret",
-				"secret", secretName, "namespace", secretNS)
+			if user != "" && pass != "" {
+				log.Info("Loaded Keycloak admin credentials from Kubernetes secret",
+					"secret", secretName, "namespace", secretNS)
+			}
 		} else {
 			log.Error(err, "Failed to read Keycloak admin secret; falling back to env vars",
 				"secret", secretName, "namespace", secretNS)

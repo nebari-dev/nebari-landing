@@ -55,7 +55,12 @@ type LandingPage struct {
 	Priority int
 
 	// Visibility controls who can see this service.
-	// Valid values: "public", "authenticated" (default), "private".
+	// Valid values:
+	//   "public"  — visible to all users, no authentication required.
+	//   "private" — visible only to authenticated users who are a member of at
+	//               least one group listed in RequiredGroups. When RequiredGroups
+	//               is empty, any authenticated user can see the service.
+	// Default (when unset): "private".
 	Visibility string
 
 	// RequiredGroups lists Keycloak groups required when Visibility is "private".

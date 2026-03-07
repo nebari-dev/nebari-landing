@@ -80,6 +80,10 @@ spec:
             # setting matters only when using a Vite dev server with port-forward.
             - name: ALLOWED_ORIGINS
               value: {{ .Values.webapi.allowedOrigins | quote }}
+            # Debug mode — enables GET /api/v1/debug and verbose JWT logging.
+            # Set webapi.debugMode=true in values to activate. Never use in production.
+            - name: DEBUG_MODE
+              value: {{ .Values.webapi.debugMode | quote }}
             # Health
             - name: HEALTH_INTERVAL
               value: {{ .Values.webapi.healthInterval | quote }}

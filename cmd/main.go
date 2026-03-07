@@ -56,6 +56,7 @@ func main() {
 		keycloakURL    string
 		keycloakRealm  string
 		enableAuth     bool
+		debugMode      bool
 		healthInterval int
 		adminGroup     string
 		redisAddr      string
@@ -88,6 +89,8 @@ func main() {
 		"Redis database index (env: REDIS_DB)")
 	flag.StringVar(&allowedOrigins, "allowed-origins", envStr("ALLOWED_ORIGINS", "*"),
 		"Comma-separated list of allowed CORS origins, or * for all (env: ALLOWED_ORIGINS)")
+	flag.BoolVar(&debugMode, "debug", envBool("DEBUG_MODE", false),
+		"Enable /api/v1/debug endpoint and verbose JWT logging. Never use in production (env: DEBUG_MODE)")
 
 	opts := zap.Options{
 		Development: true,
@@ -100,6 +103,7 @@ func main() {
 	setupLog.Info("Starting Nebari Landing Page API Server",
 		"port", port,
 		"authEnabled", enableAuth,
+		"debugMode", debugMode,
 		"healthInterval", healthInterval,
 		"allowedOrigins", allowedOrigins,
 	)
@@ -215,13 +219,19 @@ func main() {
 			"realm", os.Getenv("KEYCLOAK_REALM"))
 	}
 
-	handler := api.NewHandler(serviceCache, jwtValidator, enableAuth, hub, pinStore,
+	handlerOpts := []api.HandlerOption{
 		api.WithAccessRequestStore(accessRequestStore),
 		api.WithAdminGroup(adminGroup),
 		api.WithNotificationStore(notificationStore),
 		api.WithKeycloakAdminClient(keycloakAdminClient),
 		api.WithAllowedOrigins(splitOrigins(allowedOrigins)),
-	)
+	}
+	if debugMode {
+		setupLog.Info("Debug mode enabled — GET /api/v1/debug is active; do not use in production")
+		handlerOpts = append(handlerOpts, api.WithDebugMode())
+	}
+
+	handler := api.NewHandler(serviceCache, jwtValidator, enableAuth, hub, pinStore, handlerOpts...)
 
 	mux := handler.Routes()
 

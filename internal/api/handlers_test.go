@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
+	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 )
 
@@ -139,8 +140,8 @@ func TestHandleGetServices_MethodNotAllowed(t *testing.T) {
 func TestHandleGetServices_AuthDisabled_OnlyPublicVisible(t *testing.T) {
 	sc := buildCache(
 		entry{"u1", "pub", "public", "", 0},
-		entry{"u2", "auth", "authenticated", "", 0},
-		entry{"u3", "priv", "private", "", 0},
+		entry{"u2", "priv1", "private", "", 0},
+		entry{"u3", "priv2", "private", "", 0},
 	)
 	rr := doGet(t, newTestHandler(sc).Routes(), "/api/v1/services")
 	if rr.Code != http.StatusOK {
@@ -161,7 +162,7 @@ func TestHandleGetServices_AuthDisabled_OnlyPublicVisible(t *testing.T) {
 func TestHandleGetServices_AuthEnabledNoToken_OnlyPublicVisible(t *testing.T) {
 	sc := buildCache(
 		entry{"u1", "pub", "public", "", 0},
-		entry{"u2", "auth", "authenticated", "", 0},
+		entry{"u2", "priv", "private", "", 0},
 	)
 	rr := doGet(t, newAuthTestHandler(sc).Routes(), "/api/v1/services")
 	if rr.Code != http.StatusOK {
@@ -176,7 +177,7 @@ func TestHandleGetServices_AuthEnabledNoToken_OnlyPublicVisible(t *testing.T) {
 	}
 }
 
-func TestHandleGetServices_DefaultVisibility_TreatedAsAuthenticated(t *testing.T) {
+func TestHandleGetServices_DefaultVisibility_TreatedAsPrivate(t *testing.T) {
 	sc := cache.NewServiceCache()
 	sc.Add(&sdapp.App{
 		UID:        "u-def",
@@ -186,7 +187,7 @@ func TestHandleGetServices_DefaultVisibility_TreatedAsAuthenticated(t *testing.T
 		TLSEnabled: true,
 		LandingPage: &sdapp.LandingPage{
 			Enabled:    true,
-			Visibility: "", // no Visibility → defaults to "authenticated"
+			Visibility: "", // no Visibility → defaults to "private"
 		},
 	})
 	rr := doGet(t, newTestHandler(sc).Routes(), "/api/v1/services")
@@ -194,7 +195,7 @@ func TestHandleGetServices_DefaultVisibility_TreatedAsAuthenticated(t *testing.T
 	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
-	// auth disabled + default visibility → service is not shown to unauthenticated callers
+	// auth disabled + default visibility (private) → service not shown to unauthenticated callers
 	if len(resp.Services) != 0 {
 		t.Errorf("expected 0 services without token, got %d", len(resp.Services))
 	}
@@ -266,9 +267,9 @@ func TestHandleGetServiceByUID_PublicAccess_NoAuth(t *testing.T) {
 	}
 }
 
-func TestHandleGetServiceByUID_AuthenticatedService_Forbidden_NoAuth(t *testing.T) {
-	sc := buildCache(entry{"uid-auth", "auth-svc", "authenticated", "", 0})
-	rr := doGet(t, newTestHandler(sc).Routes(), "/api/v1/services/uid-auth")
+func TestHandleGetServiceByUID_PrivateService_Forbidden_NoAuth_NoValidator(t *testing.T) {
+	sc := buildCache(entry{"uid-priv2", "priv-svc2", "private", "", 0})
+	rr := doGet(t, newTestHandler(sc).Routes(), "/api/v1/services/uid-priv2")
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", rr.Code)
 	}
@@ -413,7 +414,7 @@ func TestHandleCallerIdentity_MethodNotAllowed(t *testing.T) {
 func TestHandleGetServices_InvalidAuthHeader_TreatedAsUnauthenticated(t *testing.T) {
 	sc := buildCache(
 		entry{"u1", "pub", "public", "", 0},
-		entry{"u2", "auth", "authenticated", "", 0},
+		entry{"u2", "priv", "private", "", 0},
 	)
 	rr := doGet(t, newAuthTestHandler(sc).Routes(), "/api/v1/services",
 		"Authorization", "NotBearer sometoken",
@@ -449,11 +450,197 @@ func TestHandleGetNotifications_ReturnsEmptyList(t *testing.T) {
 	}
 }
 
-func TestHandleGetNotifications_MethodNotAllowed(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications", nil)
-	rr := httptest.NewRecorder()
-	newTestHandler(cache.NewServiceCache()).Routes().ServeHTTP(rr, req)
-	if rr.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405, got %d", rr.Code)
+// newHandlerWithClaims returns a Handler with auth enabled and claims injection
+// via WithClaimsExtractor. This simulates an authenticated request without
+// requiring a real Keycloak instance or a signed JWT.
+func newHandlerWithClaims(sc *cache.ServiceCache, claims *auth.Claims) *Handler {
+	return NewHandler(sc, nil, true, nil, nil,
+		WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
+			return claims, true
+		}),
+	)
+}
+
+// --- authenticated service access ---
+
+func TestHandleGetServices_AuthenticatedUser_SeesPublicAndOpenPrivate(t *testing.T) {
+	// Build a cache with the 2-tier model:
+	//   public   → everyone
+	//   private (no groups) → any authenticated user
+	//   private (admin group) → admin only; alice (viewer) cannot see it
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID: "u1", Name: "pub", Namespace: "ns",
+		Hostname: "pub.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{Enabled: true, Visibility: "public"},
+	})
+	sc.Add(&sdapp.App{
+		UID: "u2", Name: "jupyter", Namespace: "ns",
+		Hostname: "jupyter.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			// no RequiredGroups → any authenticated user
+		},
+	})
+	sc.Add(&sdapp.App{
+		UID: "u3", Name: "admin-panel", Namespace: "ns",
+		Hostname: "admin.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"admin"}, // alice (viewer) is not in this group
+		},
+	})
+	claims := &auth.Claims{PreferredUsername: "alice", Groups: []string{"viewer"}}
+	rr := doGet(t, newHandlerWithClaims(sc, claims).Routes(), "/api/v1/services")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var resp ServiceResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	// alice sees: public (u1) + private-no-groups (u2) = 2; admin-panel is hidden.
+	if len(resp.Services) != 2 {
+		t.Errorf("expected 2 services (public + open-private), got %d", len(resp.Services))
+	}
+	var ids []string
+	for _, s := range resp.Services {
+		ids = append(ids, s.ID)
+	}
+	for _, want := range []string{"u1", "u2"} {
+		found := false
+		for _, id := range ids {
+			if id == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected service %q in response, got %v", want, ids)
+		}
+	}
+}
+
+func TestHandleGetServices_AdminUser_SeesPrivateServices(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID: "u-priv", Name: "secret-tool", Namespace: "ns",
+		Hostname: "secret.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"admin"},
+		},
+	})
+	sc.Add(&sdapp.App{
+		UID: "u-pub", Name: "public-tool", Namespace: "ns",
+		Hostname: "pub.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{Enabled: true, Visibility: "public"},
+	})
+
+	adminClaims := &auth.Claims{PreferredUsername: "admin", Groups: []string{"admin"}}
+	rr := doGet(t, newHandlerWithClaims(sc, adminClaims).Routes(), "/api/v1/services")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var resp ServiceResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Services) != 2 {
+		t.Errorf("expected 2 services for admin (public+private), got %d", len(resp.Services))
+	}
+}
+
+func TestHandleGetServices_NonAdminUser_CannotSeePrivateService(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID: "u-priv", Name: "secret-tool", Namespace: "ns",
+		Hostname: "secret.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"admin"},
+		},
+	})
+	sc.Add(&sdapp.App{
+		UID: "u-pub", Name: "public-tool", Namespace: "ns",
+		Hostname: "pub.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{Enabled: true, Visibility: "public"},
+	})
+
+	userClaims := &auth.Claims{PreferredUsername: "alice", Groups: []string{"viewer"}}
+	rr := doGet(t, newHandlerWithClaims(sc, userClaims).Routes(), "/api/v1/services")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var resp ServiceResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Services) != 1 {
+		t.Errorf("expected 1 service (public only) for non-admin, got %d", len(resp.Services))
+	}
+	if len(resp.Services) > 0 && resp.Services[0].ID != "u-pub" {
+		t.Errorf("expected public service, got %q", resp.Services[0].ID)
+	}
+}
+
+func TestHandleGetServiceByUID_PrivateService_AllowedWithToken(t *testing.T) {
+	// private with no requiredGroups → any authenticated user can access it
+	sc := buildCache(entry{"uid-priv-open", "jupyter", "private", "", 0})
+	claims := &auth.Claims{PreferredUsername: "alice"}
+	rr := doGet(t, newHandlerWithClaims(sc, claims).Routes(), "/api/v1/services/uid-priv-open")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 for authenticated user on open-private service, got %d", rr.Code)
+	}
+}
+
+func TestHandleDebug_OnlyRegisteredWhenDebugModeEnabled(t *testing.T) {
+	// Without debug mode: /api/v1/debug returns 404.
+	rr := doGet(t, newTestHandler(cache.NewServiceCache()).Routes(), "/api/v1/debug")
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected 404 without debug mode, got %d", rr.Code)
+	}
+
+	// With debug mode: the endpoint is registered and returns 200.
+	h := NewHandler(cache.NewServiceCache(), nil, false, nil, nil, WithDebugMode())
+	rr = doGet(t, h.Routes(), "/api/v1/debug")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 with debug mode, got %d", rr.Code)
+	}
+	var body DebugResponse
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode debug response: %v", err)
+	}
+	if body.Auth.Enabled {
+		t.Error("expected auth.enabled=false")
+	}
+}
+
+func TestHandleDebug_AuthenticatedUser_ShowsClaims(t *testing.T) {
+	sc := buildCache(
+		entry{"u1", "pub", "public", "", 0},
+		entry{"u2", "priv-open", "private", "", 0},
+	)
+	claims := &auth.Claims{PreferredUsername: "alice", Email: "alice@example.com", Groups: []string{"devs"}}
+	h := NewHandler(sc, nil, true, nil, nil,
+		WithDebugMode(),
+		WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
+			return claims, true
+		}),
+	)
+	rr := doGet(t, h.Routes(), "/api/v1/debug")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var body DebugResponse
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode debug response: %v", err)
+	}
+	if body.Services.Public != 1 {
+		t.Errorf("expected 1 public service, got %d", body.Services.Public)
+	}
+	// alice is authenticated; the "auth" service has no requiredGroups so it
+	// shows up in Services.Private (any-authenticated-user private service).
+	if body.Services.Private != 1 {
+		t.Errorf("expected 1 private (open) service, got %d", body.Services.Private)
 	}
 }

@@ -14,7 +14,7 @@ spec:
     enabled: true
     displayName: "Documentation"
     description: "Nebari platform documentation and guides"
-    icon: "kubernetes"
+    icon: "https://fontawesome.com/icons/kubernetes?f=brands&s=solid"
     category: "Platform"
     priority: 10
     visibility: public
@@ -24,7 +24,7 @@ spec:
       intervalSeconds: 30
       timeoutSeconds: 5
 ---
-# Authenticated service — requires valid JWT
+# Private service — requires valid JWT (any authenticated user, no group restriction)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -39,17 +39,18 @@ spec:
     enabled: true
     displayName: "JupyterHub"
     description: "Interactive Python notebooks for data science"
-    icon: "jupyter"
+    # https://github.com/jupyter/jupyter.github.io/blob/main/assets/share.png
+    icon: "https://jupyter.org/assets/homepage/main-logo.svg"
     category: "Data Science"
     priority: 1
-    visibility: authenticated
+    visibility: private
     healthCheck:
       enabled: true
       path: "/healthz"
       intervalSeconds: 30
       timeoutSeconds: 5
 ---
-# Authenticated service — second card in same category
+# Private service — requires valid JWT (any authenticated user, no group restriction)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -64,10 +65,10 @@ spec:
     enabled: true
     displayName: "Grafana"
     description: "Platform metrics and dashboards"
-    icon: "grafana"
+    icon: "https://upload.wikimedia.org/wikipedia/commons/a/a1/Grafana_logo.svg"
     category: "Monitoring"
     priority: 20
-    visibility: authenticated
+    visibility: private
 ---
 # Private service — requires JWT + admin group membership
 apiVersion: reconcilers.nebari.dev/v1
@@ -84,8 +85,9 @@ spec:
     enabled: true
     displayName: "Admin Panel"
     description: "Cluster administration — restricted access"
-    icon: "keycloak"
+    # https://github.com/keycloak/keycloak-misc/blob/main/logo/logo-icon.png
     category: "Platform"
+    icon: "https://raw.githubusercontent.com/keycloak/keycloak-misc/main/logo/logo-icon.png"
     priority: 999
     visibility: private
     requiredGroups:
