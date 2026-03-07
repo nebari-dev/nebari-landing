@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
+import { getKeycloakInstance } from "./keycloak";
 
 export type User = {
     name: string;
@@ -6,37 +7,30 @@ export type User = {
 };
 
 /**
- * Fetches the authenticated user from oauth2-proxy's /oauth2/userinfo endpoint.
+ * Returns the authenticated user from the Keycloak ID token.
  *
- * oauth2-proxy injects the authenticated user's claims as JSON at this endpoint
- * when a valid session cookie is present. A 401/403 response means the user is
- * not yet logged in.
- *
- * Typical Keycloak response shape:
- *   { user: "john.doe@example.com", email: "...", preferredUsername: "john.doe",
- *     name: "John Doe", groups: [...] }
+ * When Keycloak.js has been initialised and the user is authenticated, the
+ * user object is derived synchronously from the parsed ID token — no network
+ * call required. Returns null when the Keycloak instance is not yet ready
+ * (e.g. on the public page where initKeycloak() is never called).
  */
 export function useUser(): { user: User | null; loading: boolean } {
-    const [user, setUser] = useState<User | null>(null);
-    const [loading, setLoading] = useState(true);
+    const user = useMemo<User | null>(() => {
+        const kc = getKeycloakInstance();
+        if (!kc?.authenticated || !kc.idTokenParsed) return null;
 
-    useEffect(() => {
-        fetch("/oauth2/userinfo", { credentials: "include" })
-            .then((r) => (r.ok ? r.json() : Promise.reject()))
-            .then((data: Record<string, string>) => {
-                const name =
-                    data["name"] ||
-                    data["preferredUsername"] ||
-                    data["user"] ||
-                    "User";
-                const email = data["email"] || "";
-                setUser({ name, email });
-            })
-            .catch(() => setUser(null))
-            .finally(() => setLoading(false));
+        const parsed = kc.idTokenParsed as Record<string, string>;
+        const name =
+            parsed["name"] ||
+            parsed["preferred_username"] ||
+            parsed["sub"] ||
+            "User";
+        const email = parsed["email"] || "";
+        return { name, email };
     }, []);
 
-    return { user, loading };
+    // Keycloak.js resolves synchronously after initKeycloak() — never loading.
+    return { user, loading: false };
 }
 
 /** Derive up-to-two initials from a display name, e.g. "John Doe" → "JD". */

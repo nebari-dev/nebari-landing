@@ -60,7 +60,7 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 	if lp.Priority != 0 {
 		priority = lp.Priority
 	}
-	visibility := "authenticated"
+	visibility := "private"
 	if lp.Visibility != "" {
 		visibility = lp.Visibility
 	}

@@ -267,6 +267,7 @@ postgresql-secrets:
 	  --namespace $(NAMESPACE_KC) \
 	  --dry-run=client -o yaml | kubectl apply -f -
 	kubectl create secret generic nebari-realm-admin-credentials \
+	  --from-literal=username=admin \
 	  --from-literal=password=$(REALM_ADMIN_PASSWORD) \
 	  --namespace $(NAMESPACE_KC) \
 	  --dry-run=client -o yaml | kubectl apply -f -

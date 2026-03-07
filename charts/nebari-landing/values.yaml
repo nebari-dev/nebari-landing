@@ -33,7 +33,7 @@ frontend:
     # e.g. https://keycloak.example.com/auth
     url: ""
     realm: "nebari"
-    clientId: "nebari-landing"
+    clientId: "nebari-frontend-spa"
 
   resources:
     requests:
@@ -146,6 +146,13 @@ webapi:
   # the Vite dev server directly against a port-forwarded webapi, e.g.:
   #   allowedOrigins: "http://localhost:5173"
   allowedOrigins: "*"
+
+  # Enable the GET /api/v1/debug endpoint and verbose JWT logging.
+  # When true, the debug endpoint returns request headers (Bearer tokens redacted),
+  # resolved JWT claims, and per-visibility service counts — useful for diagnosing
+  # auth and proxy-forwarding problems in dev/staging.
+  # NEVER enable in production (it exposes internal auth state).
+  debugMode: false
 
   healthInterval: 30
 

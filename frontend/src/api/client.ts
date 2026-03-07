@@ -1,19 +1,16 @@
 /**
  * Shared API client for webapi calls.
  *
- * Architecture (production):
- *   Browser → Gateway HTTPRoute → /* → frontend Service (oauth2-proxy)
- *     → oauth2-proxy validates session cookie, injects Authorization: Bearer <token>
- *       → nginx (127.0.0.1:8080)
- *         → /api/* proxy_pass → webapi ClusterIP (cluster DNS, never public)
- *
- * The browser never communicates with the webapi directly. All auth token
- * forwarding happens server-side: oauth2-proxy → nginx → webapi.
- * The SPA only needs to include the session cookie (credentials: "include").
+ * Auth: the SPA authenticates directly with Keycloak (PKCE/S256) via keycloak-js
+ * and attaches the access token as `Authorization: Bearer <token>` on every
+ * request. This works in both dev (no oauth2-proxy) and production (oauth2-proxy
+ * may also inject the header server-side — harmless duplication, same token).
  *
  * In local dev (Vite dev server), the vite.config.ts proxy forwards /api/*
  * to the webapi running on localhost. Set VITE_WEBAPI_URL to override.
  */
+
+import { getToken } from "../auth/keycloak";
 
 const API_BASE = "/api/v1";
 
@@ -24,9 +21,10 @@ type RequestOptions = Omit<RequestInit, "headers"> & {
 /**
  * Authenticated fetch wrapper.
  *
- * Prepends /api/v1 to the given path and includes the session cookie so that
- * oauth2-proxy can validate the request and forward the Bearer token to the
- * webapi via nginx.
+ * Prepends /api/v1 to the given path, attaches the current Keycloak access
+ * token as `Authorization: Bearer <token>` when one is available, and also
+ * includes the session cookie so that oauth2-proxy (when present in production)
+ * can independently validate the session.
  */
 export async function apiFetch(
     path: string,
@@ -34,11 +32,17 @@ export async function apiFetch(
 ): Promise<Response> {
     const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 
+    const token = await getToken();
+    const authHeader: Record<string, string> = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
+
     return fetch(url, {
         credentials: "include",
         ...options,
         headers: {
             "Content-Type": "application/json",
+            ...authHeader,
             ...options.headers,
         },
     });

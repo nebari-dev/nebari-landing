@@ -35,6 +35,16 @@ webapi:
     adminSecretName: "nebari-realm-admin-credentials"
     adminSecretNamespace: "keycloak"
 
+  # Set debugMode: true to activate GET /api/v1/debug and verbose JWT logging.
+  # Useful when authenticated services don't show up — the endpoint reveals
+  # whether the Authorization header reached the webapi and whether the JWT
+  # validated successfully.  Access via:
+  #   kubectl -n nebari-system port-forward svc/nebari-landing-webapi 8090:8080
+  #   curl http://localhost:8090/api/v1/debug        # unauthenticated view
+  #   curl -H "Authorization: Bearer <token>" http://localhost:8090/api/v1/debug
+  # Never enable in production.
+  debugMode: false
+
   # Expose via MetalLB so 'make port-forward' and direct LB access both work
   service:
     type: LoadBalancer
@@ -59,7 +69,7 @@ frontend:
     # Browser-visible Keycloak URL — exposed via port-forward at localhost:8180
     url: "http://localhost:8180/auth"
     realm: "nebari"
-    clientId: "nebari-landingpage"
+    clientId: "nebari-frontend-spa"
 
   oauth2Proxy:
     # Keycloak realm discovery endpoint — cluster-internal for the pod

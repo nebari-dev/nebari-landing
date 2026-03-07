@@ -2,6 +2,6 @@
   "keycloak": {
     "url":      "http://localhost:8180/auth",
     "realm":    "nebari",
-    "clientId": "nebari-landingpage"
+    "clientId": "nebari-frontend-spa"
   }
 }

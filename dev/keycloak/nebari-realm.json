@@ -44,8 +44,37 @@
   "clients": [
     {
       "clientId": "nebari-landingpage",
-      "name": "Nebari Landing Page",
-      "description": "Frontend SPA for the Nebari landing page",
+      "name": "Nebari Landing Page (oauth2-proxy)",
+      "description": "Confidential OIDC client used by the oauth2-proxy sidecar in production",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": false,
+      "secret": "nebari-frontend-dev-secret",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:*",
+        "https://nebari.example.com/*"
+      ],
+      "webOrigins": [
+        "http://localhost:*",
+        "https://nebari.example.com"
+      ],
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ]
+    },
+    {
+      "clientId": "nebari-frontend-spa",
+      "name": "Nebari Frontend SPA",
+      "description": "Public OIDC client for keycloak-js PKCE flow in the browser",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
       "publicClient": true,
