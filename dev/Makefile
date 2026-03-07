@@ -58,6 +58,7 @@ KEYCLOAK_CHART_NAME := keycloakx
 KEYCLOAK_VERSION    ?= 7.1.6
 POSTGRESQL_CHART    := oci://registry-1.docker.io/bitnamicharts/postgresql
 POSTGRESQL_VERSION  ?= 18.2.0
+ENVOY_GATEWAY_VERSION ?= v1.3.2
 
 # Dev-only passwords — override via environment or .env file
 KEYCLOAK_ADMIN_PASSWORD ?= nebari-admin-secret
@@ -109,7 +110,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
 
 .PHONY: setup cluster-start cluster-delete \
         image-build \
-        cert-manager metallb \
+        cert-manager metallb envoy-gateway \
         postgresql postgresql-secrets \
         keycloak keycloak-install keycloak-realm keycloak-client frontend-client \
         operator-install operator-uninstall \
@@ -122,7 +123,7 @@ MINIKUBE_URL  := https://storage.googleapis.com/minikube/releases/latest/minikub
 # ── Main entry point ─────────────────────────────────────────────────────────
 
 ## setup: full end-to-end setup (cluster + image + keycloak + app)
-setup: _minikube cluster-start image-build cert-manager metallb keycloak keycloak-client frontend-client operator-install install test-apps port-forward info
+setup: _minikube cluster-start image-build cert-manager metallb envoy-gateway keycloak keycloak-client frontend-client operator-install install test-apps port-forward info
 	@echo ""
 	@echo "✅  Setup complete. Run 'make info' at any time for URLs."
 
@@ -257,6 +258,33 @@ metallb:
 	 echo "       make -f dev/Makefile minikube-tunnel"; \
 	 echo "     to inject routes into the Windows networking stack."
 
+# ── Envoy Gateway ─────────────────────────────────────────────────────────────
+
+ENVOY_GATEWAY_NAMESPACE ?= envoy-gateway-system
+
+## envoy-gateway: install Envoy Gateway controller and create the dev Gateway resource
+## MetalLB will assign the Gateway's LoadBalancer service an IP from the pool.
+## All app traffic enters through this single IP — webapi + frontend are ClusterIP.
+envoy-gateway:
+	@echo "→  Installing Envoy Gateway $(ENVOY_GATEWAY_VERSION) …"
+	helm install eg oci://docker.io/envoyproxy/gateway-helm \
+	  --version $(ENVOY_GATEWAY_VERSION) \
+	  --namespace $(ENVOY_GATEWAY_NAMESPACE) \
+	  --create-namespace \
+	  --wait --timeout 5m
+	@echo "→  Applying dev Gateway + GatewayClass …"
+	kubectl apply -f dev/manifests/envoy-gateway/gateway.yaml
+	@echo "→  Waiting for Gateway to receive a LoadBalancer IP from MetalLB …"
+	@for i in $$(seq 1 30); do \
+	  IP=$$(kubectl get gateway envoy-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
+	    -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
+	  if [ -n "$$IP" ]; then \
+	    echo "✔  Envoy Gateway IP: $$IP  (hostname: nebari.$${IP}.nip.io)"; \
+	    break; \
+	  fi; \
+	  echo "   Waiting for IP … (attempt $$i/30)"; \
+	  sleep 3; \
+	done
 
 ## keycloak: install PostgreSQL + Keycloak and configure the nebari realm
 keycloak: postgresql keycloak-install keycloak-realm
@@ -381,9 +409,20 @@ install:
 	@echo "→  Deploying nebari-landing Helm chart (release: $(HELM_RELEASE)) …"
 	kubectl create namespace $(NAMESPACE_APP) --dry-run=client -o yaml | kubectl apply -f -
 	helm dependency build charts/nebari-landing
+	@GW_IP=$$(kubectl get gateway envoy-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
+	  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
+	if [ -n "$$GW_IP" ]; then \
+	  HOSTNAME="nebari.$${GW_IP}.nip.io"; \
+	  echo "→  Envoy Gateway at $$GW_IP — hostname: $$HOSTNAME"; \
+	  ROUTE_ARGS="--set httpRoute.enabled=true --set httpRoute.hostname=$$HOSTNAME --set httpRoute.tls=false"; \
+	else \
+	  echo "→  No Envoy Gateway found — HTTPRoute disabled, services via port-forward"; \
+	  ROUTE_ARGS="--set httpRoute.enabled=false"; \
+	fi; \
 	helm upgrade --install $(HELM_RELEASE) charts/nebari-landing \
 	  --namespace $(NAMESPACE_APP) \
 	  --values dev/chart-values.yaml \
+	  $$ROUTE_ARGS \
 	  --wait --timeout 5m
 	# Force pods to restart so pullPolicy:Never always picks up the freshly loaded :dev image.
 	# This is a no-op on first install (pods already started above) but essential on re-runs.
@@ -430,6 +469,17 @@ info:
 	 echo "║  Keycloak admin console:"; \
 	 echo "║    http://$${KC_IP}/auth/admin  (admin / $(KEYCLOAK_ADMIN_PASSWORD))"; \
 	 echo "║    Realm: $(KEYCLOAK_REALM)  /  test user: admin / $(REALM_ADMIN_PASSWORD)"; \
+	 echo "║"; \
+	 echo "║  Envoy Gateway:"; \
+	 GW_IP=$$(kubectl get gateway envoy-gateway -n $(ENVOY_GATEWAY_NAMESPACE) \
+	   -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo ""); \
+	 if [ -n "$$GW_IP" ]; then \
+	   echo "║    http://nebari.$${GW_IP}.nip.io/          ← landing page"; \
+	   echo "║    http://nebari.$${GW_IP}.nip.io/api/v1/   ← webapi"; \
+	   echo "║    (MetalLB IP: $$GW_IP — no port-forward needed)"; \
+	 else \
+	   echo "║    Not running — run: make -f dev/Makefile envoy-gateway"; \
+	 fi; \
 	 echo "║"; \
 	 echo "║  Operator namespace : $(NAMESPACE_OPERATOR)"; \
 	 echo "║"; \

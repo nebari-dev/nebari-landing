@@ -35,9 +35,11 @@ webapi:
     adminSecretName: "nebari-realm-admin-credentials"
     adminSecretNamespace: "keycloak"
 
-  # Expose via MetalLB so 'make port-forward' and direct LB access both work
+  # Traffic enters via Envoy Gateway (HTTPRoute); ClusterIP is sufficient.
+  # If Envoy Gateway is not installed, 'make install' falls back to
+  # httpRoute.enabled=false and you can use kubectl port-forward instead.
   service:
-    type: LoadBalancer
+    type: ClusterIP
 
 # ---------------------------------------------------------------------------
 # NebariApp CRs — disabled for local dev (nebari-operator not running)
@@ -75,7 +77,9 @@ frontend:
       - --cookie-secure=false
       - --cookie-samesite=lax
       - --cookie-name=_nebari_session
-      # Browser-visible callback URL (via port-forward on PORT_LANDING)
+      # Browser-visible callback URL — derived from the Envoy Gateway's
+      # nip.io hostname, injected by 'make install' via --set httpRoute.hostname.
+      # Placeholder here; 'make install' always overrides with the live Gateway IP.
       - --redirect-url=http://localhost:8080/oauth2/callback
       # groups is added via a Keycloak client mapper, not a scope
       - --scope=openid profile email
@@ -99,9 +103,9 @@ frontend:
       - --skip-auth-route=^/src/
       - --skip-auth-route=^/node_modules/
 
-  # Expose via MetalLB LoadBalancer
+  # Traffic enters via Envoy Gateway (HTTPRoute); ClusterIP is sufficient.
   service:
-    type: LoadBalancer
+    type: ClusterIP
 
 # ---------------------------------------------------------------------------
 # Redis subchart (bitnami/redis)
@@ -125,8 +129,18 @@ redis:
         memory: 128Mi
 
 # ---------------------------------------------------------------------------
-# No Envoy Gateway in minikube — disable the HTTPRoute
-# Services are reached via MetalLB LB IPs or kubectl port-forward
+# Envoy Gateway HTTPRoute
 # ---------------------------------------------------------------------------
+# httpRoute.enabled and httpRoute.hostname are injected at helm-install time
+# by 'make install', which queries the Gateway's LoadBalancer IP and builds
+# a nip.io hostname (e.g. nebari.192-168-49-101.nip.io).
+# If Envoy Gateway is absent, 'make install' sets enabled=false and the
+# individual services fall back to port-forward access.
+#
+# TLS is terminated by the Gateway; set tls=true when the listener uses HTTPS.
 httpRoute:
-  enabled: false
+  enabled: false          # overridden by 'make install' at deploy time
+  gatewayName: "envoy-gateway"
+  gatewayNamespace: "envoy-gateway-system"
+  hostname: "nebari.local" # overridden by 'make install' with live nip.io hostname
+  tls: false

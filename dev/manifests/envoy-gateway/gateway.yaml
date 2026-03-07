@@ -1,0 +1,35 @@
+# Local dev Envoy Gateway resources.
+# Applied by 'make envoy-gateway' after the Envoy Gateway controller is running.
+#
+# GatewayClass: binds our Gateway resources to the Envoy Gateway controller.
+# Gateway: a single HTTP listener on port 80.  MetalLB assigns it a
+#          LoadBalancer IP from the .100-.150 pool so it is reachable directly
+#          from the host — no kubectl port-forward required.
+#
+# The Helm chart (make install) creates an HTTPRoute that attaches to this
+# Gateway and routes:
+#   /api/*      → nebari-landing-webapi  (ClusterIP)
+#   /oauth2/*   → nebari-landing-frontend (OAuth2 Proxy callback, ClusterIP)
+#   /*          → nebari-landing-frontend (ClusterIP)
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: nebari-local
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: envoy-gateway
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: nebari-local
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All

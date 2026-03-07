@@ -246,26 +246,34 @@ This runs the full sequence:
 3. Builds the Docker image and loads it into minikube
 4. Installs cert-manager + selfsigned ClusterIssuer
 5. Enables MetalLB and configures the IP pool
-6. Installs PostgreSQL + Keycloak, creates the `nebari` realm, users, and groups
-7. Creates the `webapi` public OIDC client
-8. Creates the `nebari-landingpage` confidential OIDC client + writes Secret `nebari-landingpage-oidc-client` (dev
+6. Installs Envoy Gateway and creates the `nebari-local` GatewayClass + `envoy-gateway` Gateway; MetalLB assigns the Gateway its own LoadBalancer IP
+7. Installs PostgreSQL + Keycloak, creates the `nebari` realm, users, and groups
+8. Creates the `webapi` public OIDC client
+9. Creates the `nebari-landingpage` confidential OIDC client + writes Secret `nebari-landingpage-oidc-client` (dev
    fallback for operator provisioning)
-9. Deploys the nebari-operator + webapi
-10. Deploys the landing page with oauth2-proxy sidecar
-11. Prints the info summary
+10. Deploys the nebari-operator + webapi
+11. Deploys the landing page with oauth2-proxy sidecar; enables the HTTPRoute with a nip.io hostname derived from
+    the Gateway's MetalLB IP (e.g. `http://nebari.192-168-49-101.nip.io/`)
+12. Prints the info summary
 
-After completion you can open `http://192.168.49.102/` in a browser — you'll be redirected to Keycloak login and then
-back to the landing page.
+After completion run `make -f dev/Makefile info` to get the live URL — it will look like
+`http://nebari.<gateway-ip>.nip.io/`. No `/etc/hosts` editing needed.
 
 
 
 ## Service URLs (no port-forwarding needed)
 
+Run `make -f dev/Makefile info` after setup to print the exact URLs — the landing page and WebAPI addresses
+are derived from the Envoy Gateway's MetalLB-assigned IP at install time and use a `nip.io` hostname that
+resolves in any browser without editing `/etc/hosts`.
+
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Landing page | `http://192.168.49.102/` | log in as `admin` / `nebari-realm-admin` |
-| WebAPI | `http://192.168.49.101:8080/api/v1/` | — |
-| Keycloak admin | `http://192.168.49.100/auth/admin` | `admin` / `nebari-admin-secret` |
+| Landing page | `http://nebari.<gateway-ip>.nip.io/` | log in as `admin` / `nebari-realm-admin` |
+| WebAPI | `http://nebari.<gateway-ip>.nip.io/api/v1/` | — |
+| Keycloak admin | `http://<keycloak-lb-ip>/auth/admin` | `admin` / `nebari-admin-secret` |
+
+Replace `<gateway-ip>` and `<keycloak-lb-ip>` with the IPs shown by `make info`.
 
 
 
@@ -398,6 +406,11 @@ dev/
     │
     ├── metallb/
     │   └── config.yaml             ← IP pool 192.168.49.100-150 (ConfigMap, v0.9)
+    │
+    ├── envoy-gateway/
+    │   └── gateway.yaml            ← GatewayClass `nebari-local` + Gateway `envoy-gateway`
+    │                                  (MetalLB assigns the Gateway its own LoadBalancer IP;
+    │                                  all app HTTP traffic enters here via HTTPRoute)
     │
     ├── test-nebariapps.yaml        ← Sample NebariApp CRs (used by cluster + mockapi)
     │
