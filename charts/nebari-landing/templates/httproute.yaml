@@ -1,8 +1,20 @@
 {{- if and .Values.httpRoute.enabled (not .Values.nebariApp.enabled) }}
 # Gateway API HTTPRoute — attaches to the Envoy Gateway and routes:
-#   /api/*      → webapi Service
-#   /oauth2/*   → frontend Service (OAuth2 Proxy callback routes)
-#   /*          → frontend Service (all other requests, incl. SPA routes)
+#
+#   Traffic flow:
+#     Browser → Gateway → oauth2-proxy (frontend:4180)
+#       → oauth2-proxy validates session cookie, injects Authorization: Bearer <token>
+#         → nginx (127.0.0.1:{{ .Values.frontend.port }})
+#           ├─ /api/*    → proxy_pass to webapi ClusterIP (Bearer token forwarded)
+#           └─ /*        → serve SPA static assets
+#
+#   /oauth2/* — OAuth2 Proxy sign-in / callback / sign-out routes (no auth check).
+#   /*        — all other traffic goes to oauth2-proxy for auth gating + upstream proxy.
+#
+#   NOTE: /api/* is intentionally NOT in the HTTPRoute. By falling through to /*
+#   it reaches oauth2-proxy, which injects the Authorization header before proxying
+#   to nginx, which then proxy_passes to the webapi ClusterIP. This ensures all
+#   webapi requests carry a valid Bearer token without the browser managing tokens.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -22,15 +34,6 @@ spec:
   hostnames:
     - {{ .Values.httpRoute.hostname | quote }}
   rules:
-    # /api/* — routed directly to the Go webapi (JWT auth handled in-process).
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /api/
-      backendRefs:
-        - name: {{ include "nebari-landing.fullname" . }}-webapi
-          port: {{ .Values.webapi.service.port }}
-
     # /oauth2/* — OAuth2 Proxy sign-in / callback / sign-out routes.
     - matches:
         - path:
@@ -40,8 +43,9 @@ spec:
         - name: {{ include "nebari-landing.fullname" . }}-frontend
           port: {{ .Values.frontend.service.port }}
 
-    # /* — everything else goes to the OAuth2 Proxy sidecar (which proxies
-    #        to the static server after validating the session cookie).
+    # /* — all traffic (including /api/*) goes through the OAuth2 Proxy sidecar.
+    #   oauth2-proxy injects Authorization: Bearer <token> then proxies to nginx,
+    #   which proxy_passes /api/* to the webapi ClusterIP with that header.
     - matches:
         - path:
             type: PathPrefix
