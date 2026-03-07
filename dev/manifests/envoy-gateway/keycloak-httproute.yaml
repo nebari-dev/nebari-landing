@@ -11,7 +11,7 @@ metadata:
   namespace: keycloak
 spec:
   parentRefs:
-    - name: envoy-gateway
+    - name: nebari-gateway
       namespace: envoy-gateway-system
       sectionName: https
   hostnames:

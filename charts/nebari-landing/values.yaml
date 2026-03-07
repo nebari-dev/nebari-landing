@@ -210,7 +210,7 @@ httpRoute:
   # Explicitly set to false if you want neither HTTPRoute nor NebariApp CRs.
   enabled: true
   # Name of the Gateway to attach to.
-  gatewayName: "envoy-gateway"
+  gatewayName: "nebari-gateway"
   gatewayNamespace: "envoy-gateway-system"
   # Hostname the landing page is served on.
   hostname: "nebari.example.com"

@@ -148,7 +148,7 @@ redis:
 # 'make install' injects them via --set at deploy time.
 httpRoute:
   enabled: false          # never enable — operator owns routing when nebariApp=true
-  gatewayName: "envoy-gateway"
+  gatewayName: "nebari-gateway"
   gatewayNamespace: "envoy-gateway-system"
   hostname: "nebari.local" # overridden by 'make install' with live nip.io hostname
   tls: false
