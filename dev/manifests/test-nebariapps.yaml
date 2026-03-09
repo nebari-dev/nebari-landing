@@ -1,6 +1,6 @@
 ---
 # Public service — visible to everyone, no auth required.
-# Health status: healthy (nginx returns 200 on GET /)
+# Health status: healthy (probes webapi /api/v1/health — always returns 200)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -9,8 +9,8 @@ metadata:
 spec:
   hostname: docs.nebari.local
   service:
-    name: nebari-landingpage
-    port: 80
+    name: nebari-landing-webapi  # probe target: webapi /api/v1/health → 200 → healthy
+    port: 8080
   landingPage:
     enabled: true
     displayName: "Documentation"
@@ -21,12 +21,11 @@ spec:
     visibility: public
     healthCheck:
       enabled: true
-      path: "/"        # nginx serves the landing page → HTTP 200 → healthy
+      path: "/api/v1/health"  # webapi returns 200 {"status":"healthy"} → healthy
       intervalSeconds: 30
       timeoutSeconds: 5
 ---
-# Private service — requires valid JWT (any authenticated user).
-# Health status: unhealthy (nginx returns 404 for /hub/api/health — JupyterHub isn't deployed)
+# Health status: unhealthy (probes a non-existent service → DNS failure)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -35,8 +34,8 @@ metadata:
 spec:
   hostname: jupyter.nebari.local
   service:
-    name: nebari-landingpage
-    port: 80
+    name: jupyterhub  # doesn't exist in dev → DNS failure → unhealthy
+    port: 8000
   landingPage:
     enabled: true
     displayName: "JupyterHub"
@@ -47,7 +46,7 @@ spec:
     visibility: private
     healthCheck:
       enabled: true
-      path: "/hub/api/health"  # returns 404 on nginx → unhealthy (JupyterHub not deployed)
+      path: "/hub/api/health"  # service unreachable → unhealthy
       intervalSeconds: 30
       timeoutSeconds: 5
 ---
@@ -61,8 +60,8 @@ metadata:
 spec:
   hostname: grafana.nebari.local
   service:
-    name: nebari-landingpage
-    port: 80
+    name: grafana
+    port: 3000
   landingPage:
     enabled: true
     displayName: "Grafana"
@@ -74,7 +73,7 @@ spec:
     # No healthCheck block → status stays "unknown"
 ---
 # Private service — requires JWT + admin group membership.
-# Health status: healthy (nginx returns 200 on GET /)
+# Health status: healthy (probes webapi /ping → 200)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -83,8 +82,8 @@ metadata:
 spec:
   hostname: admin.nebari.local
   service:
-    name: nebari-landingpage
-    port: 80
+    name: nebari-landing-webapi
+    port: 8080
   landingPage:
     enabled: true
     displayName: "Admin Panel"
@@ -98,7 +97,7 @@ spec:
       - "admin"
     healthCheck:
       enabled: true
-      path: "/"        # nginx returns 200 → healthy
+      path: "/api/v1/health"  # webapi returns 200 {"status":"healthy"} → healthy
       intervalSeconds: 30
       timeoutSeconds: 5
 ---

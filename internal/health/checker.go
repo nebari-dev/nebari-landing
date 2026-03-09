@@ -24,13 +24,19 @@ type Publisher interface {
 // independently on its own interval using a lightweight goroutine-per-service
 // model; goroutines exit when ctx is cancelled or the service is removed.
 type HealthChecker struct {
-	cache     *cache.ServiceCache
-	interval  time.Duration // fallback global interval when service doesn't specify one
-	publisher Publisher     // optional; may be nil
-	// running tracks which UIDs have an active probe goroutine so we don't
-	// start duplicates on reconcile ticks.
+	cache    *cache.ServiceCache
+	interval time.Duration // fallback global interval when service doesn't specify one
+	publisher Publisher    // optional; may be nil
+	// running maps UID → (cancel func, current ProbeURL).
+	// The ProbeURL is stored so reconcile can detect config changes and restart
+	// the probe goroutine when a NebariApp's healthCheck spec is updated.
 	mu      sync.Mutex
-	running map[string]context.CancelFunc
+	running map[string]runningProbe
+}
+
+type runningProbe struct {
+	cancel   context.CancelFunc
+	probeURL string // the URL this goroutine is currently configured to probe
 }
 
 // NewHealthChecker creates a new health checker.
@@ -38,9 +44,9 @@ type HealthChecker struct {
 // HealthCheckConfig doesn't specify one.
 func NewHealthChecker(serviceCache *cache.ServiceCache, interval time.Duration) *HealthChecker {
 	return &HealthChecker{
-		cache:   serviceCache,
+		cache:    serviceCache,
 		interval: interval,
-		running: make(map[string]context.CancelFunc),
+		running:  make(map[string]runningProbe),
 	}
 }
 
@@ -80,26 +86,40 @@ func (h *HealthChecker) reconcile(ctx context.Context) {
 	services := h.cache.GetAll()
 	activeUIDs := make(map[string]bool, len(services))
 
+	checkable := 0
 	for _, svc := range services {
 		if svc.HealthCheckConfig == nil {
 			continue
 		}
+		checkable++
 		activeUIDs[svc.UID] = true
 
 		h.mu.Lock()
-		if _, ok := h.running[svc.UID]; !ok {
+		rp, running := h.running[svc.UID]
+		// Restart the goroutine if the probe URL changed (NebariApp was updated).
+		if running && rp.probeURL != svc.HealthCheckConfig.ProbeURL {
+			log.Info("Probe URL changed — restarting probe goroutine",
+				"uid", svc.UID, "old", rp.probeURL, "new", svc.HealthCheckConfig.ProbeURL)
+			rp.cancel()
+			running = false
+			delete(h.running, svc.UID)
+		}
+		if !running {
 			probeCtx, cancel := context.WithCancel(ctx)
-			h.running[svc.UID] = cancel
+			h.running[svc.UID] = runningProbe{cancel: cancel, probeURL: svc.HealthCheckConfig.ProbeURL}
+			log.Info("Starting probe goroutine", "uid", svc.UID, "name", svc.DisplayName, "url", svc.HealthCheckConfig.ProbeURL)
 			go h.probeLoop(probeCtx, svc.UID, svc.HealthCheckConfig)
 		}
 		h.mu.Unlock()
 	}
 
+	log.Info("Reconcile complete", "total", len(services), "checkable", checkable, "goroutines", len(h.running))
+
 	// Stop probes for services that have been removed from the cache.
 	h.mu.Lock()
-	for uid, cancel := range h.running {
+	for uid, rp := range h.running {
 		if !activeUIDs[uid] {
-			cancel()
+			rp.cancel()
 			delete(h.running, uid)
 		}
 	}
@@ -110,8 +130,8 @@ func (h *HealthChecker) reconcile(ctx context.Context) {
 func (h *HealthChecker) stopAll() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for uid, cancel := range h.running {
-		cancel()
+	for uid, rp := range h.running {
+		rp.cancel()
 		delete(h.running, uid)
 	}
 }
@@ -128,7 +148,7 @@ func (h *HealthChecker) probeLoop(ctx context.Context, uid string, cfg *cache.He
 		timeout = 5 * time.Second
 	}
 
-	log.V(1).Info("Probe loop started", "uid", uid, "url", cfg.ProbeURL, "interval", interval)
+	log.Info("Probe loop started", "uid", uid, "url", cfg.ProbeURL, "interval", interval, "timeout", timeout)
 
 	client := &http.Client{
 		Timeout: timeout,
@@ -160,6 +180,7 @@ func (h *HealthChecker) probeLoop(ctx context.Context, uid string, cfg *cache.He
 func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client *http.Client) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
 	if err != nil {
+		log.Info("Health probe request error", "uid", uid, "url", probeURL, "err", err)
 		h.setStatus(uid, "unknown", fmt.Sprintf("failed to build request: %v", err))
 		return
 	}
@@ -167,21 +188,21 @@ func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client 
 	now := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
-		log.V(1).Info("Health probe failed", "uid", uid, "url", probeURL, "err", err)
+		log.Info("Health probe failed", "uid", uid, "url", probeURL, "err", err)
 		h.setStatus(uid, "unhealthy", fmt.Sprintf("probe error: %v", err))
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
-		log.V(1).Info("Health probe ok", "uid", uid, "status", resp.StatusCode)
+		log.Info("Health probe ok", "uid", uid, "url", probeURL, "status", resp.StatusCode)
 		h.cache.UpdateHealth(uid, &cache.HealthStatus{
 			Status:    "healthy",
 			LastCheck: &now,
 			Message:   fmt.Sprintf("HTTP %d", resp.StatusCode),
 		})
 	} else {
-		log.V(1).Info("Health probe unhealthy", "uid", uid, "status", resp.StatusCode)
+		log.Info("Health probe unhealthy", "uid", uid, "url", probeURL, "status", resp.StatusCode)
 		h.setStatus(uid, "unhealthy", fmt.Sprintf("HTTP %d", resp.StatusCode))
 	}
 
