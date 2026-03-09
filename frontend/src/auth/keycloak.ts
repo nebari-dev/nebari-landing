@@ -92,8 +92,8 @@ export function signIn() {
 /** Trigger Keycloak logout (redirects the browser). */
 export function signOut() {
   if (_keycloak) {
-    _keycloak.logout({ redirectUri: window.location.origin + "/public" });
+    _keycloak.logout({ redirectUri: window.location.origin + "/" });
   } else {
-    window.location.href = "/public";
+    window.location.href = "/";
   }
 }

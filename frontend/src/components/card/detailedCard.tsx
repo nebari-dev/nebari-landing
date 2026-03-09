@@ -1,18 +1,25 @@
-import type { ReactNode } from "react";
+import type {
+  ReactNode
+} from "react";
 
-import { Card, CardBody, CardFooter, Button, Tag } from "@trussworks/react-uswds";
+import {
+  Card,
+  CardBody,
+  CardFooter,
+  Button,
+  Tag
+} from "@trussworks/react-uswds";
 
-import { cn } from "../../lib/cn";
 import AvatarImage from "../icon";
 
 import pinIconUrl from "../../assets/pin.svg";
 import unpinIconUrl from "../../assets/unpin.svg";
+
 import "./index.scss";
 
 export function DetailedCard(props: DetailedCardProps): ReactNode {
   // Expand the props
   const {
-    className,
     image,
     status,
     name,
@@ -23,7 +30,7 @@ export function DetailedCard(props: DetailedCardProps): ReactNode {
   } = props;
 
   return (
-    <Card className={cn("app-card app-card--detailed", className)} layout="standardDefault">
+    <Card className="app-card app-card--detailed" layout="standardDefault">
       <CardBody className="app-card__body app-card__body--detailed">
         <div className="app-card-detailed__topRow">
           <div className="app-card-detailed__avatar">

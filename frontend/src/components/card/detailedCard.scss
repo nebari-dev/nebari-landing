@@ -7,6 +7,7 @@
 .app-card--detailed .usa-card__container {
   display: flex;
   flex-direction: column;
+  padding: 6px;
 }
 
 .app-card--detailed .app-card__body--detailed {
@@ -62,8 +63,8 @@
   gap: 0.375rem;
 }
 
-.app-card-detailed__category {
-  background-color: rgba(0, 94, 162, 0.12);
+.usa-tag .app-card-detailed__category {
+  background-color: var(--color-bg-page);
   color: var(--color-text-primary);
 }
 

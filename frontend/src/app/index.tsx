@@ -5,6 +5,7 @@ import Content from "../components/content";
 
 import { useUser } from "../auth/user";
 import { listServices, type Service } from "../api/listServices";
+import { signOut } from "../auth/keycloak";
 
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -24,12 +25,15 @@ export default function App() {
       });
   }, [])
 
+  console.log(services)
+
   return (
     <div className={isDarkMode ? "app-shell app-shell--dark" : "app-shell app-shell--light"}>
       <Header
         isDarkMode={isDarkMode}
         onToggleTheme={() => setIsDarkMode((prev) => !prev)}
         user={user}
+        onSignOut={() => signOut()}
       />
       <Content services={services} />
     </div>

@@ -86,6 +86,7 @@ spec:
             - --http-address=0.0.0.0:{{ .Values.frontend.oauth2Proxy.port }}
             - --email-domain={{ .Values.frontend.oauth2Proxy.emailDomain }}
             - --pass-access-token={{ .Values.frontend.oauth2Proxy.passAccessToken }}
+            - --pass-authorization-header={{ .Values.frontend.oauth2Proxy.passAccessToken }}
             - --set-authorization-header={{ .Values.frontend.oauth2Proxy.passAccessToken }}
             {{- range .Values.frontend.oauth2Proxy.extraArgs }}
             - {{ . }}
