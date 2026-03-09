@@ -90,6 +90,20 @@ spec:
             {{- if .Values.frontend.oauth2Proxy.redirectUrl }}
             - --redirect-url={{ .Values.frontend.oauth2Proxy.redirectUrl }}
             {{- end }}
+            {{- if .Values.frontend.oauth2Proxy.oidcIssuerUrl }}
+            {{- $appBase := "" }}
+            {{- if .Values.frontend.oauth2Proxy.redirectUrl }}
+            {{-   $appBase = .Values.frontend.oauth2Proxy.redirectUrl | trimSuffix "/oauth2/callback" | trimSuffix "/" }}
+            {{- else if .Values.httpRoute.hostname }}
+            {{-   $appBase = printf "%s://%s" (ternary "https" "http" .Values.httpRoute.tls) .Values.httpRoute.hostname }}
+            {{- end }}
+            # After clearing the session cookie, redirect to Keycloak's end-session
+            # endpoint so the Keycloak SSO session is also terminated. Without this,
+            # oauth2-proxy would immediately re-authenticate the user silently because
+            # Keycloak still has an active SSO session.
+            # post_logout_redirect_uri sends the user back to the app root after logout.
+            - --oidc-logout-url={{ .Values.frontend.oauth2Proxy.oidcIssuerUrl }}/protocol/openid-connect/logout{{ if $appBase }}?post_logout_redirect_uri={{ $appBase }}/{{ end }}
+            {{- end }}
             {{- range .Values.frontend.oauth2Proxy.extraArgs }}
             - {{ . }}
             {{- end }}

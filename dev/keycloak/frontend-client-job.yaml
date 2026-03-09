@@ -78,9 +78,15 @@ spec:
               # Also register the production domain if LANDING_HOST is set.
               REDIRECT_URIS="[\"http://localhost:${LOCALHOST_PORT}/oauth2/callback\""
               WEB_ORIGINS="[\"http://localhost:${LOCALHOST_PORT}\""
+              # Post-logout redirect URIs — must match what oauth2-proxy sends as
+              # post_logout_redirect_uri in --oidc-logout-url. Keycloak validates
+              # the URI against this list before redirecting the user after logout.
+              # Multiple URIs are separated by ## (Keycloak's internal separator).
+              POST_LOGOUT_URIS="http://localhost:${LOCALHOST_PORT}/"
               if [ -n "${LANDING_HOST}" ]; then
                 REDIRECT_URIS="${REDIRECT_URIS},\"https://${LANDING_HOST}/oauth2/callback\""
                 WEB_ORIGINS="${WEB_ORIGINS},\"https://${LANDING_HOST}\""
+                POST_LOGOUT_URIS="${POST_LOGOUT_URIS}##https://${LANDING_HOST}/"
               fi
               REDIRECT_URIS="${REDIRECT_URIS}]"
               WEB_ORIGINS="${WEB_ORIGINS}]"
@@ -95,7 +101,8 @@ spec:
                   -s standardFlowEnabled=true \
                   -s directAccessGrantsEnabled=false \
                   -s "redirectUris=$REDIRECT_URIS" \
-                  -s "webOrigins=$WEB_ORIGINS"
+                  -s "webOrigins=$WEB_ORIGINS" \
+                  -s "attributes.\"post.logout.redirect.uris\"=${POST_LOGOUT_URIS}"
               else
                 echo "Creating confidential client '${CLIENT_ID}'..."
                 $KCADM create clients -r "$REALM" \
@@ -107,7 +114,8 @@ spec:
                   -s standardFlowEnabled=true \
                   -s directAccessGrantsEnabled=false \
                   -s "redirectUris=$REDIRECT_URIS" \
-                  -s "webOrigins=$WEB_ORIGINS"
+                  -s "webOrigins=$WEB_ORIGINS" \
+                  -s "attributes.\"post.logout.redirect.uris\"=${POST_LOGOUT_URIS}"
 
                 KC_CLIENT_UUID=$($KCADM get clients -r "$REALM" --fields id,clientId \
                   | tr -d ' \n' \
@@ -195,9 +203,15 @@ spec:
               # Registers localhost (port-forward) and, if available, the nip.io hostname.
               REDIRECT_URIS="[\"http://localhost:${LOCALHOST_PORT}/oauth2/callback\""
               WEB_ORIGINS="[\"http://localhost:${LOCALHOST_PORT}\""
+              # Post-logout redirect URIs — must match what oauth2-proxy sends as
+              # post_logout_redirect_uri in --oidc-logout-url. Keycloak validates
+              # the URI against this list before redirecting the user after logout.
+              # Multiple URIs are separated by ## (Keycloak's internal separator).
+              POST_LOGOUT_URIS="http://localhost:${LOCALHOST_PORT}/"
               if [ -n "${LANDING_HOST}" ]; then
                 REDIRECT_URIS="${REDIRECT_URIS},\"https://${LANDING_HOST}/oauth2/callback\""
                 WEB_ORIGINS="${WEB_ORIGINS},\"https://${LANDING_HOST}\""
+                POST_LOGOUT_URIS="${POST_LOGOUT_URIS}##https://${LANDING_HOST}/"
               fi
               REDIRECT_URIS="${REDIRECT_URIS}]"
               WEB_ORIGINS="${WEB_ORIGINS}]"
@@ -212,7 +226,8 @@ spec:
                   -s standardFlowEnabled=true \
                   -s directAccessGrantsEnabled=false \
                   -s "redirectUris=$REDIRECT_URIS" \
-                  -s "webOrigins=$WEB_ORIGINS"
+                  -s "webOrigins=$WEB_ORIGINS" \
+                  -s "attributes.\"post.logout.redirect.uris\"=${POST_LOGOUT_URIS}"
               else
                 echo "Creating confidential client 'nebari-landingpage'..."
                 $KCADM create clients -r "$REALM" \
@@ -224,7 +239,8 @@ spec:
                   -s standardFlowEnabled=true \
                   -s directAccessGrantsEnabled=false \
                   -s "redirectUris=$REDIRECT_URIS" \
-                  -s "webOrigins=$WEB_ORIGINS"
+                  -s "webOrigins=$WEB_ORIGINS" \
+                  -s "attributes.\"post.logout.redirect.uris\"=${POST_LOGOUT_URIS}"
 
                 CLIENT_ID=$($KCADM get clients -r "$REALM" --fields id,clientId \
                   | tr -d ' \n' \

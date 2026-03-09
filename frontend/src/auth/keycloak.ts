@@ -13,12 +13,12 @@ let _config: KeycloakConfig | null = null;
  * Cached after the first successful fetch — safe to call multiple times.
  */
 export async function loadKeycloakConfig(): Promise<KeycloakConfig> {
-    if (_config) return _config;
-    const res = await fetch("/config.json");
-    if (!res.ok) throw new Error(`Failed to load /config.json: ${res.status}`);
-    const data = await res.json();
-    _config = data.keycloak as KeycloakConfig;
-    return _config;
+  if (_config) return _config;
+  const res = await fetch("/config.json");
+  if (!res.ok) throw new Error(`Failed to load /config.json: ${res.status}`);
+  const data = await res.json();
+  _config = data.keycloak as KeycloakConfig;
+  return _config;
 }
 
 export function signIn() {
@@ -27,8 +27,11 @@ export function signIn() {
 }
 
 export function signOut() {
-  // Redirect to /public after clearing the session.
-  // /public is whitelisted in oauth2-proxy (--skip-auth-route), so the user
-  // lands on the public page instead of being bounced back to Keycloak login.
-  window.location.href = "/oauth2/sign_out?rd=/public";
+  // /oauth2/sign_out clears the oauth2-proxy session cookie then — because
+  // oauth2-proxy is configured with --oidc-logout-url pointing to Keycloak's
+  // end-session endpoint — redirects to Keycloak to terminate the SSO session.
+  // Keycloak bounces back to the app root via post_logout_redirect_uri.
+  // Without this two-step flow, Keycloak would silently re-authenticate the
+  // user on the very next page load (SSO session still active).
+  window.location.href = "/oauth2/sign_out";
 }
