@@ -119,6 +119,15 @@ func (v *JWTValidator) SetIssuerURL(url string) {
 	v.issuerURL = strings.TrimSuffix(url, "/")
 }
 
+// clockLeeway is the tolerance applied when validating the "exp" claim.
+// oauth2-proxy forwards the raw access token from its session; by the time
+// the token traverses nginx and reaches the webapi handler, a few seconds may
+// have elapsed. Without leeway, even tiny clock drift or network delay causes
+// a spurious "token is expired" error. 30 seconds is generous but still
+// provides real expiry protection (Keycloak default access-token lifetime is
+// 5 minutes, so a 30s window does not materially weaken security).
+const clockLeeway = 30 * time.Second
+
 // ValidateToken validates a JWT token and returns the claims
 func (v *JWTValidator) ValidateToken(tokenString string) (*Claims, error) {
 	if time.Since(v.lastFetch) > time.Hour {
@@ -143,11 +152,26 @@ func (v *JWTValidator) ValidateToken(tokenString string) (*Claims, error) {
 
 		publicKey, exists := v.publicKeys[kid]
 		if !exists {
-			return nil, fmt.Errorf("unknown key ID: %s", kid)
+			// Key not cached — try a one-shot refresh (Keycloak may have rotated keys).
+			v.keysMu.RUnlock()
+			if refreshErr := v.fetchPublicKeys(); refreshErr != nil {
+				v.keysMu.RLock()
+				return nil, fmt.Errorf("unknown key ID %s and key refresh failed: %w", kid, refreshErr)
+			}
+			v.keysMu.RLock()
+			publicKey, exists = v.publicKeys[kid]
+			if !exists {
+				return nil, fmt.Errorf("unknown key ID: %s (not found after key refresh)", kid)
+			}
 		}
 
 		return publicKey, nil
-	})
+	},
+		// Allow clockLeeway on the exp claim so small delays between oauth2-proxy
+		// forwarding the token and the webapi validating it do not cause false
+		// "token expired" rejections.
+		jwt.WithLeeway(clockLeeway),
+	)
 
 	if err != nil {
 		return nil, fmt.Errorf("token validation failed: %w", err)
@@ -162,9 +186,8 @@ func (v *JWTValidator) ValidateToken(tokenString string) (*Claims, error) {
 		return nil, fmt.Errorf("invalid issuer: expected %s, got %s", expectedIssuer, claims.Issuer)
 	}
 
-	if time.Now().After(claims.ExpiresAt.Time) {
-		return nil, fmt.Errorf("token expired")
-	}
+	// Note: expiry is already enforced by jwt.ParseWithClaims above (with clockLeeway).
+	// No redundant manual check needed.
 
 	return claims, nil
 }
