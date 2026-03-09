@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -10,18 +11,30 @@ import (
 
 // ServiceInfo represents a service that appears on the landing page
 type ServiceInfo struct {
-	UID            string        `json:"uid"`
-	Name           string        `json:"name"`
-	Namespace      string        `json:"namespace"`
-	DisplayName    string        `json:"displayName"`
-	Description    string        `json:"description"`
-	URL            string        `json:"url"`
-	Icon           string        `json:"icon"`
-	Category       string        `json:"category"`
-	Priority       int           `json:"priority"`
-	Visibility     string        `json:"visibility"`
-	RequiredGroups []string      `json:"requiredGroups,omitempty"`
-	Health         *HealthStatus `json:"health,omitempty"`
+	UID              string             `json:"uid"`
+	Name             string             `json:"name"`
+	Namespace        string             `json:"namespace"`
+	DisplayName      string             `json:"displayName"`
+	Description      string             `json:"description"`
+	URL              string             `json:"url"`
+	Icon             string             `json:"icon"`
+	Category         string             `json:"category"`
+	Priority         int                `json:"priority"`
+	Visibility       string             `json:"visibility"`
+	RequiredGroups   []string           `json:"requiredGroups,omitempty"`
+	Health           *HealthStatus      `json:"health,omitempty"`
+	HealthCheckConfig *HealthCheckConfig `json:"-"` // not serialised; used by the health checker
+}
+
+// HealthCheckConfig holds the resolved probe settings for a service.
+// It is populated by the watcher from spec.landingPage.healthCheck in the
+// NebariApp CRD and consumed exclusively by the health checker.
+type HealthCheckConfig struct {
+	// ProbeURL is the full HTTP URL the health checker will GET on each interval.
+	// Constructed as http://<service-name>.<namespace>:<port><path>.
+	ProbeURL        string
+	IntervalSeconds int
+	TimeoutSeconds  int
 }
 
 // HealthStatus represents the health status of a service
@@ -66,18 +79,19 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 	}
 
 	service := &ServiceInfo{
-		UID:            a.UID,
-		Name:           a.Name,
-		Namespace:      a.Namespace,
-		DisplayName:    lp.DisplayName,
-		Description:    lp.Description,
-		URL:            buildURL(a),
-		Icon:           lp.Icon,
-		Category:       lp.Category,
-		Priority:       priority,
-		Visibility:     visibility,
-		RequiredGroups: lp.RequiredGroups,
-		Health:         c.preserveHealthStatus(a.UID),
+		UID:             a.UID,
+		Name:            a.Name,
+		Namespace:       a.Namespace,
+		DisplayName:     lp.DisplayName,
+		Description:     lp.Description,
+		URL:             buildURL(a),
+		Icon:            lp.Icon,
+		Category:        lp.Category,
+		Priority:        priority,
+		Visibility:      visibility,
+		RequiredGroups:  lp.RequiredGroups,
+		Health:          c.preserveHealthStatus(a.UID),
+		HealthCheckConfig: buildHealthCheckConfig(a),
 	}
 
 	c.mu.Lock()
@@ -180,4 +194,42 @@ func buildURL(a *sdapp.App) string {
 		scheme = "http"
 	}
 	return scheme + "://" + a.Hostname
+}
+
+// buildHealthCheckConfig constructs a HealthCheckConfig from the app's
+// health check settings. Returns nil when health checking is disabled or
+// not configured.
+func buildHealthCheckConfig(a *sdapp.App) *HealthCheckConfig {
+	if a.LandingPage == nil || a.LandingPage.HealthCheck == nil || !a.LandingPage.HealthCheck.Enabled {
+		return nil
+	}
+	hc := a.LandingPage.HealthCheck
+	path := hc.Path
+	if path == "" {
+		path = "/"
+	}
+	interval := hc.IntervalSeconds
+	if interval <= 0 {
+		interval = 30
+	}
+	timeout := hc.TimeoutSeconds
+	if timeout <= 0 {
+		timeout = 5
+	}
+	// Probe the Kubernetes service directly using in-cluster DNS so the health
+	// check bypasses the ingress/gateway and always uses HTTP regardless of
+	// whether TLS is configured for external access.
+	serviceName := a.ServiceName
+	if serviceName == "" {
+		serviceName = a.Name
+	}
+	servicePort := a.ServicePort
+	if servicePort == 0 {
+		servicePort = 80
+	}
+	return &HealthCheckConfig{
+		ProbeURL:        fmt.Sprintf("http://%s.%s:%d%s", serviceName, a.Namespace, servicePort, path),
+		IntervalSeconds: interval,
+		TimeoutSeconds:  timeout,
+	}
 }

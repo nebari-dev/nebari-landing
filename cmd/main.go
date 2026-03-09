@@ -190,6 +190,7 @@ func main() {
 	}
 
 	healthChecker := health.NewHealthChecker(serviceCache, time.Duration(healthInterval)*time.Second)
+	healthChecker.SetPublisher(hub)
 	go healthChecker.Start(ctx)
 
 	// Build Redis-backed stores. All three share the same Redis client.

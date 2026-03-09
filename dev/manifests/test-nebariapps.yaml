@@ -1,5 +1,6 @@
 ---
-# Public service — visible to everyone, no auth required
+# Public service — visible to everyone, no auth required.
+# Health status: healthy (nginx returns 200 on GET /)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -20,11 +21,12 @@ spec:
     visibility: public
     healthCheck:
       enabled: true
-      path: "/healthz"
+      path: "/"        # nginx serves the landing page → HTTP 200 → healthy
       intervalSeconds: 30
       timeoutSeconds: 5
 ---
-# Private service — requires valid JWT (any authenticated user, no group restriction)
+# Private service — requires valid JWT (any authenticated user).
+# Health status: unhealthy (nginx returns 404 for /hub/api/health — JupyterHub isn't deployed)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -39,18 +41,18 @@ spec:
     enabled: true
     displayName: "JupyterHub"
     description: "Interactive Python notebooks for data science"
-    # https://github.com/jupyter/jupyter.github.io/blob/main/assets/share.png
     icon: "https://jupyter.org/assets/homepage/main-logo.svg"
     category: "Data Science"
     priority: 1
     visibility: private
     healthCheck:
       enabled: true
-      path: "/healthz"
+      path: "/hub/api/health"  # returns 404 on nginx → unhealthy (JupyterHub not deployed)
       intervalSeconds: 30
       timeoutSeconds: 5
 ---
-# Private service — requires valid JWT (any authenticated user, no group restriction)
+# Private service — no health check configured.
+# Health status: unknown (health checker skips services without a healthCheck)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -69,8 +71,10 @@ spec:
     category: "Monitoring"
     priority: 20
     visibility: private
+    # No healthCheck block → status stays "unknown"
 ---
-# Private service — requires JWT + admin group membership
+# Private service — requires JWT + admin group membership.
+# Health status: healthy (nginx returns 200 on GET /)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -92,6 +96,11 @@ spec:
     visibility: private
     requiredGroups:
       - "admin"
+    healthCheck:
+      enabled: true
+      path: "/"        # nginx returns 200 → healthy
+      intervalSeconds: 30
+      timeoutSeconds: 5
 ---
 # Disabled app — should NOT appear in /api/v1/services
 apiVersion: reconcilers.nebari.dev/v1

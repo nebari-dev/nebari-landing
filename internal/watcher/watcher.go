@@ -268,12 +268,16 @@ func lpEnabled(u *unstructured.Unstructured) bool {
 // typed version did.
 func toApp(u *unstructured.Unstructured) *sdapp.App {
 	hostname, _, _ := unstructured.NestedString(u.Object, "spec", "hostname")
+	serviceName, _, _ := unstructured.NestedString(u.Object, "spec", "service", "name")
+	servicePort, _, _ := unstructured.NestedInt64(u.Object, "spec", "service", "port")
 	a := &sdapp.App{
-		UID:        string(u.GetUID()),
-		Name:       u.GetName(),
-		Namespace:  u.GetNamespace(),
-		Hostname:   hostname,
-		TLSEnabled: tlsEnabled(u),
+		UID:         string(u.GetUID()),
+		Name:        u.GetName(),
+		Namespace:   u.GetNamespace(),
+		Hostname:    hostname,
+		TLSEnabled:  tlsEnabled(u),
+		ServiceName: serviceName,
+		ServicePort: int(servicePort),
 	}
 
 	if !lpEnabled(u) {
@@ -293,6 +297,21 @@ func toApp(u *unstructured.Unstructured) *sdapp.App {
 		priority = int(p)
 	}
 
+	// Read health check configuration.
+	hcEnabled, _, _ := unstructured.NestedBool(u.Object, "spec", "landingPage", "healthCheck", "enabled")
+	hcPath, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "healthCheck", "path")
+	hcInterval, _, _ := unstructured.NestedInt64(u.Object, "spec", "landingPage", "healthCheck", "intervalSeconds")
+	hcTimeout, _, _ := unstructured.NestedInt64(u.Object, "spec", "landingPage", "healthCheck", "timeoutSeconds")
+	var healthCheck *sdapp.HealthCheck
+	if hcEnabled {
+		healthCheck = &sdapp.HealthCheck{
+			Enabled:         true,
+			Path:            hcPath,
+			IntervalSeconds: int(hcInterval),
+			TimeoutSeconds:  int(hcTimeout),
+		}
+	}
+
 	page := &sdapp.LandingPage{
 		Enabled:        true,
 		DisplayName:    displayName,
@@ -303,6 +322,7 @@ func toApp(u *unstructured.Unstructured) *sdapp.App {
 		Visibility:     visibility,
 		RequiredGroups: requiredGroups,
 		ExternalURL:    externalURL,
+		HealthCheck:    healthCheck,
 	}
 
 	// Prefer status.serviceDiscovery when the controller has written it.
