@@ -2,7 +2,7 @@
   THIS FILE IS AUTO-GENERATED — do not edit by hand.
   Source:    tools/apidoc/main.go
   Regenerate: go generate ./internal/api/...
-  Generated: 2026-03-05T17:25:33Z
+  Generated: 2026-03-10T13:57:08Z
 -->
 
 # Webapi — HTTP API Reference
@@ -45,6 +45,7 @@ List services
 > **Notes**
 > - Services whose `spec.landingPage.visibility` is `private` are filtered to members of the required Keycloak groups.
 > - The `pinned` field reflects the calling user's pin state; always `false` for unauthenticated callers.
+> - The `status` field reflects the latest health-probe result: `"unknown"` (no probe configured or not yet run), `"healthy"` (HTTP 2xx–3xx), or `"unhealthy"` (connection error or HTTP 4xx/5xx). Probes are configured per service via `spec.landingPage.healthCheck` in the NebariApp CRD.
 
 
 ### `GET` `/api/v1/services/{id}`
@@ -232,6 +233,7 @@ Server pushes JSON frames on every service change event.
 
 > **Notes**
 > - Events are published via Redis Pub/Sub (`nebari:events`) so all webapi replicas fan out every event to their local WebSocket clients.
+> - `modified` events are also emitted whenever a service's health status changes (e.g. `"unknown"` → `"healthy"`), allowing the frontend to update health badges in real time without polling.
 
 
 ---
@@ -245,9 +247,9 @@ Liveness / readiness probe — no auth required
 
 **Responses**
 
-- `200` — always `{"status":"ok"}` while the process is alive
+- `200` — always `{"status":"healthy"}` while the process is alive
 ```json
-{ "status": "ok" }
+{ "status": "healthy" }
 ```
 
 ---
