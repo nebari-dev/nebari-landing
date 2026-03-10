@@ -192,7 +192,11 @@ func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client 
 		h.setStatus(uid, "unhealthy", fmt.Sprintf("probe error: %v", err))
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.V(1).Info("Health probe: failed to close response body", "uid", uid, "err", closeErr)
+		}
+	}()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
 		log.Info("Health probe ok", "uid", uid, "url", probeURL, "status", resp.StatusCode)
