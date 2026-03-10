@@ -92,6 +92,11 @@ frontend:
       # UX
       - --skip-provider-button=true
       - --silence-ping-logging=true
+      # Token refresh: proactively refresh the access token in the session cookie
+      # so the webapi never receives a stale Bearer token. Keycloak's access token
+      # lifetime is 5m (300s); refreshing at 4m ensures a live token is always
+      # forwarded to the webapi via Authorization: Bearer.
+      - --cookie-refresh=4m
       # Public routes — skip auth so unauthenticated users can access /public
       - --skip-auth-route=^/public
       # Static assets must bypass auth so the browser can load JS/CSS chunks

@@ -27,6 +27,13 @@ type App struct {
 	// (spec.routing.tls.enabled != false).
 	TLSEnabled bool
 
+	// ServiceName is spec.service.name — the Kubernetes Service to probe for
+	// health checks.
+	ServiceName string
+
+	// ServicePort is spec.service.port — the port on the Kubernetes Service.
+	ServicePort int
+
 	// LandingPage holds the resolved landing-page configuration, or nil when
 	// the application does not participate in service discovery.
 	LandingPage *LandingPage
@@ -68,4 +75,26 @@ type LandingPage struct {
 
 	// ExternalURL overrides the URL derived from Hostname.
 	ExternalURL string
+
+	// HealthCheck holds the health-probe configuration for this service.
+	// When nil or Enabled is false, health status remains "unknown".
+	HealthCheck *HealthCheck
+}
+
+// HealthCheck holds the health-probing configuration derived from
+// spec.landingPage.healthCheck in the NebariApp CRD.
+type HealthCheck struct {
+	// Enabled mirrors spec.landingPage.healthCheck.enabled.
+	Enabled bool
+
+	// Path is the HTTP path to probe (e.g. "/healthz", "/").
+	Path string
+
+	// IntervalSeconds is how frequently to probe the service.
+	// Defaults to 30 when not set.
+	IntervalSeconds int
+
+	// TimeoutSeconds is the per-probe HTTP timeout.
+	// Defaults to 5 when not set.
+	TimeoutSeconds int
 }

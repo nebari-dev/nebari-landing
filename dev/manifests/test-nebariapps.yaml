@@ -1,5 +1,6 @@
 ---
-# Public service — visible to everyone, no auth required
+# Public service — visible to everyone, no auth required.
+# Health status: healthy (probes webapi /api/v1/health — always returns 200)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -8,8 +9,8 @@ metadata:
 spec:
   hostname: docs.nebari.local
   service:
-    name: nebari-landingpage
-    port: 80
+    name: nebari-landing-webapi  # probe target: webapi /api/v1/health → 200 → healthy
+    port: 8080
   landingPage:
     enabled: true
     displayName: "Documentation"
@@ -20,11 +21,11 @@ spec:
     visibility: public
     healthCheck:
       enabled: true
-      path: "/healthz"
+      path: "/api/v1/health"  # webapi returns 200 {"status":"healthy"} → healthy
       intervalSeconds: 30
       timeoutSeconds: 5
 ---
-# Private service — requires valid JWT (any authenticated user, no group restriction)
+# Health status: unhealthy (probes a non-existent service → DNS failure)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -33,24 +34,24 @@ metadata:
 spec:
   hostname: jupyter.nebari.local
   service:
-    name: nebari-landingpage
-    port: 80
+    name: jupyterhub  # doesn't exist in dev → DNS failure → unhealthy
+    port: 8000
   landingPage:
     enabled: true
     displayName: "JupyterHub"
     description: "Interactive Python notebooks for data science"
-    # https://github.com/jupyter/jupyter.github.io/blob/main/assets/share.png
     icon: "https://jupyter.org/assets/homepage/main-logo.svg"
     category: "Data Science"
     priority: 1
     visibility: private
     healthCheck:
       enabled: true
-      path: "/healthz"
+      path: "/hub/api/health"  # service unreachable → unhealthy
       intervalSeconds: 30
       timeoutSeconds: 5
 ---
-# Private service — requires valid JWT (any authenticated user, no group restriction)
+# Private service — no health check configured.
+# Health status: unknown (health checker skips services without a healthCheck)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -59,8 +60,8 @@ metadata:
 spec:
   hostname: grafana.nebari.local
   service:
-    name: nebari-landingpage
-    port: 80
+    name: grafana
+    port: 3000
   landingPage:
     enabled: true
     displayName: "Grafana"
@@ -69,8 +70,10 @@ spec:
     category: "Monitoring"
     priority: 20
     visibility: private
+    # No healthCheck block → status stays "unknown"
 ---
-# Private service — requires JWT + admin group membership
+# Private service — requires JWT + admin group membership.
+# Health status: healthy (probes webapi /ping → 200)
 apiVersion: reconcilers.nebari.dev/v1
 kind: NebariApp
 metadata:
@@ -79,8 +82,8 @@ metadata:
 spec:
   hostname: admin.nebari.local
   service:
-    name: nebari-landingpage
-    port: 80
+    name: nebari-landing-webapi
+    port: 8080
   landingPage:
     enabled: true
     displayName: "Admin Panel"
@@ -92,6 +95,11 @@ spec:
     visibility: private
     requiredGroups:
       - "admin"
+    healthCheck:
+      enabled: true
+      path: "/api/v1/health"  # webapi returns 200 {"status":"healthy"} → healthy
+      intervalSeconds: 30
+      timeoutSeconds: 5
 ---
 # Disabled app — should NOT appear in /api/v1/services
 apiVersion: reconcilers.nebari.dev/v1

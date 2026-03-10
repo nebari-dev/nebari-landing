@@ -109,6 +109,7 @@ var groups = []Group{
 				Notes: []string{
 					"Services whose `spec.landingPage.visibility` is `private` are filtered to members of the required Keycloak groups.",
 					"The `pinned` field reflects the calling user's pin state; always `false` for unauthenticated callers.",
+					"The `status` field reflects the latest health-probe result: `\"unknown\"` (no probe configured or not yet run), `\"healthy\"` (HTTP 2xx–3xx), or `\"unhealthy\"` (connection error or HTTP 4xx/5xx). Probes are configured per service via `spec.landingPage.healthCheck` in the NebariApp CRD.",
 				},
 			},
 			{
@@ -271,6 +272,7 @@ var groups = []Group{
 				},
 				Notes: []string{
 					"Events are published via Redis Pub/Sub (`nebari:events`) so all webapi replicas fan out every event to their local WebSocket clients.",
+					"`modified` events are also emitted whenever a service's health status changes (e.g. `\"unknown\"` → `\"healthy\"`), allowing the frontend to update health badges in real time without polling.",
 				},
 			},
 		},
@@ -283,9 +285,9 @@ var groups = []Group{
 				Path:     "/api/v1/health",
 				Summary:  "Liveness / readiness probe — no auth required",
 				Auth:     Auth{Required: false},
-				Response: &Example{Body: `{ "status": "ok" }`},
+				Response: &Example{Body: `{ "status": "healthy" }`},
 				Responses: []string{
-					"`200` — always `{\"status\":\"ok\"}` while the process is alive",
+					"`200` — always `{\"status\":\"healthy\"}` while the process is alive",
 				},
 			},
 		},

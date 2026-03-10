@@ -82,6 +82,13 @@ frontend:
       - --skip-auth-route=^/assets/
       - --skip-auth-route=^/favicon
       - --skip-auth-route=^/config\.json$
+      # Token refresh: tell oauth2-proxy to proactively refresh the access token
+      # before it expires so the webapi never receives a stale Bearer token.
+      # --cookie-refresh instructs oauth2-proxy to exchange the refresh token for
+      # a new access token on the next request after this duration has elapsed.
+      # Set to 4m — just under Keycloak's 5m accessTokenLifespan — so the token
+      # is always live when forwarded to the webapi via Authorization: Bearer.
+      - --cookie-refresh=4m
     # - --skip-provider-button
 
     # Init container that blocks oauth2-proxy from starting until Keycloak's
