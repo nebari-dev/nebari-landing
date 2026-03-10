@@ -11,18 +11,18 @@ import (
 
 // ServiceInfo represents a service that appears on the landing page
 type ServiceInfo struct {
-	UID              string             `json:"uid"`
-	Name             string             `json:"name"`
-	Namespace        string             `json:"namespace"`
-	DisplayName      string             `json:"displayName"`
-	Description      string             `json:"description"`
-	URL              string             `json:"url"`
-	Icon             string             `json:"icon"`
-	Category         string             `json:"category"`
-	Priority         int                `json:"priority"`
-	Visibility       string             `json:"visibility"`
-	RequiredGroups   []string           `json:"requiredGroups,omitempty"`
-	Health           *HealthStatus      `json:"health,omitempty"`
+	UID               string             `json:"uid"`
+	Name              string             `json:"name"`
+	Namespace         string             `json:"namespace"`
+	DisplayName       string             `json:"displayName"`
+	Description       string             `json:"description"`
+	URL               string             `json:"url"`
+	Icon              string             `json:"icon"`
+	Category          string             `json:"category"`
+	Priority          int                `json:"priority"`
+	Visibility        string             `json:"visibility"`
+	RequiredGroups    []string           `json:"requiredGroups,omitempty"`
+	Health            *HealthStatus      `json:"health,omitempty"`
 	HealthCheckConfig *HealthCheckConfig `json:"-"` // not serialised; used by the health checker
 }
 
@@ -79,18 +79,18 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 	}
 
 	service := &ServiceInfo{
-		UID:             a.UID,
-		Name:            a.Name,
-		Namespace:       a.Namespace,
-		DisplayName:     lp.DisplayName,
-		Description:     lp.Description,
-		URL:             buildURL(a),
-		Icon:            lp.Icon,
-		Category:        lp.Category,
-		Priority:        priority,
-		Visibility:      visibility,
-		RequiredGroups:  lp.RequiredGroups,
-		Health:          c.preserveHealthStatus(a.UID),
+		UID:               a.UID,
+		Name:              a.Name,
+		Namespace:         a.Namespace,
+		DisplayName:       lp.DisplayName,
+		Description:       lp.Description,
+		URL:               buildURL(a),
+		Icon:              lp.Icon,
+		Category:          lp.Category,
+		Priority:          priority,
+		Visibility:        visibility,
+		RequiredGroups:    lp.RequiredGroups,
+		Health:            c.preserveHealthStatus(a.UID),
 		HealthCheckConfig: buildHealthCheckConfig(a),
 	}
 

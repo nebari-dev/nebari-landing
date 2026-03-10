@@ -24,9 +24,9 @@ type Publisher interface {
 // independently on its own interval using a lightweight goroutine-per-service
 // model; goroutines exit when ctx is cancelled or the service is removed.
 type HealthChecker struct {
-	cache    *cache.ServiceCache
-	interval time.Duration // fallback global interval when service doesn't specify one
-	publisher Publisher    // optional; may be nil
+	cache     *cache.ServiceCache
+	interval  time.Duration // fallback global interval when service doesn't specify one
+	publisher Publisher     // optional; may be nil
 	// running maps UID → (cancel func, current ProbeURL).
 	// The ProbeURL is stored so reconcile can detect config changes and restart
 	// the probe goroutine when a NebariApp's healthCheck spec is updated.
