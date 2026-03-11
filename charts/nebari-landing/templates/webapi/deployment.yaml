@@ -84,6 +84,11 @@ spec:
             # Set webapi.debugMode=true in values to activate. Never use in production.
             - name: DEBUG_MODE
               value: {{ .Values.webapi.debugMode | quote }}
+            # Automatic notifications
+            - name: NOTIFICATIONS_STARTUP
+              value: {{ .Values.webapi.notifications.startupNotification | quote }}
+            - name: NOTIFICATIONS_LIFECYCLE
+              value: {{ .Values.webapi.notifications.lifecycleNotifications | quote }}
             # Health
             - name: HEALTH_INTERVAL
               value: {{ .Values.webapi.healthInterval | quote }}

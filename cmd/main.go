@@ -59,10 +59,12 @@ func main() {
 		debugMode      bool
 		healthInterval int
 		adminGroup     string
-		redisAddr      string
-		redisPassword  string
-		redisDB        int
-		allowedOrigins string
+		redisAddr             string
+		redisPassword         string
+		redisDB               int
+		allowedOrigins        string
+		notifStartup          bool
+		notifLifecycle        bool
 	)
 
 	// Flags fall back to environment variables so the binary works naturally when
@@ -91,6 +93,10 @@ func main() {
 		"Comma-separated list of allowed CORS origins, or * for all (env: ALLOWED_ORIGINS)")
 	flag.BoolVar(&debugMode, "debug", envBool("DEBUG_MODE", false),
 		"Enable /api/v1/debug endpoint and verbose JWT logging. Never use in production (env: DEBUG_MODE)")
+	flag.BoolVar(&notifStartup, "notifications-startup", envBool("NOTIFICATIONS_STARTUP", true),
+		"Post a welcome/feedback notification on every startup (env: NOTIFICATIONS_STARTUP)")
+	flag.BoolVar(&notifLifecycle, "notifications-lifecycle", envBool("NOTIFICATIONS_LIFECYCLE", true),
+		"Auto-post notifications for service lifecycle events: added, removed, back online (env: NOTIFICATIONS_LIFECYCLE)")
 
 	opts := zap.Options{
 		Development: true,
@@ -106,6 +112,8 @@ func main() {
 		"debugMode", debugMode,
 		"healthInterval", healthInterval,
 		"allowedOrigins", allowedOrigins,
+		"notificationsStartup", notifStartup,
+		"notificationsLifecycle", notifLifecycle,
 	)
 
 	config, err := ctrl.GetConfig()
@@ -162,7 +170,9 @@ func main() {
 		os.Exit(1)
 	}
 	nebariAppWatcher.SetPublisher(hub)
-	nebariAppWatcher.SetNotificationStore(notificationStore)
+	if notifLifecycle {
+		nebariAppWatcher.SetNotificationStore(notificationStore)
+	}
 
 	go func() {
 		if err := nebariAppWatcher.Start(ctx); err != nil {
@@ -178,15 +188,17 @@ func main() {
 	}
 	setupLog.Info("Cache synced successfully")
 
-	// Post a one-time welcome/feedback notification on every startup.
-	if _, err := notificationStore.Create(
-		"nebari",
-		"Welcome to Nebari!",
-		"User feedback is welcomed! We value your input to improve Nebari.",
-	); err != nil {
-		setupLog.Error(err, "Failed to post startup notification")
-	} else {
-		setupLog.Info("Startup notification posted")
+	// Post a one-time welcome/feedback notification on every startup (opt-out via --notifications-startup=false).
+	if notifStartup {
+		if _, err := notificationStore.Create(
+			"nebari",
+			"Welcome to Nebari!",
+			"User feedback is welcomed! We value your input to improve Nebari.",
+		); err != nil {
+			setupLog.Error(err, "Failed to post startup notification")
+		} else {
+			setupLog.Info("Startup notification posted")
+		}
 	}
 
 	var jwtValidator *auth.JWTValidator
@@ -214,7 +226,9 @@ func main() {
 
 	healthChecker := health.NewHealthChecker(serviceCache, time.Duration(healthInterval)*time.Second)
 	healthChecker.SetPublisher(hub)
-	healthChecker.SetNotificationStore(notificationStore)
+	if notifLifecycle {
+		healthChecker.SetNotificationStore(notificationStore)
+	}
 	go healthChecker.Start(ctx)
 
 	// Build Keycloak admin client from the same env vars the operator uses.

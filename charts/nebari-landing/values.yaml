@@ -181,6 +181,17 @@ webapi:
 
   healthInterval: 30
 
+  # Automatic platform notifications — require Redis (notifications.enabled implies redis.enabled).
+  notifications:
+    # Post a welcome/feedback notification every time the webapi starts.
+    # Disable if you prefer a clean slate on each restart.
+    startupNotification: true
+    # Auto-post notifications for service lifecycle events:
+    #   - Service added to the landing page (post-startup only)
+    #   - Service removed from the landing page
+    #   - Service recovers from unhealthy → healthy ("back online")
+    lifecycleNotifications: true
+
   resources:
     requests:
       cpu: 100m
