@@ -15,7 +15,7 @@ data:
       "keycloak": {
         "url":      {{ .Values.frontend.keycloak.url      | quote }},
         "realm":    {{ .Values.frontend.keycloak.realm     | quote }},
-        "clientId": {{ .Values.frontend.keycloak.clientId | quote }}
+        "clientId": {{ printf "%s-%s" .Release.Namespace (include "nebari-landing.fullname" .) | quote }}
       }
     }
 

@@ -33,7 +33,8 @@ frontend:
     # e.g. https://keycloak.example.com/auth
     url: ""
     realm: "nebari"
-    clientId: "nebari-frontend-spa"
+    # clientId is derived automatically following the operator convention:
+    # <namespace>-<nebariapp-name>  — do not set this manually.
 
   resources:
     requests:
