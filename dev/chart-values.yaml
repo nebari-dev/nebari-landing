@@ -45,6 +45,11 @@ webapi:
   # Never enable in production.
   debugMode: false
 
+  # Automatic notifications — both default to true; set false to opt out.
+  # notifications:
+  #   startupNotification: false    # disable the welcome message on restart
+  #   lifecycleNotifications: false # disable service added/removed/back-online posts
+
   # Expose via MetalLB so 'make port-forward' and direct LB access both work
   service:
     type: LoadBalancer

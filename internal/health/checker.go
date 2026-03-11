@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nebari-dev/nebari-landing/internal/cache"
+	"github.com/nebari-dev/nebari-landing/internal/notifications"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -24,9 +25,10 @@ type Publisher interface {
 // independently on its own interval using a lightweight goroutine-per-service
 // model; goroutines exit when ctx is cancelled or the service is removed.
 type HealthChecker struct {
-	cache     *cache.ServiceCache
-	interval  time.Duration // fallback global interval when service doesn't specify one
-	publisher Publisher     // optional; may be nil
+	cache      *cache.ServiceCache
+	interval   time.Duration        // fallback global interval when service doesn't specify one
+	publisher  Publisher            // optional; may be nil
+	notifStore *notifications.Store // optional; when set, "back online" notifications are posted
 	// running maps UID → (cancel func, current ProbeURL).
 	// The ProbeURL is stored so reconcile can detect config changes and restart
 	// the probe goroutine when a NebariApp's healthCheck spec is updated.
@@ -54,6 +56,35 @@ func NewHealthChecker(serviceCache *cache.ServiceCache, interval time.Duration) 
 // service's health status transitions (e.g. unknown → healthy).
 func (h *HealthChecker) SetPublisher(p Publisher) {
 	h.publisher = p
+}
+
+// SetNotificationStore attaches a notification store. When set, a platform
+// notification is automatically posted whenever a service transitions from
+// "unhealthy" back to "healthy" (i.e. it is "back online").
+func (h *HealthChecker) SetNotificationStore(s *notifications.Store) {
+	h.notifStore = s
+}
+
+// postRecoveryNotif posts a "back online" notification for the given service UID.
+func (h *HealthChecker) postRecoveryNotif(uid string) {
+	if h.notifStore == nil {
+		return
+	}
+	svc := h.cache.Get(uid)
+	if svc == nil {
+		return
+	}
+	name := svc.DisplayName
+	if name == "" {
+		name = svc.Name
+	}
+	if _, err := h.notifStore.Create(
+		svc.Icon,
+		fmt.Sprintf("%s is back online!", name),
+		fmt.Sprintf("%s is back online! Service is ready to use.", name),
+	); err != nil {
+		log.Error(err, "Failed to post recovery notification", "uid", uid, "name", name)
+	}
 }
 
 // Start starts the health checker. It periodically reconciles the set of
@@ -178,6 +209,13 @@ func (h *HealthChecker) probeLoop(ctx context.Context, uid string, cfg *cache.He
 // probe performs a single HTTP GET against probeURL and updates the service
 // cache. It publishes a "modified" event when the status transitions.
 func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client *http.Client) {
+	// Snapshot the current health status before probing so we can detect
+	// an unhealthy → healthy transition after the result is in.
+	prevStatus := ""
+	if svc := h.cache.Get(uid); svc != nil && svc.Health != nil {
+		prevStatus = svc.Health.Status
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
 	if err != nil {
 		log.Info("Health probe request error", "uid", uid, "url", probeURL, "err", err)
@@ -205,6 +243,10 @@ func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client 
 			LastCheck: &now,
 			Message:   fmt.Sprintf("HTTP %d", resp.StatusCode),
 		})
+		// Post a "back online" notification when recovering from unhealthy.
+		if prevStatus == "unhealthy" {
+			h.postRecoveryNotif(uid)
+		}
 	} else {
 		log.Info("Health probe unhealthy", "uid", uid, "url", probeURL, "status", resp.StatusCode)
 		h.setStatus(uid, "unhealthy", fmt.Sprintf("HTTP %d", resp.StatusCode))
