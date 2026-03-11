@@ -8,12 +8,12 @@
 }
 
 .usa-tag.status-tag--healthy {
-  background-color: var(--color-status-success-bg, #e7f6e7);
+  background-color: #10B9811A;
   color: var(--color-text-primary);
 }
 
 .usa-tag.status-tag--unhealthy {
-  background-color: var(--color-status-error-bg, #f4e3db);
+  background-color: #EF44441A;
   color: var(--color-text-primary);
 }
 

@@ -20,20 +20,13 @@ import AppGrid from "../grid";
 import ServicesPanel from "../servicesPanel";
 import { SimpleCard } from "../card";
 
-export type AppAccordionService = {
-  id: string;
-  image: string;
-  name: string;
-  status: string;
-  description: string;
-  category: string[];
-  url: string;
-  pinned: boolean;
-};
+import type { Service } from "../../api/listServices";
+
+import { putPin, deletePin } from "../../api/pin";
 
 export type AppAccordionProps = {
-  pinnedServices: AppAccordionService[];
-  services: AppAccordionService[];
+  pinnedServices: Service[];
+  services: Service[];
 };
 
 export default function AppAccordion(props: AppAccordionProps): ReactNode {
@@ -65,11 +58,28 @@ export default function AppAccordion(props: AppAccordionProps): ReactNode {
   }, []);
 
   /** Toggle pin state for a service optimistically until props refresh. */
-  const pinService = useCallback((serviceId: string) => {
-    const currentlyPinned =
-      servicesState.find((s) => s.id === serviceId)?.pinned ?? false;
-    setLocalPinOverrides((prev) => ({ ...prev, [serviceId]: !currentlyPinned }));
-  }, [servicesState]);
+  const pinService = useCallback(
+    async (serviceId: string) => {
+      const currentlyPinned =
+        servicesState.find((s) => s.id === serviceId)?.pinned ?? false;
+
+      try {
+        if (currentlyPinned) {
+          await deletePin(serviceId);
+        } else {
+          await putPin(serviceId);
+        }
+
+        setLocalPinOverrides((prev) => ({
+          ...prev,
+          [serviceId]: !currentlyPinned,
+        }));
+      } catch (error) {
+        console.error("Failed to update pin", error);
+      }
+    },
+    [servicesState]
+  );
 
   // Derived pinned list
   const pinnedList = useMemo(
@@ -111,6 +121,7 @@ export default function AppAccordion(props: AppAccordionProps): ReactNode {
                     image={service.image}
                     name={service.name}
                     status={service.status}
+                    url={service.url}
                   />
                 ))}
               </AppGrid>

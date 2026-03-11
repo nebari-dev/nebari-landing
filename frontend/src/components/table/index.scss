@@ -19,6 +19,12 @@
   border-spacing: 0;
 }
 
+.app-table .app-table__serviceLink {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
 .app-table .usa-table caption {
   color: var(--color-text-primary);
 }

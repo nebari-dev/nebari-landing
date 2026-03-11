@@ -57,6 +57,7 @@ export default function ServicesPanel(props: ServicesPanelProps): ReactNode {
             description: service.description,
             status: service.status,
             categories: service.category,
+            url: service.url,
             pinned: service.pinned,
             image: service.image,
           }))}

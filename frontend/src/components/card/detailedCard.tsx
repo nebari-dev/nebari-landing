@@ -12,7 +12,7 @@ import {
 
 import {
   StatusTag
-} from "../StatusTag"
+} from "../statustag"
 
 import AvatarImage from "../icon";
 

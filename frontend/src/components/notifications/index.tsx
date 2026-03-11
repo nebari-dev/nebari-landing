@@ -2,38 +2,46 @@ import {
   useEffect,
   useId,
   useRef,
-  useState
+  useState,
 } from "react";
 
-import type {
-  ReactNode
-} from "react";
+import type { ReactNode } from "react";
+import type { Notification } from "../../api/notifications";
 
-import {
-  Button
-} from "@trussworks/react-uswds";
+import { Button } from "@trussworks/react-uswds";
+import { Bell } from "lucide-react";
 
-import {
-  Bell
-} from "lucide-react";
-
-import
-  NotificationList
-from "./notificationsList";
+import NotificationList from "./notificationsList";
 
 import "./index.scss";
 
-export default function HeaderNotificationsMenu(props: HeaderNotificationsMenu.Props): ReactNode {
+type HeaderNotificationsMenuProps = {
+  notifications: Notification[];
+  onNotificationsViewed?: (ids: string[]) => void | Promise<void>;
+};
 
-  const {
-    notifications
-  } = props;
+export default function HeaderNotificationsMenu(
+  props: HeaderNotificationsMenuProps
+): ReactNode {
+  const { notifications, onNotificationsViewed } = props;
 
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const unreadIds = notifications
+      .filter((notification) => !notification.read)
+      .map((notification) => notification.id);
+
+    if (unreadIds.length > 0) {
+      onNotificationsViewed?.(unreadIds);
+    }
+  }, [open, notifications, onNotificationsViewed]);
 
   useEffect(() => {
     if (!open) return;
@@ -65,10 +73,7 @@ export default function HeaderNotificationsMenu(props: HeaderNotificationsMenu.P
   }, [open]);
 
   return (
-    <div
-      className="app-notifications"
-      ref={rootRef}
-    >
+    <div className="app-notifications" ref={rootRef}>
       <Button
         type="button"
         outline
@@ -95,20 +100,4 @@ export default function HeaderNotificationsMenu(props: HeaderNotificationsMenu.P
       ) : null}
     </div>
   );
-}
-
-export namespace HeaderNotificationsMenu {
-
-  export
-  type Item = {
-    id: string;
-    image: string;
-    title: string;
-    description: string;
-  };
-
-  export
-  type Props = {
-    notifications: Item[];
-  };
 }

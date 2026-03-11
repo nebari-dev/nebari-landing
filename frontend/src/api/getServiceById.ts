@@ -7,6 +7,7 @@ export type Service = {
   description: string;
   category: string[];
   pinned: boolean;
+  url: string;
   image: string;
 };
 

@@ -3,47 +3,54 @@ import type{
 } from "react";
 
 import {
-  Card, CardBody, Tag
+  Card, CardBody
 } from "@trussworks/react-uswds";
+
+import {
+  StatusTag
+} from "../statustag"
 
 import
   AvatarImage
 from "../icon";
-
-import {
-  cn
-} from "../../lib/cn";
 
 import "./index.scss";
 
 export function SimpleCard(props: SimpleCardProps): ReactNode {
   
   // Extract the props
-  const { className, image, name, status } = props;
+  const { image, name, status, url } = props;
 
   return (
-    <Card className={cn("app-card app-card--simple", className)} layout="standardDefault">
+    <Card className="app-card app-card--simple" layout="standardDefault">
       <CardBody className="app-card__body app-card__body--simple">
-        <div className="app-card-simple__row">
-          <div className="app-card-simple__avatar">
-            {AvatarImage(image)}
-          </div>
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="app-card-simple__link"
+          aria-label={`${name} (opens in a new tab)`}
+        >
+          <div className="app-card-simple__row">
+            <div className="app-card-simple__avatar">
+              {AvatarImage(image)}
+            </div>
 
-          <div className="app-card-simple__meta">
-            <h3 className="app-card__title app-card__title--simple">{name}</h3>
-            <Tag background="base-lighter" className="app-card__status app-card__status--simple">
-              {status}
-            </Tag>
+            <div className="app-card-simple__meta">
+              <h3 className="app-card__title app-card__title--simple">{name}</h3>
+
+              <StatusTag status={status} />
+            </div>
           </div>
-        </div>
+        </a>
       </CardBody>
     </Card>
   );
 }
 
 export type SimpleCardProps = {
-  className?: string;
   image: string;
   name: string;
   status: string;
+  url: string;
 };

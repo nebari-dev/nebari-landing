@@ -4,6 +4,12 @@
   height: 96px;
 }
 
+.app-card-simple__link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
 .app-card--simple .app-card__body--simple {
   padding: 1rem;
 }

@@ -30,6 +30,10 @@ import
   HeaderNotificationsMenu
 from "../notifications";
 
+import type {
+  Notification
+} from "../../api/notifications"; 
+
 import "./index.scss";
 
 export default function Header(props: HeaderProps): ReactNode {
@@ -38,39 +42,15 @@ export default function Header(props: HeaderProps): ReactNode {
     isDarkMode = false,
     onToggleTheme,
     user,
-    onSignOut
+    onSignOut,
+    notifications,
+    onNotificationsViewed,
   } = props;
 
   const logoSrc = isDarkMode ? logoUrlDark : logoUrlLight;
 
-
-  // TODO: Remove in deploytment (temporary data)
-  const notifications = [
-    {
-      id: "n-1",
-      image: "",
-      title: "Service updated",
-      description: "Payments service completed a configuration update."
-    },
-    {
-      id: "n-2",
-      image: "",
-      title: "Access approved",
-      description: "Your request for Developer Portal access was approved."
-    },
-    {
-      id: "n-3",
-      image: "",
-      title: "New release",
-      description: "Analytics service is now available in Launchpad."
-    }
-  ];
-
   return (
-    <USWDSHeader
-      basic
-      className="app-header"
-    >
+    <USWDSHeader basic className="app-header">
       <div className="app-header__row">
         <div className="app-header__left">
           <a
@@ -84,29 +64,6 @@ export default function Header(props: HeaderProps): ReactNode {
               alt="Nebari"
             />
           </a>
-
-          {/* TODO: uncomment if these fields are required */}
-          {/* <nav className="app-header__nav" aria-label="Primary navigation">
-            <a
-              className="app-header__link"
-              href={docsHref}
-              aria-label="Open documentation"
-            >
-              Docs{" "}
-              <ExternalLink size={13} className="app-header__linkIcon" aria-hidden="true" />
-            </a>
-
-            <a
-              className="app-header__link"
-              href={githubHref}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Open GitHub repository in a new tab"
-            >
-              GitHub{" "}
-              <ExternalLink size={13} className="app-header__linkIcon" aria-hidden="true" />
-            </a>
-          </nav> */}
         </div>
 
         <div className="app-header__right">
@@ -126,7 +83,10 @@ export default function Header(props: HeaderProps): ReactNode {
             )}
           </Button>
 
-          <HeaderNotificationsMenu notifications={notifications} />
+          <HeaderNotificationsMenu
+            notifications={notifications}
+            onNotificationsViewed={onNotificationsViewed}
+          />
 
           {user ? (
             <HeaderUserMenu
@@ -144,10 +104,10 @@ export type HeaderProps = {
   homeHref?: string;
   docsHref?: string;
   githubHref?: string;
-
   isDarkMode?: boolean;
   onToggleTheme?: () => void;
-
   user?: User | null;
   onSignOut?: () => void;
+  notifications: Notification[];
+  onNotificationsViewed?: (ids: string[]) => void | Promise<void>;
 };

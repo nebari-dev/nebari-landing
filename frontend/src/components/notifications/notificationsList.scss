@@ -64,3 +64,12 @@
   line-height: 1.2 !important;
   color: var(--color-text-secondary) !important;
 }
+
+.app-notificationList__empty {
+  padding: 1rem;
+  color: var(--color-text-secondary);
+}
+
+.app-notificationList__item--read {
+  opacity: 0.75;
+}

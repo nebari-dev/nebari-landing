@@ -8,7 +8,7 @@ import {
 
 import {
   StatusTag
-} from "../StatusTag"
+} from "../statustag"
 
 import
   pinIconUrl
@@ -82,6 +82,7 @@ export default function AppTable(props: AppTableProps): ReactNode {
             const status = row.status;
             const categories = row.categories;
             const pinned = !!row.pinned;
+            const url = row.url;
             const image = row.image;
 
             return (
@@ -91,18 +92,26 @@ export default function AppTable(props: AppTableProps): ReactNode {
                   data-label="Service"
                   className="app-table__serviceCell"
                 >
-                  <div className="app-table__service">
-                    <div className="app-table__avatar">
-                      {AvatarImage(image)}
-                    </div>
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="app-table__serviceLink"
+                    aria-label={`${title} (opens in a new tab)`}
+                  >
+                    <div className="app-table__service">
+                      <div className="app-table__avatar">
+                        {AvatarImage(image)}
+                      </div>
 
-                    <div className="app-table__serviceMeta">
-                      <div className="app-table__serviceTitle">{title}</div>
-                      <div className="app-table__serviceDescription">
-                        {description}
+                      <div className="app-table__serviceMeta">
+                        <div className="app-table__serviceTitle">{title}</div>
+                        <div className="app-table__serviceDescription">
+                          {description}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </a>
                 </th>
 
                 {/* TODO: Split thhis into a separate component */}
@@ -155,6 +164,7 @@ export type AppTableRow = {
   imageAlt?: string;
   categories: string[];
   status: string;
+  url: string
   pinned: boolean;
 };
 

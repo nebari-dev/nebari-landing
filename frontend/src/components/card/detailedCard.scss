@@ -4,6 +4,10 @@
   height: 234px;
 }
 
+.app-card--detailed .app-card-detailed__mainLink {
+  text-decoration: none;
+}
+
 .app-card--detailed .usa-card__container {
   display: flex;
   flex-direction: column;

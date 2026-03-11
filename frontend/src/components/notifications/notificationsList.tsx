@@ -1,29 +1,37 @@
-import type {
-  ReactNode
-} from "react";
+import type { ReactNode } from "react";
+import type { Notification } from "../../api/notifications";
 
-import {
-  Collection
-} from "@trussworks/react-uswds";
+import { Collection } from "@trussworks/react-uswds";
 
-import
-  AvatarImage
-from "../icon";
+import AvatarImage from "../icon";
 
 import "./notificationsList.scss";
 
-export default function NotificationList(props: NotificationList.Props): ReactNode {
+type NotificationListProps = {
+  notifications: Notification[];
+};
 
-  const {
-    notifications
-  } = props;
+export default function NotificationList(
+  props: NotificationListProps
+): ReactNode {
+  const { notifications } = props;
+
+  if (notifications.length === 0) {
+    return (
+      <div className="app-notificationList__empty" role="status">
+        No notifications.
+      </div>
+    );
+  }
 
   return (
     <Collection className="app-notificationList usa-collection--condensed margin-y-0">
       {notifications.map((notification) => (
         <li
           key={notification.id}
-          className="usa-collection__item app-notificationList__item"
+          className={`usa-collection__item app-notificationList__item${
+            notification.read ? " app-notificationList__item--read" : ""
+          }`}
         >
           <div className="app-notificationList__image" aria-hidden="true">
             {AvatarImage(notification.image)}
@@ -35,27 +43,11 @@ export default function NotificationList(props: NotificationList.Props): ReactNo
             </h4>
 
             <p className="usa-collection__description app-notificationList__description">
-              {notification.description}
+              {notification.message}
             </p>
           </div>
         </li>
       ))}
     </Collection>
   );
-}
-
-export namespace NotificationList {
-
-  export
-  type Item = {
-    id: string;
-    image: string;
-    title: string;
-    description: string;
-  };
-
-  export
-  type Props = {
-    notifications: Item[];
-  };
 }
