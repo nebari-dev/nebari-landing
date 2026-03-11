@@ -11,7 +11,6 @@ export type BackendService = {
   icon: string;
   category: string;
   priority: number;
-  pinned: boolean;
   visibility: string;
   health: {
     status: string;

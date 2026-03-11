@@ -23,7 +23,6 @@ type BackendSocketService = {
   icon: string;
   category: string;
   priority: number;
-  pinned: boolean;
   visibility: string;
   health: {
     status: string;
@@ -43,13 +42,13 @@ type BackendSocketNotification = {
 
 type AppSocketMessage =
   | {
-      type: "added" | "modified" | "deleted";
-      service: BackendSocketService;
-    }
+    type: "added" | "modified" | "deleted";
+    service: BackendSocketService;
+  }
   | {
-      type: "notification.created";
-      notification: BackendSocketNotification;
-    };
+    type: "notification.created";
+    notification: BackendSocketNotification;
+  };
 
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -150,7 +149,9 @@ export default function App() {
 
               if (exists) {
                 return current.map((service) =>
-                  service.id === nextService.id ? nextService : service
+                  service.id === nextService.id
+                    ? { ...nextService, pinned: service.pinned }
+                    : service
                 );
               }
 
@@ -159,7 +160,9 @@ export default function App() {
 
             case "modified":
               return current.map((service) =>
-                service.id === nextService.id ? nextService : service
+                service.id === nextService.id
+                  ? { ...nextService, pinned: service.pinned }
+                  : service
               );
 
             case "deleted":
