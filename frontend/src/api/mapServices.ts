@@ -13,7 +13,7 @@ export function mapService(service: BackendService): Service {
           : "Unknown",
     description: service.description,
     category: service.category ? [service.category] : [],
-    pinned: service.pinned,
+    pinned: false,
     image: service.icon,
     url: service.url,
   };
