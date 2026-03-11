@@ -15,6 +15,12 @@ metadata:
 spec:
   hostname: {{ $host | quote }}
 
+  # Public gateway — the oauth2-proxy sidecar in the frontend pod handles auth;
+  # no SecurityPolicy is created at the gateway level. Once nebari-operator#61
+  # is resolved and oauth2-proxy becomes optional, this can switch to gateway-level
+  # OIDC enforcement via EnforceAtGateway.
+  gateway: public
+
   service:
     name: {{ include "nebari-landing.fullname" . }}-frontend
     port: {{ .Values.frontend.service.port }}
@@ -58,6 +64,9 @@ metadata:
     app.kubernetes.io/component: webapi
 spec:
   hostname: {{ $host | quote }}
+
+  # Public gateway — JWT validation is handled in-process by the webapi.
+  gateway: public
 
   service:
     name: {{ include "nebari-landing.fullname" . }}-webapi
