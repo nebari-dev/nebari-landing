@@ -1,19 +1,10 @@
 import { createWebSocketClient } from "./ws";
 import type { Notification } from "./notifications";
 
-export type NotificationSocketMessage =
-  | {
-      type: "notification.added";
-      notification: Notification;
-    }
-  | {
-      type: "notification.modified";
-      notification: Notification;
-    }
-  | {
-      type: "notification.deleted";
-      id: string;
-    };
+export type NotificationSocketMessage = {
+  type: "notification.created";
+  notification: Notification;
+};
 
 type NotificationHandlers = {
   onMessage: (message: NotificationSocketMessage) => void;

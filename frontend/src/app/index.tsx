@@ -32,10 +32,24 @@ type BackendSocketService = {
   };
 };
 
-type AppSocketMessage = {
-  type: "added" | "modified" | "deleted";
-  service: BackendSocketService;
+type BackendSocketNotification = {
+  id: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  image?: string;
+  read?: boolean;
 };
+
+type AppSocketMessage =
+  | {
+      type: "added" | "modified" | "deleted";
+      service: BackendSocketService;
+    }
+  | {
+      type: "notification.created";
+      notification: BackendSocketNotification;
+    };
 
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -98,6 +112,31 @@ export default function App() {
         console.error("app websocket error", event);
       },
       onMessage: (message) => {
+        if (message.type === "notification.created") {
+          const nextNotification: Notification = {
+            id: message.notification.id,
+            title: message.notification.title,
+            message: message.notification.message,
+            createdAt: message.notification.createdAt,
+            image: message.notification.image ?? "",
+            read: message.notification.read ?? false,
+          };
+
+          setNotifications((prev) => {
+            const exists = prev.some(
+              (notification) => notification.id === nextNotification.id
+            );
+
+            if (exists) {
+              return prev;
+            }
+
+            return [nextNotification, ...prev];
+          });
+
+          return;
+        }
+
         const nextService = mapService(message.service);
 
         setServices((prev) => {
