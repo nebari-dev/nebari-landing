@@ -336,15 +336,20 @@ func lpEnabled(u *unstructured.Unstructured) bool {
 func toApp(u *unstructured.Unstructured) *sdapp.App {
 	hostname, _, _ := unstructured.NestedString(u.Object, "spec", "hostname")
 	serviceName, _, _ := unstructured.NestedString(u.Object, "spec", "service", "name")
+	serviceNamespace, _, _ := unstructured.NestedString(u.Object, "spec", "service", "namespace")
 	servicePort, _, _ := unstructured.NestedInt64(u.Object, "spec", "service", "port")
+	if serviceNamespace == "" {
+		serviceNamespace = u.GetNamespace()
+	}
 	a := &sdapp.App{
-		UID:         string(u.GetUID()),
-		Name:        u.GetName(),
-		Namespace:   u.GetNamespace(),
-		Hostname:    hostname,
-		TLSEnabled:  tlsEnabled(u),
-		ServiceName: serviceName,
-		ServicePort: int(servicePort),
+		UID:              string(u.GetUID()),
+		Name:             u.GetName(),
+		Namespace:        u.GetNamespace(),
+		Hostname:         hostname,
+		TLSEnabled:       tlsEnabled(u),
+		ServiceName:      serviceName,
+		ServiceNamespace: serviceNamespace,
+		ServicePort:      int(servicePort),
 	}
 
 	if !lpEnabled(u) {
@@ -381,6 +386,7 @@ func toApp(u *unstructured.Unstructured) *sdapp.App {
 	hcPath, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "healthCheck", "path")
 	hcInterval, _, _ := unstructured.NestedInt64(u.Object, "spec", "landingPage", "healthCheck", "intervalSeconds")
 	hcTimeout, _, _ := unstructured.NestedInt64(u.Object, "spec", "landingPage", "healthCheck", "timeoutSeconds")
+	hcPort, _, _ := unstructured.NestedInt64(u.Object, "spec", "landingPage", "healthCheck", "port")
 	var healthCheck *sdapp.HealthCheck
 	if hcEnabled {
 		healthCheck = &sdapp.HealthCheck{
@@ -388,6 +394,7 @@ func toApp(u *unstructured.Unstructured) *sdapp.App {
 			Path:            hcPath,
 			IntervalSeconds: int(hcInterval),
 			TimeoutSeconds:  int(hcTimeout),
+			Port:            int(hcPort),
 		}
 	}
 

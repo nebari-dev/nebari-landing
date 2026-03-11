@@ -31,6 +31,12 @@ type App struct {
 	// health checks.
 	ServiceName string
 
+	// ServiceNamespace is spec.service.namespace — the namespace containing the
+	// Kubernetes Service. Defaults to Namespace (the NebariApp's own namespace)
+	// when not explicitly set, but must be specified when the target Service
+	// lives in a different namespace (e.g. Keycloak in the keycloak namespace).
+	ServiceNamespace string
+
 	// ServicePort is spec.service.port — the port on the Kubernetes Service.
 	ServicePort int
 
@@ -97,4 +103,10 @@ type HealthCheck struct {
 	// TimeoutSeconds is the per-probe HTTP timeout.
 	// Defaults to 5 when not set.
 	TimeoutSeconds int
+
+	// Port overrides the service port for the health probe. Useful when the
+	// target exposes health endpoints on a separate management port (e.g.
+	// Keycloak X exposes /health/ready on port 9000, not the main 8080).
+	// When 0, spec.service.port is used.
+	Port int
 }
