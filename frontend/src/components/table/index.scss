@@ -118,6 +118,7 @@
 .app-table__serviceDescription {
   margin-top: 0.25rem;
   @include u-font("sans", "xs");
+  @include u-font-weight("normal");
   color: var(--color-text-secondary);
 }
 

@@ -1,19 +1,29 @@
 import { createWebSocketClient } from "./ws";
-import type { Service } from "./listServices";
+// import type { Service } from "./listServices";
 
-export type ServiceSocketMessage =
-  | {
-      type: "service.created";
-      service: Service;
-    }
-  | {
-      type: "service.updated";
-      service: Service;
-    }
-  | {
-      type: "service.deleted";
-      id: string;
-    };
+export type BackendService = {
+  uid: string;
+  name: string;
+  namespace: string;
+  displayName: string;
+  description: string;
+  url: string;
+  icon: string;
+  category: string;
+  priority: number;
+  pinned: boolean;
+  visibility: string;
+  health: {
+    status: string;
+    lastCheck: string;
+    message?: string;
+  };
+};
+
+export type ServiceSocketMessage = {
+  type: "added" | "modified" | "deleted";
+  service: BackendService;
+};
 
 type ServiceSocketHandlers = {
   onMessage: (message: ServiceSocketMessage) => void;

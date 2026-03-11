@@ -1,38 +1,41 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Header from "../components/header";
 import Content from "../components/content";
 import { signOut } from "../auth/keycloak";
 import { useUser } from "../auth/user";
 
 import { listServices, type Service } from "../api/listServices";
-import { listNotifications, type Notification } from "../api/notifications";
+import {
+  listNotifications,
+  markNotificationRead,
+  type Notification,
+} from "../api/notifications";
 import { createWebSocketClient } from "../api/ws";
+import { mapService } from "../api/mapServices";
 
-type AppSocketMessage =
-  | {
-      type: "service.created";
-      service: Service;
-    }
-  | {
-      type: "service.updated";
-      service: Service;
-    }
-  | {
-      type: "service.deleted";
-      id: string;
-    }
-  | {
-      type: "notification.created";
-      notification: Notification;
-    }
-  | {
-      type: "notification.updated";
-      notification: Notification;
-    }
-  | {
-      type: "notification.read";
-      id: string;
-    };
+type BackendSocketService = {
+  uid: string;
+  name: string;
+  namespace: string;
+  displayName: string;
+  description: string;
+  url: string;
+  icon: string;
+  category: string;
+  priority: number;
+  pinned: boolean;
+  visibility: string;
+  health: {
+    status: string;
+    lastCheck: string;
+    message?: string;
+  };
+};
+
+type AppSocketMessage = {
+  type: "added" | "modified" | "deleted";
+  service: BackendSocketService;
+};
 
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -43,20 +46,43 @@ export default function App() {
 
   useEffect(() => {
     listServices()
-      .then((data) => {
-        setServices(data);
-      })
+      .then(setServices)
       .catch((err) => {
         console.error("listServices failed", err);
       });
 
     listNotifications()
-      .then((data) => {
-        setNotifications(data);
-      })
+      .then(setNotifications)
       .catch((err) => {
         console.error("listNotifications failed", err);
       });
+  }, []);
+
+  const onNotificationsViewed = useCallback(async (ids: string[]) => {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return;
+
+    setNotifications((prev) =>
+      prev.map((notification) =>
+        uniqueIds.includes(notification.id)
+          ? { ...notification, read: true }
+          : notification
+      )
+    );
+
+    try {
+      await Promise.all(uniqueIds.map((id) => markNotificationRead(id)));
+    } catch (err) {
+      console.error("markNotificationRead failed", err);
+
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          uniqueIds.includes(notification.id)
+            ? { ...notification, read: false }
+            : notification
+        )
+      );
+    }
   }, []);
 
   const appSocket = useMemo(() => {
@@ -72,84 +98,38 @@ export default function App() {
         console.error("app websocket error", event);
       },
       onMessage: (message) => {
-        switch (message.type) {
-          case "service.created": {
-            setServices((prev) => {
-              const current = prev ?? [];
+        const nextService = mapService(message.service);
+
+        setServices((prev) => {
+          const current = prev ?? [];
+
+          switch (message.type) {
+            case "added": {
               const exists = current.some(
-                (service) => service.id === message.service.id
+                (service) => service.id === nextService.id
               );
 
               if (exists) {
                 return current.map((service) =>
-                  service.id === message.service.id ? message.service : service
+                  service.id === nextService.id ? nextService : service
                 );
               }
 
-              return [message.service, ...current];
-            });
-            break;
-          }
+              return [nextService, ...current];
+            }
 
-          case "service.updated": {
-            setServices((prev) => {
-              const current = prev ?? [];
+            case "modified":
               return current.map((service) =>
-                service.id === message.service.id ? message.service : service
-              );
-            });
-            break;
-          }
-
-          case "service.deleted": {
-            setServices((prev) => {
-              const current = prev ?? [];
-              return current.filter((service) => service.id !== message.id);
-            });
-            break;
-          }
-
-          case "notification.created": {
-            setNotifications((prev) => {
-              const exists = prev.some(
-                (notification) => notification.id === message.notification.id
+                service.id === nextService.id ? nextService : service
               );
 
-              if (exists) {
-                return prev.map((notification) =>
-                  notification.id === message.notification.id
-                    ? message.notification
-                    : notification
-                );
-              }
+            case "deleted":
+              return current.filter((service) => service.id !== nextService.id);
 
-              return [message.notification, ...prev];
-            });
-            break;
+            default:
+              return current;
           }
-
-          case "notification.updated": {
-            setNotifications((prev) =>
-              prev.map((notification) =>
-                notification.id === message.notification.id
-                  ? message.notification
-                  : notification
-              )
-            );
-            break;
-          }
-
-          case "notification.read": {
-            setNotifications((prev) =>
-              prev.map((notification) =>
-                notification.id === message.id
-                  ? { ...notification, read: true }
-                  : notification
-              )
-            );
-            break;
-          }
-        }
+        });
       },
     });
   }, []);
@@ -170,6 +150,7 @@ export default function App() {
         user={user}
         onSignOut={() => signOut()}
         notifications={notifications}
+        onNotificationsViewed={onNotificationsViewed}
       />
       <Content services={services} />
     </div>

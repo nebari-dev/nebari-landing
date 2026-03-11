@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import type { Notification } from "../../api/notifications";
 
 import { Collection } from "@trussworks/react-uswds";
-
 import AvatarImage from "../icon";
 
 import "./notificationsList.scss";
@@ -29,6 +28,7 @@ export default function NotificationList(
       {notifications.map((notification) => (
         <li
           key={notification.id}
+          data-notification-id={notification.id}
           className={`usa-collection__item app-notificationList__item${
             notification.read ? " app-notificationList__item--read" : ""
           }`}

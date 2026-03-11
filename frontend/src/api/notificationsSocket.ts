@@ -3,15 +3,15 @@ import type { Notification } from "./notifications";
 
 export type NotificationSocketMessage =
   | {
-      type: "notification.created";
+      type: "notification.added";
       notification: Notification;
     }
   | {
-      type: "notification.updated";
+      type: "notification.modified";
       notification: Notification;
     }
   | {
-      type: "notification.read";
+      type: "notification.deleted";
       id: string;
     };
 
