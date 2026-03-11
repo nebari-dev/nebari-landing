@@ -75,8 +75,10 @@ frontend:
     # Keycloak realm discovery endpoint — cluster-internal for the pod
     oidcIssuerUrl: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth/realms/nebari"
     clientId: "nebari-landingpage"
-    # Secret created by 'make frontend-client', keys: client-secret, cookie-secret
-    existingSecret: "nebari-landing-oauth2-proxy"
+    # Secrets created by 'make frontend-client' — secret name: nebari-landing-oauth2-proxy
+    # keys: client-secret (OIDC client secret) and cookie-secret (session encryption)
+    existingClientSecret: "nebari-landing-oauth2-proxy"
+    existingCookieSecret: "nebari-landing-oauth2-proxy"
     extraArgs:
       # Skip TLS verification — self-signed certs in minikube
       - --insecure-oidc-skip-issuer-verification=true

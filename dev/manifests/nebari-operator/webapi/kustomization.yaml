@@ -1,22 +1,18 @@
+# This kustomization is intentionally empty.
+#
+# The webapi was previously sourced from nebari-operator's deploy/webapi/
+# directory but that path no longer exists — the nebari-operator no longer
+# ships webapi files.
+#
+# The webapi is now deployed entirely by the nebari-landing Helm chart
+# (charts/nebari-landing/templates/webapi/). Configure it via
+# dev/chart-values.yaml (webapi: section) and deploy with:
+#
+#   make install   # or: helm upgrade --install … --values dev/chart-values.yaml
+#
+# This directory (dev/manifests/nebari-operator/webapi/) is kept only for
+# historical reference and is NOT applied by the dev Makefile.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: nebari-system
-
-resources:
-  - https://raw.githubusercontent.com/nebari-dev/nebari-operator/feature/landing-page-service-discovery/deploy/webapi/manifest.yaml
-
-images:
-  - name: quay.io/nebari/nebari-webapi
-    newTag: feature-landing-page-service-discovery
-
-patches:
-  - path: deployment-patch.yaml
-    target:
-      kind: Deployment
-      name: webapi
-
-  - path: service-patch.yaml
-    target:
-      kind: Service
-      name: webapi

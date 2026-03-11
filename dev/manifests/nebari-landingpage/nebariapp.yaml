@@ -37,5 +37,13 @@ spec:
       - profile
       - email
       - groups
+  # A second public Keycloak client for the React SPA (keycloak-js PKCE flow).
+  # Public clients carry no secret; the operator provisions them when enabled.
+  # Default client ID: <namespace>-<name>-spa
+  # In dev the frontend-client job creates 'nebari-frontend-spa' instead;
+  # set clientId here to match that manually-provisioned client.
+  spaClient:
+    enabled: true
+    clientId: "nebari-frontend-spa"
   landingPage:
     enabled: false              # the landing page is not a card on itself
