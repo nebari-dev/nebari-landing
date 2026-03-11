@@ -40,9 +40,9 @@ spec:
                     - name: ENABLE_AUTH
                       value: "true"
                     - name: KEYCLOAK_URL
-                      value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth
+                      value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080/auth
                     - name: KEYCLOAK_ISSUER_URL
-                      value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth/realms/nebari
+                      value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080/auth/realms/nebari
                     - name: KEYCLOAK_REALM
                       value: nebari
                     # Keycloak admin credentials — same Secret + namespace as the operator.
