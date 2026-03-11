@@ -288,9 +288,21 @@ func toApp(u *unstructured.Unstructured) *sdapp.App {
 	description, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "description")
 	icon, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "icon")
 	category, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "category")
-	visibility, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "visibility")
 	externalURL, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "externalUrl")
-	requiredGroups, _, _ := unstructured.NestedStringSlice(u.Object, "spec", "landingPage", "requiredGroups")
+	// spec.landingPage no longer carries visibility or requiredGroups (removed from
+	// LandingPageConfig in the operator). The operator's controller derives them from
+	// spec.auth and writes the result to status.serviceDiscovery. Mirror the same
+	// logic here as the spec-level fallback for when status.serviceDiscovery has not
+	// yet been populated (e.g. on first watch event before the controller has reconciled).
+	//   auth disabled (or absent) → visibility="public",  requiredGroups=[]
+	//   auth enabled, no groups   → visibility="private", requiredGroups=[]
+	//   auth enabled, with groups → visibility="private", requiredGroups=spec.auth.groups
+	visibility := "public"
+	var requiredGroups []string
+	if authEnabled, _, _ := unstructured.NestedBool(u.Object, "spec", "auth", "enabled"); authEnabled {
+		visibility = "private"
+		requiredGroups, _, _ = unstructured.NestedStringSlice(u.Object, "spec", "auth", "groups")
+	}
 
 	priority := 100
 	if p, found, _ := unstructured.NestedInt64(u.Object, "spec", "landingPage", "priority"); found {
