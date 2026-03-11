@@ -60,6 +60,7 @@ func main() {
 		healthInterval int
 		adminGroup     string
 		redisAddr      string
+		redisUsername  string
 		redisPassword  string
 		redisDB        int
 		allowedOrigins string
@@ -85,6 +86,8 @@ func main() {
 		"Keycloak group whose members may access admin endpoints (env: ADMIN_GROUP)")
 	flag.StringVar(&redisAddr, "redis-addr", envStr("REDIS_ADDR", "localhost:6379"),
 		"Redis server address host:port (env: REDIS_ADDR)")
+	flag.StringVar(&redisUsername, "redis-username", os.Getenv("REDIS_USERNAME"),
+		"Redis ACL username for Redis 6+ auth (env: REDIS_USERNAME, empty = default user)")
 	flag.StringVar(&redisPassword, "redis-password", os.Getenv("REDIS_PASSWORD"),
 		"Redis password, if any (env: REDIS_PASSWORD)")
 	flag.IntVar(&redisDB, "redis-db", envInt("REDIS_DB", 0),
@@ -137,6 +140,7 @@ func main() {
 	// Build Redis client — shared by all stores and the WebSocket hub.
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
+		Username: redisUsername,
 		Password: redisPassword,
 		DB:       redisDB,
 	})
@@ -191,7 +195,7 @@ func main() {
 	// Post a one-time welcome/feedback notification on every startup (opt-out via --notifications-startup=false).
 	if notifStartup {
 		if _, err := notificationStore.Create(
-			"nebari",
+			"https://github.com/nebari-dev/nebari-design/blob/main/symbol/Nebari-Symbol.svg?raw=true",
 			"Welcome to Nebari!",
 			"User feedback is welcomed! We value your input to improve Nebari.",
 		); err != nil {

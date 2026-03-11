@@ -106,6 +106,10 @@ spec:
                   name: {{ printf "%s-redis" .Release.Name }}
                   key: redis-password
                   {{- end }}
+            {{- if .Values.redis.auth.username }}
+            - name: REDIS_USERNAME
+              value: {{ .Values.redis.auth.username | quote }}
+            {{- end }}
             {{- end }}
           livenessProbe:
             httpGet:
