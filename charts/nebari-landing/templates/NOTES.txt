@@ -19,9 +19,16 @@ Pre-requisites to verify before using:
   1. Keycloak OIDC client "{{ .Values.frontend.oauth2Proxy.clientId }}" exists in realm {{ .Values.webapi.keycloak.realm }}
      with redirect URI: {{ if .Values.httpRoute.tls }}https{{ else }}http{{ end }}://{{ .Values.httpRoute.hostname }}/oauth2/callback
 
-  2. Secret "{{ .Values.frontend.oauth2Proxy.existingSecret }}" exists in namespace {{ .Release.Namespace }}
-     with keys: client-secret, cookie-secret
-     (generate cookie-secret: openssl rand -base64 32 | tr -d '\n')
+  2. OIDC client-secret: the nebari-operator creates
+     "{{ default (printf "%s-oidc-client" (include "nebari-landing.fullname" .)) .Values.frontend.oauth2Proxy.existingClientSecret }}"
+     automatically in namespace {{ .Release.Namespace }} when it reconciles the
+     frontend NebariApp. No manual action required.
 
-  3. Keycloak admin secret "{{ .Values.webapi.keycloak.adminSecretName }}" exists in
+  3. Cookie-secret: the chart auto-generates
+     "{{ default (printf "%s-oauth2-proxy-cookie" (include "nebari-landing.fullname" .)) .Values.frontend.oauth2Proxy.existingCookieSecret }}"
+     in namespace {{ .Release.Namespace }} on first install and preserves the
+     value across upgrades (helm.sh/resource-policy: keep).
+     To use your own: set frontend.oauth2Proxy.existingCookieSecret.
+
+  4. Keycloak admin secret "{{ .Values.webapi.keycloak.adminSecretName }}" exists in
      namespace "{{ .Values.webapi.keycloak.adminSecretNamespace }}" with keys: username, password
