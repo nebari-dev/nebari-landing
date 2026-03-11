@@ -18,7 +18,6 @@ spec:
     icon: "https://fontawesome.com/icons/kubernetes?f=brands&s=solid"
     category: "Platform"
     priority: 10
-    visibility: public
     healthCheck:
       enabled: true
       path: "/api/v1/health"  # webapi returns 200 {"status":"healthy"} → healthy
@@ -36,6 +35,8 @@ spec:
   service:
     name: jupyterhub  # doesn't exist in dev → DNS failure → unhealthy
     port: 8000
+  auth:
+    enabled: true
   landingPage:
     enabled: true
     displayName: "JupyterHub"
@@ -43,7 +44,6 @@ spec:
     icon: "https://jupyter.org/assets/homepage/main-logo.svg"
     category: "Data Science"
     priority: 1
-    visibility: private
     healthCheck:
       enabled: true
       path: "/hub/api/health"  # service unreachable → unhealthy
@@ -62,6 +62,8 @@ spec:
   service:
     name: grafana
     port: 3000
+  auth:
+    enabled: true
   landingPage:
     enabled: true
     displayName: "Grafana"
@@ -69,7 +71,6 @@ spec:
     icon: "https://upload.wikimedia.org/wikipedia/commons/a/a1/Grafana_logo.svg"
     category: "Monitoring"
     priority: 20
-    visibility: private
     # No healthCheck block → status stays "unknown"
 ---
 # Private service — requires JWT + admin group membership.
@@ -84,6 +85,10 @@ spec:
   service:
     name: nebari-landing-webapi
     port: 8080
+  auth:
+    enabled: true
+    groups:
+      - admin
   landingPage:
     enabled: true
     displayName: "Admin Panel"
@@ -92,9 +97,6 @@ spec:
     category: "Platform"
     icon: "https://raw.githubusercontent.com/keycloak/keycloak-misc/main/logo/logo-icon.png"
     priority: 999
-    visibility: private
-    requiredGroups:
-      - "admin"
     healthCheck:
       enabled: true
       path: "/api/v1/health"  # webapi returns 200 {"status":"healthy"} → healthy

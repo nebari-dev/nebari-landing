@@ -93,12 +93,18 @@ const VeryLongTimeout = 5 * time.Minute
 
 // newNebariApp creates an unstructured NebariApp with a landing-page config.
 // No api/v1 import is needed — the resource is built from raw field maps.
+//
+// The visibility parameter controls access:
+//   - "public" → no auth block (service is visible without authentication)
+//   - any other value (e.g. "private", "authenticated") → spec.auth.enabled=true
+//     (service requires authentication; visibility computed from spec.auth by the controller)
 func newNebariApp(name, namespace, hostname, visibility string, priority int) *unstructured.Unstructured {
 	u := &unstructured.Unstructured{}
 	u.SetGroupVersionKind(nebariAppGVK)
 	u.SetName(name)
 	u.SetNamespace(namespace)
-	_ = unstructured.SetNestedMap(u.Object, map[string]interface{}{
+
+	spec := map[string]interface{}{
 		"hostname": hostname,
 		"service": map[string]interface{}{
 			"name": "test-service",
@@ -109,10 +115,20 @@ func newNebariApp(name, namespace, hostname, visibility string, priority int) *u
 			"displayName": fmt.Sprintf("Test Service %s", name),
 			"description": fmt.Sprintf("E2E test resource with visibility=%s", visibility),
 			"category":    "Testing",
-			"visibility":  visibility,
 			"priority":    int64(priority),
 		},
-	}, "spec")
+	}
+
+	// spec.landingPage no longer carries visibility; access control is expressed
+	// via spec.auth. The operator's controller derives visibility/requiredGroups
+	// from spec.auth and writes them to status.serviceDiscovery.
+	if visibility != "public" {
+		spec["auth"] = map[string]interface{}{
+			"enabled": true,
+		}
+	}
+
+	_ = unstructured.SetNestedMap(u.Object, spec, "spec")
 	return u
 }
 
