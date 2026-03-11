@@ -58,6 +58,9 @@ export default function App() {
   const { user } = useUser();
 
   useEffect(() => {
+    // Reset so the old user's pin state isn't briefly visible during the fetch.
+    setServices(null);
+
     listServices()
       .then(setServices)
       .catch((err) => {
@@ -69,7 +72,7 @@ export default function App() {
       .catch((err) => {
         console.error("listNotifications failed", err);
       });
-  }, []);
+  }, [user]);
 
   const onNotificationsViewed = useCallback(async (ids: string[]) => {
     const uniqueIds = [...new Set(ids)];
