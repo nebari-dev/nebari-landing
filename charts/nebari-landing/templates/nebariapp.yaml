@@ -31,9 +31,11 @@ spec:
       enabled: {{ .Values.httpRoute.tls }}
 
   # oauth2-proxy handles authentication at the sidecar level; no SecurityPolicy
-  # is needed at the gateway.
+  # is needed at the gateway.  The operator must still provision the OIDC client
+  # in Keycloak (auth.enabled: true) so that the proxy Secret is written —
+  # oauth2-proxy blocks on that Secret at startup.
   auth:
-    enabled: false
+    enabled: true
     enforceAtGateway: false
 
   landingPage:
