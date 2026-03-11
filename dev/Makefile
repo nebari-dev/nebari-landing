@@ -418,28 +418,49 @@ uninstall: operator-uninstall
 ## no kustomize overlay, no Helm chart modification.
 ## File changes on the host are picked up immediately via minikube mount → Vite HMR.
 ## Requires a running cluster ('make install'). Stop with: make -f dev/Makefile stop-dev-watch
+##
+## NOTE: uses a fixed port (MINIKUBE_MOUNT_PORT, default 39999) for the 9p server
+## and inserts a scoped iptables ACCEPT rule so the minikube Docker container can
+## reach the host even when UFW has policy DROP. The rule is removed by stop-dev-watch.
+
+MINIKUBE_MOUNT_PORT ?= 39999
+
 dev-watch:
+	@echo "→  Opening 9p port $(MINIKUBE_MOUNT_PORT) from minikube subnet …"
+	@MINIKUBE_SUBNET=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME) 2>/dev/null | sed 's/\.[0-9]*$$/.0\/24/'); \
+	 if [ -n "$$MINIKUBE_SUBNET" ]; then \
+	   sudo iptables -C INPUT -p tcp -s $$MINIKUBE_SUBNET --dport $(MINIKUBE_MOUNT_PORT) -j ACCEPT 2>/dev/null \
+	     || sudo iptables -I INPUT -p tcp -s $$MINIKUBE_SUBNET --dport $(MINIKUBE_MOUNT_PORT) -j ACCEPT; \
+	   echo "   iptables ACCEPT rule active for $$MINIKUBE_SUBNET → port $(MINIKUBE_MOUNT_PORT)"; \
+	 else \
+	   echo "   (could not detect minikube subnet — skipping iptables rule)"; \
+	 fi
 	@echo "→  Starting minikube mount …"
 	@pkill -f "minikub[e].*mount.*nebari-frontend" 2>/dev/null || true
 	@sleep 1
 	# Launch the mount in a new OS session so it survives Make exiting.
 	@python3 -c "\
 import subprocess, shlex, sys; \
-cmd = shlex.split('$(MINIKUBE_BIN) -p $(CLUSTER_NAME) mount $(CURDIR)/frontend:/mnt/nebari-frontend'); \
+cmd = shlex.split('$(MINIKUBE_BIN) -p $(CLUSTER_NAME) mount --port=$(MINIKUBE_MOUNT_PORT) $(CURDIR)/frontend:/mnt/nebari-frontend'); \
 log = open('/tmp/minikube-mount-frontend.log', 'w'); \
 p = subprocess.Popen(cmd, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True); \
 open('/tmp/minikube-mount-frontend.pid', 'w').write(str(p.pid)); \
 print('   Mount PID', p.pid, '— log: /tmp/minikube-mount-frontend.log'); \
 "
 	@echo "   Waiting for mount to establish …"
-	@for i in $$(seq 1 15); do \
+	@for i in $$(seq 1 30); do \
 	  if grep -q "Successfully mounted" /tmp/minikube-mount-frontend.log 2>/dev/null; then \
-	    echo "✔  minikube mount active"; break; \
+	    echo "✔  minikube mount active (Successfully mounted)"; break; \
+	  fi; \
+	  if grep -q "GUEST_MOUNT_COULD_NOT_CONNECT\|Connection timed out\|Exiting due to" /tmp/minikube-mount-frontend.log 2>/dev/null; then \
+	    echo "✗  minikube mount failed — check /tmp/minikube-mount-frontend.log"; \
+	    cat /tmp/minikube-mount-frontend.log; \
+	    exit 1; \
 	  fi; \
 	  sleep 1; \
 	done
 	@if ! grep -q "Successfully mounted" /tmp/minikube-mount-frontend.log 2>/dev/null; then \
-	  echo "✗  minikube mount did not establish within 15 s — check /tmp/minikube-mount-frontend.log"; \
+	  echo "✗  minikube mount did not establish within 30 s — check /tmp/minikube-mount-frontend.log"; \
 	  cat /tmp/minikube-mount-frontend.log; \
 	  exit 1; \
 	fi
@@ -470,6 +491,12 @@ print('   Mount PID', p.pid, '— log: /tmp/minikube-mount-frontend.log'); \
 stop-dev-watch:
 	@echo "→  Stopping minikube mount …"
 	@pkill -f "minikub[e].*mount.*nebari-frontend" 2>/dev/null && echo "✔  minikube mount stopped" || true
+	@echo "→  Removing iptables 9p rule (port $(MINIKUBE_MOUNT_PORT)) …"
+	@MINIKUBE_SUBNET=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME) 2>/dev/null | sed 's/\.[0-9]*$$/.0\/24/'); \
+	 if [ -n "$$MINIKUBE_SUBNET" ]; then \
+	   sudo iptables -D INPUT -p tcp -s $$MINIKUBE_SUBNET --dport $(MINIKUBE_MOUNT_PORT) -j ACCEPT 2>/dev/null \
+	     && echo "   iptables rule removed" || echo "   (rule was not present)"; \
+	 fi
 	@echo "→  Deleting patched frontend deployment so helm recreates it cleanly …"
 	@kubectl delete deployment $(HELM_RELEASE)-frontend -n $(NAMESPACE_APP) --ignore-not-found
 	@echo "→  Restoring Helm-managed nginx frontend (helm upgrade) …"

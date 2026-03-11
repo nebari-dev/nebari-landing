@@ -4,11 +4,15 @@ kind: Kustomization
 namespace: nebari-operator-system
 
 resources:
-  - https://github.com/nebari-dev/nebari-operator.git/config/default?ref=feature/landing-page-service-discovery
+  - https://github.com/nebari-dev/nebari-operator.git/config/default
 
 images:
-  - name: quay.io/nebari/nebari-operator
-    newTag: feature-landing-page-service-discovery
+  # The upstream config/default kustomization renames 'controller:latest' →
+  # 'nebari-operator:latest'. We must match that final name and redirect
+  # to the actual published image on quay.io.
+  - name: nebari-operator
+    newName: quay.io/nebari/nebari-operator
+    newTag: latest
 
 patches:
   - path: deployment-patch.yaml
