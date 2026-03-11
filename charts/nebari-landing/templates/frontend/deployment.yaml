@@ -81,13 +81,15 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url={{ required "frontend.oauth2Proxy.oidcIssuerUrl is required" .Values.frontend.oauth2Proxy.oidcIssuerUrl }}
-            - --client-id={{ .Values.frontend.oauth2Proxy.clientId }}
+            {{- /* Client ID matches the operator naming convention: <namespace>-<nebariapp-name> */}}
+            - --client-id={{ printf "%s-%s" .Release.Namespace (include "nebari-landing.fullname" .) }}
             - --upstream=http://127.0.0.1:{{ .Values.frontend.port }}
             - --http-address=0.0.0.0:{{ .Values.frontend.oauth2Proxy.port }}
             - --email-domain={{ .Values.frontend.oauth2Proxy.emailDomain }}
             - --pass-access-token={{ .Values.frontend.oauth2Proxy.passAccessToken }}
             - --pass-authorization-header={{ .Values.frontend.oauth2Proxy.passAccessToken }}
             - --set-authorization-header={{ .Values.frontend.oauth2Proxy.passAccessToken }}
+            - --skip-provider-button=true # only show the configured OIDC provider, not the generic "Sign in with OIDC" button
             {{- range .Values.frontend.oauth2Proxy.extraArgs }}
             - {{ . }}
             {{- end }}

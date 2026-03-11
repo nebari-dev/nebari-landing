@@ -57,14 +57,13 @@ frontend:
     # e.g. https://keycloak.example.com/realms/nebari
     oidcIssuerUrl: ""
 
-    # Keycloak OIDC client ID registered for the landing page frontend.
-    clientId: "nebari-landing"
-
     # Name of the Secret containing the OIDC client-secret key.
     # The nebari-operator creates this automatically when it reconciles the
     # frontend NebariApp: it follows the pattern <nebariapp-name>-oidc-client.
     # Leave empty to use the operator-created default derived from the chart
     # fullname: "<fullname>-oidc-client".
+    # NOTE: The OIDC client ID is derived automatically from the NebariApp name
+    # following the operator convention: <namespace>-<nebariapp-name>.
     existingClientSecret: ""
 
     # Key inside existingClientSecret that holds the OIDC client secret value.
