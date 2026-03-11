@@ -145,12 +145,24 @@ func main() {
 
 	hub := wshub.NewHub(ctx, rdb)
 
+	// Build Redis-backed stores early so they can be wired into the watcher
+	// and health checker before those components start.
+	pinStore := pins.NewPinStore(rdb)
+	setupLog.Info("Pin store ready (Redis)")
+
+	accessRequestStore := accessrequests.NewStore(rdb)
+	setupLog.Info("Access request store ready (Redis)")
+
+	notificationStore := notifications.NewStore(rdb)
+	setupLog.Info("Notification store ready (Redis)")
+
 	nebariAppWatcher, err := watcher.NewNebariAppWatcher(config, scheme, serviceCache)
 	if err != nil {
 		setupLog.Error(err, "Failed to create NebariApp watcher")
 		os.Exit(1)
 	}
 	nebariAppWatcher.SetPublisher(hub)
+	nebariAppWatcher.SetNotificationStore(notificationStore)
 
 	go func() {
 		if err := nebariAppWatcher.Start(ctx); err != nil {
@@ -165,6 +177,17 @@ func main() {
 		os.Exit(1)
 	}
 	setupLog.Info("Cache synced successfully")
+
+	// Post a one-time welcome/feedback notification on every startup.
+	if _, err := notificationStore.Create(
+		"nebari",
+		"Welcome to Nebari!",
+		"User feedback is welcomed! We value your input to improve Nebari.",
+	); err != nil {
+		setupLog.Error(err, "Failed to post startup notification")
+	} else {
+		setupLog.Info("Startup notification posted")
+	}
 
 	var jwtValidator *auth.JWTValidator
 	if enableAuth {
@@ -191,17 +214,8 @@ func main() {
 
 	healthChecker := health.NewHealthChecker(serviceCache, time.Duration(healthInterval)*time.Second)
 	healthChecker.SetPublisher(hub)
+	healthChecker.SetNotificationStore(notificationStore)
 	go healthChecker.Start(ctx)
-
-	// Build Redis-backed stores. All three share the same Redis client.
-	pinStore := pins.NewPinStore(rdb)
-	setupLog.Info("Pin store ready (Redis)")
-
-	accessRequestStore := accessrequests.NewStore(rdb)
-	setupLog.Info("Access request store ready (Redis)")
-
-	notificationStore := notifications.NewStore(rdb)
-	setupLog.Info("Notification store ready (Redis)")
 
 	// Build Keycloak admin client from the same env vars the operator uses.
 	// Supports cross-namespace secret lookup via KEYCLOAK_ADMIN_SECRET_NAME +

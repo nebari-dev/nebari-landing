@@ -7,6 +7,7 @@ import (
 
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
 	landingcache "github.com/nebari-dev/nebari-landing/internal/cache"
+	"github.com/nebari-dev/nebari-landing/internal/notifications"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -37,11 +38,16 @@ type Publisher interface {
 // NebariAppWatcher watches NebariApp resources and updates the service cache
 type NebariAppWatcher struct {
 	cache       *landingcache.ServiceCache
-	publisher   Publisher // optional; may be nil
+	publisher   Publisher            // optional; may be nil
+	notifStore  *notifications.Store // optional; when set, lifecycle notifications are posted
 	kubeCache   cachepkg.Cache
 	client      client.Client
 	syncedCh    chan struct{}
 	cacheSynced bool
+	// initialUIDs holds the UID of every NebariApp that existed at startup so
+	// that the informer's initial-state replay (onAdd callbacks fired for
+	// already-known objects) does not generate spurious "new service" notifications.
+	initialUIDs map[string]bool
 }
 
 // NewNebariAppWatcher creates a new NebariApp watcher
@@ -76,6 +82,23 @@ func NewNebariAppWatcher(config *rest.Config, scheme *runtime.Scheme, serviceCac
 // notified whenever services are added, updated, or deleted.
 func (w *NebariAppWatcher) SetPublisher(p Publisher) {
 	w.publisher = p
+}
+
+// SetNotificationStore attaches a notification store. When set, the watcher
+// automatically posts platform-wide notifications for service lifecycle events:
+// service added, service removed, and (via the health checker) back online.
+func (w *NebariAppWatcher) SetNotificationStore(s *notifications.Store) {
+	w.notifStore = s
+}
+
+// postNotif creates a notification, logging but not propagating errors.
+func (w *NebariAppWatcher) postNotif(image, title, message string) {
+	if w.notifStore == nil {
+		return
+	}
+	if _, err := w.notifStore.Create(image, title, message); err != nil {
+		log.Error(err, "Failed to post automatic notification", "title", title)
+	}
 }
 
 // Start starts watching NebariApp resources
@@ -118,8 +141,14 @@ func (w *NebariAppWatcher) syncInitial(ctx context.Context) error {
 
 	log.Info("Found NebariApp resources", "count", len(list.Items))
 
+	// Track every UID seen at startup — both enabled and disabled — so that the
+	// informer's initial-state replay (onAdd for all known objects) does not
+	// generate spurious "new service" notifications.
+	w.initialUIDs = make(map[string]bool, len(list.Items))
+
 	for i := range list.Items {
 		u := &list.Items[i]
+		w.initialUIDs[string(u.GetUID())] = true
 		if lpEnabled(u) {
 			displayName, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "displayName")
 			log.Info("Adding service to cache",
@@ -183,8 +212,26 @@ func (w *NebariAppWatcher) onAdd(obj interface{}) {
 			"displayName", displayName,
 		)
 		w.cache.Add(toApp(u))
+		uid := string(u.GetUID())
 		if w.publisher != nil {
-			w.publisher.Publish("added", w.cache.Get(string(u.GetUID())))
+			w.publisher.Publish("added", w.cache.Get(uid))
+		}
+		// Only notify for services that appeared after startup; the informer
+		// replays existing objects via onAdd when event handlers are registered.
+		if !w.initialUIDs[uid] {
+			svc := w.cache.Get(uid)
+			name := u.GetName()
+			icon := ""
+			if svc != nil {
+				if svc.DisplayName != "" {
+					name = svc.DisplayName
+				}
+				icon = svc.Icon
+			}
+			w.postNotif(icon,
+				fmt.Sprintf("%s is now available", name),
+				fmt.Sprintf("%s has been added to Nebari and is ready to use.", name),
+			)
 		}
 	}
 }
@@ -219,6 +266,16 @@ func (w *NebariAppWatcher) onUpdate(_, newObj interface{}) {
 		if w.publisher != nil && svc != nil {
 			w.publisher.Publish("deleted", svc)
 		}
+		if svc != nil {
+			name := svc.DisplayName
+			if name == "" {
+				name = svc.Name
+			}
+			w.postNotif(svc.Icon,
+				fmt.Sprintf("%s has been removed", name),
+				fmt.Sprintf("%s is no longer available on this Nebari deployment.", name),
+			)
+		}
 	}
 }
 
@@ -238,6 +295,16 @@ func (w *NebariAppWatcher) onDelete(obj interface{}) {
 	w.cache.Remove(uid)
 	if w.publisher != nil && svc != nil {
 		w.publisher.Publish("deleted", svc)
+	}
+	if svc != nil {
+		name := svc.DisplayName
+		if name == "" {
+			name = svc.Name
+		}
+		w.postNotif(svc.Icon,
+			fmt.Sprintf("%s has been removed", name),
+			fmt.Sprintf("%s is no longer available on this Nebari deployment.", name),
+		)
 	}
 }
 
