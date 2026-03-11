@@ -58,9 +58,6 @@ export default function App() {
   const { user } = useUser();
 
   useEffect(() => {
-    // Reset so the old user's pin state isn't briefly visible during the fetch.
-    setServices(null);
-
     listServices()
       .then(setServices)
       .catch((err) => {
