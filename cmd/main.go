@@ -59,12 +59,12 @@ func main() {
 		debugMode      bool
 		healthInterval int
 		adminGroup     string
-		redisAddr             string
-		redisPassword         string
-		redisDB               int
-		allowedOrigins        string
-		notifStartup          bool
-		notifLifecycle        bool
+		redisAddr      string
+		redisPassword  string
+		redisDB        int
+		allowedOrigins string
+		notifStartup   bool
+		notifLifecycle bool
 	)
 
 	// Flags fall back to environment variables so the binary works naturally when

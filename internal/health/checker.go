@@ -26,8 +26,8 @@ type Publisher interface {
 // model; goroutines exit when ctx is cancelled or the service is removed.
 type HealthChecker struct {
 	cache      *cache.ServiceCache
-	interval   time.Duration // fallback global interval when service doesn't specify one
-	publisher  Publisher     // optional; may be nil
+	interval   time.Duration        // fallback global interval when service doesn't specify one
+	publisher  Publisher            // optional; may be nil
 	notifStore *notifications.Store // optional; when set, "back online" notifications are posted
 	// running maps UID → (cancel func, current ProbeURL).
 	// The ProbeURL is stored so reconcile can detect config changes and restart
