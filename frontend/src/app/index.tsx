@@ -1,18 +1,38 @@
-import { useState, useEffect, useCallback } from "react";
-
+import { useEffect, useMemo, useState } from "react";
 import Header from "../components/header";
 import Content from "../components/content";
-
 import { signOut } from "../auth/keycloak";
 import { useUser } from "../auth/user";
 
 import { listServices, type Service } from "../api/listServices";
-import {
-  listNotifications,
-  markNotificationRead,
-  type Notification
-} from "../api/notifications";
+import { listNotifications, type Notification } from "../api/notifications";
+import { createWebSocketClient } from "../api/ws";
 
+type AppSocketMessage =
+  | {
+      type: "service.created";
+      service: Service;
+    }
+  | {
+      type: "service.updated";
+      service: Service;
+    }
+  | {
+      type: "service.deleted";
+      id: string;
+    }
+  | {
+      type: "notification.created";
+      notification: Notification;
+    }
+  | {
+      type: "notification.updated";
+      notification: Notification;
+    }
+  | {
+      type: "notification.read";
+      id: string;
+    };
 
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -39,31 +59,108 @@ export default function App() {
       });
   }, []);
 
-  const handleNotificationsViewed = useCallback(async (ids: string[]) => {
-    if (ids.length === 0) return;
+  const appSocket = useMemo(() => {
+    return createWebSocketClient<AppSocketMessage>({
+      path: "/ws",
+      onOpen: () => {
+        console.log("app websocket connected");
+      },
+      onClose: () => {
+        console.log("app websocket disconnected");
+      },
+      onError: (event) => {
+        console.error("app websocket error", event);
+      },
+      onMessage: (message) => {
+        switch (message.type) {
+          case "service.created": {
+            setServices((prev) => {
+              const current = prev ?? [];
+              const exists = current.some(
+                (service) => service.id === message.service.id
+              );
 
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        ids.includes(notification.id)
-          ? { ...notification, read: true }
-          : notification
-      )
-    );
+              if (exists) {
+                return current.map((service) =>
+                  service.id === message.service.id ? message.service : service
+                );
+              }
 
-    try {
-      await Promise.all(ids.map((id) => markNotificationRead(id)));
-    } catch (err) {
-      console.error("markNotificationRead failed", err);
+              return [message.service, ...current];
+            });
+            break;
+          }
 
-      setNotifications((prev) =>
-        prev.map((notification) =>
-          ids.includes(notification.id)
-            ? { ...notification, read: false }
-            : notification
-        )
-      );
-    }
+          case "service.updated": {
+            setServices((prev) => {
+              const current = prev ?? [];
+              return current.map((service) =>
+                service.id === message.service.id ? message.service : service
+              );
+            });
+            break;
+          }
+
+          case "service.deleted": {
+            setServices((prev) => {
+              const current = prev ?? [];
+              return current.filter((service) => service.id !== message.id);
+            });
+            break;
+          }
+
+          case "notification.created": {
+            setNotifications((prev) => {
+              const exists = prev.some(
+                (notification) => notification.id === message.notification.id
+              );
+
+              if (exists) {
+                return prev.map((notification) =>
+                  notification.id === message.notification.id
+                    ? message.notification
+                    : notification
+                );
+              }
+
+              return [message.notification, ...prev];
+            });
+            break;
+          }
+
+          case "notification.updated": {
+            setNotifications((prev) =>
+              prev.map((notification) =>
+                notification.id === message.notification.id
+                  ? message.notification
+                  : notification
+              )
+            );
+            break;
+          }
+
+          case "notification.read": {
+            setNotifications((prev) =>
+              prev.map((notification) =>
+                notification.id === message.id
+                  ? { ...notification, read: true }
+                  : notification
+              )
+            );
+            break;
+          }
+        }
+      },
+    });
   }, []);
+
+  useEffect(() => {
+    appSocket.connect();
+
+    return () => {
+      appSocket.disconnect();
+    };
+  }, [appSocket]);
 
   return (
     <div className={isDarkMode ? "app-shell app-shell--dark" : "app-shell app-shell--light"}>
@@ -73,7 +170,6 @@ export default function App() {
         user={user}
         onSignOut={() => signOut()}
         notifications={notifications}
-        onNotificationsViewed={handleNotificationsViewed}
       />
       <Content services={services} />
     </div>

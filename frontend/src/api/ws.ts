@@ -2,6 +2,8 @@ type WebSocketMessageHandler<TMessage = unknown> = (message: TMessage) => void;
 type WebSocketEventHandler = () => void;
 type WebSocketErrorHandler = (event: Event) => void;
 
+const API_BASE = "/api/v1";
+
 export type CreateWebSocketClientOptions<TMessage = unknown> = {
   path: string;
   protocols?: string | string[];
@@ -29,7 +31,9 @@ function buildWebSocketUrl(
 ): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const url = new URL(`${protocol}//${window.location.host}${normalizedPath}`);
+  const fullPath = `${API_BASE}${normalizedPath}`;
+
+  const url = new URL(`${protocol}//${window.location.host}${fullPath}`);
 
   if (queryParams) {
     Object.entries(queryParams).forEach(([key, value]) => {
