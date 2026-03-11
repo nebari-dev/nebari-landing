@@ -37,7 +37,7 @@ spec:
   auth:
     enabled: true
     enforceAtGateway: false
-    redirectURI: /auth/oauth2/callback
+    redirectURI: /oauth2/callback
 
   landingPage:
     enabled: {{ .Values.nebariApp.landingPage.enabled }}
