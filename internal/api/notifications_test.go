@@ -5,17 +5,22 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
+	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 	"github.com/nebari-dev/nebari-landing/internal/notifications"
+	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
 )
 
 // newNotifStore creates a miniredis-backed notification store for tests.
@@ -199,5 +204,70 @@ func TestHandleAdminCreateNotification_NotAdmin_Returns403(t *testing.T) {
 	h.Routes().ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", rr.Code)
+	}
+}
+
+// TestHandleAdminCreateNotification_PublishesToHub verifies that a successful
+// POST /api/v1/admin/notifications pushes a notification.created WebSocket
+// frame to all connected hub clients in addition to persisting the record.
+func TestHandleAdminCreateNotification_PublishesToHub(t *testing.T) {
+	// Stand up a miniredis-backed Hub.
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	hub := wshub.NewHub(ctx, rdb)
+
+	// Connect a WebSocket client to the hub before the POST.
+	wsSrv := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
+	t.Cleanup(wsSrv.Close)
+	wsURL := "ws" + strings.TrimPrefix(wsSrv.URL, "http") + "/"
+	wsConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial hub WS: %v", err)
+	}
+	defer func() { _ = wsConn.Close() }()
+	time.Sleep(20 * time.Millisecond) // wait for registration
+
+	// Wire a notification store and the hub into the handler.
+	store := newNotifStore(t)
+	h := NewHandler(
+		cache.NewServiceCache(), nil, false, hub, nil,
+		WithNotificationStore(store),
+		WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
+			return &auth.Claims{PreferredUsername: "admin-user", Groups: []string{"admin"}}, true
+		}),
+	)
+
+	// POST a new notification.
+	body := strings.NewReader(`{"title":"Maintenance window","message":"Cluster restart at midnight"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/notifications", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d — body: %s", rr.Code, rr.Body.String())
+	}
+
+	// The WS client should receive a notification.created frame.
+	_ = wsConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, msg, err := wsConn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read WS message: %v", err)
+	}
+
+	var frame wshub.NotificationEvent
+	if err := json.Unmarshal(msg, &frame); err != nil {
+		t.Fatalf("unmarshal WS frame: %v", err)
+	}
+	if frame.Type != "notification.created" {
+		t.Errorf("expected type %q, got %q", "notification.created", frame.Type)
+	}
+	if frame.Notification == nil {
+		t.Fatal("Notification field is nil in WS frame")
+	}
+	if frame.Notification.Title != "Maintenance window" {
+		t.Errorf("unexpected title %q", frame.Notification.Title)
 	}
 }

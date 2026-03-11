@@ -718,6 +718,9 @@ func (h *Handler) handleAdminCreateNotification(w http.ResponseWriter, r *http.R
 	}
 
 	log.Info("Notification created", "id", n.ID, "title", n.Title, "by", claims.PreferredUsername)
+	if h.hub != nil {
+		h.hub.PublishNotification(n)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(n); err != nil {
@@ -953,6 +956,21 @@ func (h *Handler) handlePinByUID(w http.ResponseWriter, r *http.Request) {
 // requireAuth validates the JWT on r and returns the claims.
 // On failure it writes an appropriate HTTP error and returns ok=false.
 func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.Claims, bool) {
+	// Test/debug hook: claimsExtractor is a full replacement for JWT validation.
+	// Check it before the enableAuth short-circuit so WithClaimsExtractor always
+	// works in tests regardless of how enableAuth is set.
+	if h.claimsExtractor != nil {
+		claims, ok := h.claimsExtractor(r)
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return nil, false
+		}
+		if claims.PreferredUsername == "" {
+			claims.PreferredUsername = claims.Subject
+		}
+		return claims, true
+	}
+
 	if !h.enableAuth || h.jwtValidator == nil {
 		// Auth disabled globally — return a synthetic claims with empty username
 		// so that pin operations still work in dev/test mode (all stored under "").
