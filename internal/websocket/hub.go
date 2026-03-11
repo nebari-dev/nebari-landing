@@ -33,6 +33,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	landingcache "github.com/nebari-dev/nebari-landing/internal/cache"
+	"github.com/nebari-dev/nebari-landing/internal/notifications"
 	"github.com/redis/go-redis/v9"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -46,7 +47,7 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// EventType represents the kind of service change.
+// EventType is the value carried in the "type" field of every WebSocket frame.
 type EventType string
 
 const (
@@ -55,10 +56,18 @@ const (
 	EventDeleted  EventType = "deleted"
 )
 
-// Event is the message broadcast to WebSocket clients.
-type Event struct {
+// ServiceEvent is the WebSocket frame sent when a NebariApp service is added,
+// modified, or deleted. Type is one of EventAdded / EventModified / EventDeleted.
+type ServiceEvent struct {
 	Type    EventType                 `json:"type"`
 	Service *landingcache.ServiceInfo `json:"service"`
+}
+
+// NotificationEvent is the WebSocket frame sent when a new platform-wide
+// notification is created. Type is always "notification.created".
+type NotificationEvent struct {
+	Type         EventType                   `json:"type"`
+	Notification *notifications.Notification `json:"notification"`
 }
 
 // Hub manages active WebSocket connections on this replica and fans out events
@@ -120,10 +129,10 @@ func (h *Hub) broadcast(data []byte) {
 	}
 }
 
-// Broadcast serialises event, publishes it to Redis (fan-out to all replicas),
-// and returns. Local delivery happens via the subscribe goroutine.
-func (h *Hub) Broadcast(event Event) {
-	data, err := json.Marshal(event)
+// publish marshals v and publishes the bytes to the Redis Pub/Sub channel.
+// Local delivery happens via the subscribe goroutine that every replica runs.
+func (h *Hub) publish(v any) {
+	data, err := json.Marshal(v)
 	if err != nil {
 		log.Error(err, "Failed to marshal WebSocket event")
 		return
@@ -133,7 +142,8 @@ func (h *Hub) Broadcast(event Event) {
 	}
 }
 
-// Publish maps a plain string event type to a typed Event and broadcasts it.
+// Publish broadcasts a service-change event. eventType must be one of
+// "added", "modified", or "deleted"; unknown values default to "modified".
 // The watcher calls this so it does not need to import this package directly.
 func (h *Hub) Publish(eventType string, service *landingcache.ServiceInfo) {
 	var et EventType
@@ -147,7 +157,13 @@ func (h *Hub) Publish(eventType string, service *landingcache.ServiceInfo) {
 	default:
 		et = EventModified
 	}
-	h.Broadcast(Event{Type: et, Service: service})
+	h.publish(ServiceEvent{Type: et, Service: service})
+}
+
+// PublishNotification broadcasts a notification-created event to all connected
+// WebSocket clients via the shared Redis pub/sub channel.
+func (h *Hub) PublishNotification(n *notifications.Notification) {
+	h.publish(NotificationEvent{Type: "notification.created", Notification: n})
 }
 
 // ServeWS upgrades an HTTP connection to WebSocket, registers the client,

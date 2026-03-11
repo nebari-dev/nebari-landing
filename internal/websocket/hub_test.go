@@ -15,6 +15,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/websocket"
 	landingcache "github.com/nebari-dev/nebari-landing/internal/cache"
+	"github.com/nebari-dev/nebari-landing/internal/notifications"
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
 	"github.com/redis/go-redis/v9"
 )
@@ -84,7 +85,7 @@ func TestHub_BroadcastDeliveredToClient(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 
 	svc := &landingcache.ServiceInfo{Name: "grafana", Namespace: "monitoring"}
-	h.Broadcast(wshub.Event{Type: wshub.EventAdded, Service: svc})
+	h.Publish("added", svc)
 
 	// Allow time for Redis Pub/Sub round-trip + local broadcast.
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
@@ -93,7 +94,7 @@ func TestHub_BroadcastDeliveredToClient(t *testing.T) {
 		t.Fatalf("read: %v", err)
 	}
 
-	var evt wshub.Event
+	var evt wshub.ServiceEvent
 	if err := json.Unmarshal(msg, &evt); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -134,7 +135,7 @@ func TestHub_PublishMapsEventTypes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read: %v", err)
 			}
-			var evt wshub.Event
+			var evt wshub.ServiceEvent
 			if err := json.Unmarshal(msg, &evt); err != nil {
 				t.Fatalf("unmarshal: %v", err)
 			}
@@ -160,7 +161,7 @@ func TestHub_BroadcastToMultipleClients(t *testing.T) {
 	}
 
 	svc := &landingcache.ServiceInfo{Name: "multi"}
-	h.Broadcast(wshub.Event{Type: wshub.EventModified, Service: svc})
+	h.Publish("modified", svc)
 
 	for i, c := range []*websocket.Conn{conn1, conn2} {
 		// Allow time for Redis Pub/Sub round-trip.
@@ -169,7 +170,7 @@ func TestHub_BroadcastToMultipleClients(t *testing.T) {
 		if err != nil {
 			t.Fatalf("client %d read: %v", i+1, err)
 		}
-		var evt wshub.Event
+		var evt wshub.ServiceEvent
 		if err := json.Unmarshal(msg, &evt); err != nil {
 			t.Fatalf("client %d unmarshal: %v", i+1, err)
 		}
@@ -182,5 +183,45 @@ func TestHub_BroadcastToMultipleClients(t *testing.T) {
 func TestHub_BroadcastNoClients_NoError(t *testing.T) {
 	h := newTestHub(t)
 	// Should not panic or error
-	h.Broadcast(wshub.Event{Type: wshub.EventDeleted, Service: &landingcache.ServiceInfo{Name: "gone"}})
+	h.Publish("deleted", &landingcache.ServiceInfo{Name: "gone"})
+}
+
+func TestHub_PublishNotification_DeliveredToClient(t *testing.T) {
+	h := newTestHub(t)
+	srv := newServer(t, h)
+
+	conn := dialWS(t, srv)
+	defer func() { _ = conn.Close() }()
+	time.Sleep(20 * time.Millisecond)
+
+	n := &notifications.Notification{
+		ID:      "notif-123",
+		Title:   "Scheduled maintenance",
+		Message: "The cluster will restart at midnight.",
+	}
+	h.PublishNotification(n)
+
+	// Allow time for Redis Pub/Sub round-trip + local broadcast.
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, msg, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	var evt wshub.NotificationEvent
+	if err := json.Unmarshal(msg, &evt); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if evt.Type != "notification.created" {
+		t.Errorf("expected type %q, got %q", "notification.created", evt.Type)
+	}
+	if evt.Notification == nil {
+		t.Fatal("Notification field is nil")
+	}
+	if evt.Notification.ID != n.ID {
+		t.Errorf("expected notification ID %q, got %q", n.ID, evt.Notification.ID)
+	}
+	if evt.Notification.Title != n.Title {
+		t.Errorf("expected title %q, got %q", n.Title, evt.Notification.Title)
+	}
 }
