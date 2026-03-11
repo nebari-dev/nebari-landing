@@ -38,6 +38,15 @@ spec:
     enabled: true
     enforceAtGateway: false
     redirectURI: /oauth2/callback
+    # A second public Keycloak client is provisioned for the React SPA (keycloak-js
+    # PKCE flow). Public clients carry no secret and use PKCE instead, which is
+    # required for browser-based apps. The client ID defaults to
+    # <namespace>-<name>-spa and is written to <name>-oidc-spa-client ConfigMap.
+    spaClient:
+      enabled: {{ .Values.nebariApp.spaClient.enabled }}
+      {{- if .Values.nebariApp.spaClient.clientId }}
+      clientId: {{ .Values.nebariApp.spaClient.clientId | quote }}
+      {{- end }}
 
   landingPage:
     enabled: {{ .Values.nebariApp.landingPage.enabled }}

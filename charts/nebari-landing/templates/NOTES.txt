@@ -16,8 +16,12 @@ Traffic routing (Envoy Gateway HTTPRoute):
 {{- end }}
 
 Pre-requisites to verify before using:
-  1. Keycloak OIDC client "{{ default (printf "%s-%s" .Release.Namespace (include "nebari-landing.fullname" .)) .Values.frontend.oauth2Proxy.clientId }}" exists in realm {{ .Values.webapi.keycloak.realm }}
-     with redirect URI: {{ if .Values.httpRoute.tls }}https{{ else }}http{{ end }}://{{ .Values.httpRoute.hostname }}/oauth2/callback
+  1. Keycloak OIDC clients in realm {{ .Values.webapi.keycloak.realm }}:
+     • Confidential (oauth2-proxy): "{{ default (printf "%s-%s" .Release.Namespace (include "nebari-landing.fullname" .)) .Values.frontend.oauth2Proxy.clientId }}"
+       redirect URI: {{ if .Values.httpRoute.tls }}https{{ else }}http{{ end }}://{{ .Values.httpRoute.hostname }}/oauth2/callback
+     • Public SPA (keycloak-js): "{{ default (printf "%s-%s-spa" .Release.Namespace (include "nebari-landing.fullname" .)) .Values.frontend.keycloak.clientId }}"
+       redirect URI: {{ if .Values.httpRoute.tls }}https{{ else }}http{{ end }}://{{ .Values.httpRoute.hostname }}/*
+     Both are auto-provisioned by the nebari-operator when nebariApp.enabled=true.
 
   2. OIDC client-secret: the nebari-operator creates
      "{{ default (printf "%s-oidc-client" (include "nebari-landing.fullname" .)) .Values.frontend.oauth2Proxy.existingClientSecret }}"

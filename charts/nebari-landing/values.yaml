@@ -34,8 +34,10 @@ frontend:
     url: ""
     realm: "nebari"
     # OIDC client ID sent by the Keycloak JS adapter in the browser.
-    # Leave empty to use the operator convention: <namespace>-<nebariapp-name>.
-    # Override only when the Keycloak client was provisioned with a different ID.
+    # Leave empty to use the operator SPA client convention: <namespace>-<nebariapp-name>-spa.
+    # The SPA client is a separate *public* Keycloak client (no secret, PKCE only)
+    # provisioned by the operator when nebariApp.spaClient.enabled=true.
+    # Override only when using a manually provisioned client with a different ID.
     clientId: ""
 
   resources:
@@ -211,6 +213,16 @@ webapi:
 # HTTPRoute directly via httpRoute.* values instead.
 nebariApp:
   enabled: false
+
+  # SPA client: the operator provisions a second *public* Keycloak client
+  # (publicClient: true, PKCE S256) for the React frontend (keycloak-js).
+  # The confidential oauth2-proxy client and this public SPA client are
+  # intentionally separate — they cannot share the same Keycloak client.
+  # Default client ID: <namespace>-<nebariapp-name>-spa
+  spaClient:
+    enabled: true
+    # Optional override. Leave empty to use the operator convention.
+    clientId: ""
 
   # Controls whether the landing page registers *itself* as a card on the
   # landing page.  Usually false — the landing page IS the landing page.
