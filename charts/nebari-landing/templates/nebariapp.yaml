@@ -43,7 +43,6 @@ spec:
     icon: {{ .Values.nebariApp.landingPage.icon | quote }}
     category: {{ .Values.nebariApp.landingPage.category | quote }}
     priority: {{ .Values.nebariApp.landingPage.priority }}
-    visibility: {{ .Values.nebariApp.landingPage.visibility | quote }}
 ---
 # ── NebariApp: webapi ─────────────────────────────────────────────────────────
 # Routes /api/* directly to the Go webapi service.  JWT validation is handled
