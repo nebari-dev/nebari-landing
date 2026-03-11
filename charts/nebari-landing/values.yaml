@@ -33,8 +33,10 @@ frontend:
     # e.g. https://keycloak.example.com/auth
     url: ""
     realm: "nebari"
-    # clientId is derived automatically following the operator convention:
-    # <namespace>-<nebariapp-name>  — do not set this manually.
+    # OIDC client ID sent by the Keycloak JS adapter in the browser.
+    # Leave empty to use the operator convention: <namespace>-<nebariapp-name>.
+    # Override only when the Keycloak client was provisioned with a different ID.
+    clientId: ""
 
   resources:
     requests:
@@ -63,8 +65,10 @@ frontend:
     # frontend NebariApp: it follows the pattern <nebariapp-name>-oidc-client.
     # Leave empty to use the operator-created default derived from the chart
     # fullname: "<fullname>-oidc-client".
-    # NOTE: The OIDC client ID is derived automatically from the NebariApp name
-    # following the operator convention: <namespace>-<nebariapp-name>.
+    # OIDC client ID passed to oauth2-proxy via --client-id.
+    # Leave empty to use the operator convention: <namespace>-<nebariapp-name>.
+    # Override only when the Keycloak client was provisioned with a different ID.
+    clientId: ""
     existingClientSecret: ""
 
     # Key inside existingClientSecret that holds the OIDC client secret value.

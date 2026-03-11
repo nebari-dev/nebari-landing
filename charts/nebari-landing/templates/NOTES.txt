@@ -16,7 +16,7 @@ Traffic routing (Envoy Gateway HTTPRoute):
 {{- end }}
 
 Pre-requisites to verify before using:
-  1. Keycloak OIDC client "{{ printf "%s-%s" .Release.Namespace (include "nebari-landing.fullname" .) }}" exists in realm {{ .Values.webapi.keycloak.realm }}
+  1. Keycloak OIDC client "{{ default (printf "%s-%s" .Release.Namespace (include "nebari-landing.fullname" .)) .Values.frontend.oauth2Proxy.clientId }}" exists in realm {{ .Values.webapi.keycloak.realm }}
      with redirect URI: {{ if .Values.httpRoute.tls }}https{{ else }}http{{ end }}://{{ .Values.httpRoute.hostname }}/oauth2/callback
 
   2. OIDC client-secret: the nebari-operator creates

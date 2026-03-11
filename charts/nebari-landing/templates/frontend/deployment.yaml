@@ -81,8 +81,8 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url={{ required "frontend.oauth2Proxy.oidcIssuerUrl is required" .Values.frontend.oauth2Proxy.oidcIssuerUrl }}
-            {{- /* Client ID matches the operator naming convention: <namespace>-<nebariapp-name> */}}
-            - --client-id={{ printf "%s-%s" .Release.Namespace (include "nebari-landing.fullname" .) }}
+            {{- /* Client ID: use override if set, otherwise derive from operator convention: <namespace>-<nebariapp-name> */}}
+            - --client-id={{ default (printf "%s-%s" .Release.Namespace (include "nebari-landing.fullname" .)) .Values.frontend.oauth2Proxy.clientId }}
             - --upstream=http://127.0.0.1:{{ .Values.frontend.port }}
             - --http-address=0.0.0.0:{{ .Values.frontend.oauth2Proxy.port }}
             - --email-domain={{ .Values.frontend.oauth2Proxy.emailDomain }}
