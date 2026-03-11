@@ -1,0 +1,40 @@
+.usa-tag.status-tag {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  color: var(--color-text-primary);
+}
+
+.usa-tag.status-tag--healthy {
+  background-color: var(--color-status-success-bg, #e7f6e7);
+  color: var(--color-text-primary);
+}
+
+.usa-tag.status-tag--unhealthy {
+  background-color: var(--color-status-error-bg, #f4e3db);
+  color: var(--color-text-primary);
+}
+
+.usa-tag.status-tag--unknown {
+  background-color: var(--color-bg-surface-muted);
+  color: var(--color-text-primary);
+}
+
+.usa-tag.status-tag--healthy::before,
+.usa-tag.status-tag--unhealthy::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.usa-tag.status-tag--healthy::before {
+  background-color: var(--color-status-success-text, #216e1f);
+}
+
+.usa-tag.status-tag--unhealthy::before {
+  background-color: var(--color-status-error-text, #b50909);
+}

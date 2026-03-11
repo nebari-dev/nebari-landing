@@ -73,6 +73,7 @@ export default function ServicesPanel(props: ServicesPanelProps): ReactNode {
               description={service.description}
               category={service.category}
               pinned={service.pinned}
+              url={service.url}
               onTogglePin={() => onTogglePin(service.id)}
             />
           ))}
@@ -90,6 +91,7 @@ export type ServicesPanelService = {
   description: string;
   category: string[];
   pinned: boolean;
+  url:string;
 };
 
 export type ServicesPanelProps = {

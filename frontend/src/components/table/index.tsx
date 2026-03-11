@@ -6,6 +6,10 @@ import {
   Table, Tag, Button
 } from "@trussworks/react-uswds";
 
+import {
+  StatusTag
+} from "../StatusTag"
+
 import
   pinIconUrl
 from "../../assets/pin.svg";
@@ -104,19 +108,20 @@ export default function AppTable(props: AppTableProps): ReactNode {
                 {/* TODO: Split thhis into a separate component */}
                 <td data-label="Category">
                   <div className="app-table__categories">
-                    {categories.map((c, i) => (
-                      <span key={i} className="app-table__categoryItem">
-                        {c}
-                      </span>
+                    {categories.map((item) => (
+                      <Tag
+                        key={item}
+                        background="base-lighter"
+                        className="app-table__categoryItem"
+                      >
+                        {item}
+                      </Tag>
                     ))}
                   </div>
                 </td>
 
-                {/* TODO: Split this into a separate component */}
                 <td data-label="Status">
-                  <Tag background="base-lighter" className="app-table__status">
-                    {status}
-                  </Tag>
+                  <StatusTag status={status} />
                 </td>
 
                 <td data-label="Action" className="app-table__actionCell">

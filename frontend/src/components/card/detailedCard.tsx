@@ -10,6 +10,10 @@ import {
   Tag
 } from "@trussworks/react-uswds";
 
+import {
+  StatusTag
+} from "../StatusTag"
+
 import AvatarImage from "../icon";
 
 import pinIconUrl from "../../assets/pin.svg";
@@ -26,26 +30,33 @@ export function DetailedCard(props: DetailedCardProps): ReactNode {
     description,
     category,
     pinned,
+    url,
     onTogglePin,
   } = props;
 
   return (
     <Card className="app-card app-card--detailed" layout="standardDefault">
-      <CardBody className="app-card__body app-card__body--detailed">
-        <div className="app-card-detailed__topRow">
-          <div className="app-card-detailed__avatar">
-            {AvatarImage(image)}
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="app-card-detailed__mainLink"
+        aria-label={`${name} (opens in a new tab)`}
+      >
+        <CardBody className="app-card__body app-card__body--detailed">
+          <div className="app-card-detailed__topRow">
+            <div className="app-card-detailed__avatar">
+              {AvatarImage(image)}
+            </div>
+
+            <StatusTag status={status} />
           </div>
 
-          <Tag background="base-lighter" className="app-card-detailed__status">
-            {status}
-          </Tag>
-        </div>
+          <h3 className="app-card__title app-card__title--detailed">{name}</h3>
 
-        <h3 className="app-card__title app-card__title--detailed">{name}</h3>
-
-        <div className="app-card-detailed__description usa-prose">{description}</div>
-      </CardBody>
+          <div className="app-card-detailed__description usa-prose">{description}</div>
+        </CardBody>
+      </a>
 
       <CardFooter className="app-card__footer app-card__footer--detailed">
         <div className="app-card-detailed__footerRow">
@@ -53,7 +64,7 @@ export function DetailedCard(props: DetailedCardProps): ReactNode {
             {category.map((item) => (
               <Tag
                 key={item}
-                background="accent-cool-lighter"
+                background="base-lighter"
                 className="app-card-detailed__category"
               >
                 {item}
@@ -71,6 +82,7 @@ export function DetailedCard(props: DetailedCardProps): ReactNode {
             <img
               src={pinned ? unpinIconUrl : pinIconUrl}
               className="app-card-detailed__pinIcon"
+              alt=""
             />
           </Button>
         </div>
@@ -87,5 +99,6 @@ export type DetailedCardProps = {
   description: string;
   category: string[];
   pinned: boolean;
+  url: string;
   onTogglePin: (nextPinned: boolean) => void;
 };

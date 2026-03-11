@@ -9,7 +9,10 @@
 #   docker-frontend   — multi-arch build of quay.io/nebari/nebari-frontend
 #   manifest-webapi   — stitch arch images → semver-tagged manifest
 #   manifest-frontend — stitch arch images → semver-tagged manifest
+#   goreleaser        — build and release Go binary via GoReleaser
 #   publish-chart     — package and attach Helm chart to the GitHub release
+#
+# Note: Helm repository sync is handled by sync-helm-chart.yml
 
 name: Release
 
@@ -371,3 +374,4 @@ jobs:
           echo "**Helm chart:** \`nebari-landing-${VERSION}.tgz\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Platforms**: linux/amd64, linux/arm64" >> "$GITHUB_STEP_SUMMARY"
+

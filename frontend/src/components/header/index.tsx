@@ -15,7 +15,7 @@ import
 from "../../assets/nebari-logo_light.svg";
 
 import {
-  ExternalLink, Moon, Sun
+  Moon, Sun
 } from "lucide-react";
 
 import type {
@@ -35,8 +35,6 @@ import "./index.scss";
 export default function Header(props: HeaderProps): ReactNode {
   const {
     homeHref = "/",
-    docsHref = "/docs",
-    githubHref = "https://github.com/trussworks/react-uswds",
     isDarkMode = false,
     onToggleTheme,
     user,
@@ -45,6 +43,8 @@ export default function Header(props: HeaderProps): ReactNode {
 
   const logoSrc = isDarkMode ? logoUrlDark : logoUrlLight;
 
+
+  // TODO: Remove in deploytment (temporary data)
   const notifications = [
     {
       id: "n-1",
@@ -85,7 +85,8 @@ export default function Header(props: HeaderProps): ReactNode {
             />
           </a>
 
-          <nav className="app-header__nav" aria-label="Primary navigation">
+          {/* TODO: uncomment if these fields are required */}
+          {/* <nav className="app-header__nav" aria-label="Primary navigation">
             <a
               className="app-header__link"
               href={docsHref}
@@ -105,7 +106,7 @@ export default function Header(props: HeaderProps): ReactNode {
               GitHub{" "}
               <ExternalLink size={13} className="app-header__linkIcon" aria-hidden="true" />
             </a>
-          </nav>
+          </nav> */}
         </div>
 
         <div className="app-header__right">

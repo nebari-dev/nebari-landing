@@ -60,10 +60,22 @@ frontend:
     # Keycloak OIDC client ID registered for the landing page frontend.
     clientId: "nebari-landing"
 
-    # Name of a Kubernetes Secret containing:
-    #   client-secret  — OIDC client secret
-    #   cookie-secret  — 32-byte random base64 string (openssl rand -base64 32)
-    existingSecret: "nebari-landing-oauth2-proxy"
+    # Name of the Secret containing the OIDC client-secret key.
+    # The nebari-operator creates this automatically when it reconciles the
+    # frontend NebariApp: it follows the pattern <nebariapp-name>-oidc-client.
+    # Leave empty to use the operator-created default derived from the chart
+    # fullname: "<fullname>-oidc-client".
+    existingClientSecret: ""
+
+    # Key inside existingClientSecret that holds the OIDC client secret value.
+    clientSecretKey: "client-secret"
+
+    # Name of a Secret containing a 'cookie-secret' key (32-byte random base64
+    # string used by oauth2-proxy to encrypt session cookies).
+    # Leave empty to let the chart generate and manage this secret automatically.
+    # The auto-generated secret is stable across upgrades (uses Helm lookup to
+    # preserve the existing value rather than re-rolling on each helm upgrade).
+    existingCookieSecret: ""
 
     # If true the access token is forwarded to the upstream (webapi calls from
     # the browser will arrive pre-authorised).

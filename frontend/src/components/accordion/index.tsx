@@ -27,6 +27,7 @@ export type AppAccordionService = {
   status: string;
   description: string;
   category: string[];
+  url: string;
   pinned: boolean;
 };
 
