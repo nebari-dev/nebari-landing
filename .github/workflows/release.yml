@@ -10,6 +10,7 @@
 #   manifest-webapi   — stitch arch images → semver-tagged manifest
 #   manifest-frontend — stitch arch images → semver-tagged manifest
 #   publish-chart     — package and attach Helm chart to the GitHub release
+#   sync-helm-repository — open a PR in nebari-dev/helm-repository with the new chart
 
 name: Release
 
@@ -307,8 +308,10 @@ jobs:
           # Patch Chart.yaml version and appVersion
           sed -i "s/^version:.*/version: ${VERSION}/" charts/nebari-landing/Chart.yaml
           sed -i "s/^appVersion:.*/appVersion: \"${GITHUB_REF_NAME}\"/" charts/nebari-landing/Chart.yaml
-          # Pin image tags in values.yaml so the packaged chart references this release
-          sed -i "s|tag: \"latest\"|tag: \"${GITHUB_REF_NAME}\"|g" charts/nebari-landing/values.yaml
+          # Pin image tags in values.yaml so the packaged chart references this release.
+          # Matches any quoted tag value (idempotent: works whether values.yaml has "latest"
+          # or a previous version, e.g. if prepare-release was run locally before CI).
+          sed -i "s|tag: \"[^\"]*\"|tag: \"${GITHUB_REF_NAME}\"|g" charts/nebari-landing/values.yaml
 
       - name: Package Helm chart
         run: |
@@ -333,3 +336,59 @@ jobs:
           echo "**Helm chart:** \`nebari-landing-${VERSION}.tgz\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Platforms**: linux/amd64, linux/arm64" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Sync Helm chart to helm-repository ────────────────────────────────────
+  sync-helm-repository:
+    name: Sync chart to helm-repository
+    runs-on: ubuntu-latest
+    needs: publish-chart
+    steps:
+      - name: Checkout helm-repository
+        uses: actions/checkout@v4
+        with:
+          repository: nebari-dev/helm-repository
+          token: ${{ secrets.NEBARI_BOT_TOKEN }}
+          path: helm-repository
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Download chart from release
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          CHART_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.event.release.tag_name }}/nebari-landing-${VERSION}.tgz"
+          echo "Downloading chart from: $CHART_URL"
+          curl -fsSL -o "helm-repository/charts/nebari-landing-${VERSION}.tgz" "$CHART_URL"
+
+      - name: Update Helm repository index
+        run: |
+          cd helm-repository
+          helm repo index charts --url https://nebari-dev.github.io/helm-repository/charts --merge charts/index.yaml
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.NEBARI_BOT_TOKEN }}
+          path: helm-repository
+          commit-message: "feat: add nebari-landing ${{ github.event.release.tag_name }}"
+          branch: add-nebari-landing-${{ github.event.release.tag_name }}
+          title: "feat: add nebari-landing ${{ github.event.release.tag_name }}"
+          body: |
+            Automated PR from nebari-landing release workflow.
+
+            ## Changes
+            - Added `nebari-landing-${{ github.event.release.tag_name }}.tgz`
+            - Updated Helm repository index
+
+            ## Source
+            Release: ${{ github.event.release.html_url }}
+
+            ## Testing
+            ```bash
+            helm repo add nebari-dev https://nebari-dev.github.io/helm-repository
+            helm repo update
+            helm search repo nebari-landing --versions
+            ```
+          labels: |
+            automated
+            release

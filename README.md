@@ -202,6 +202,11 @@ make test
 make -f dev/Makefile up
 ```
 
+**Documentation**:
+- **[Contributing Guide](CONTRIBUTING.md)** - Complete development workflow
+- **[Release Checklist](docs/maintainers/release-checklist.md)** - For maintainers creating releases
+- **[API Reference](docs/api.md)** - WebAPI endpoint documentation
+
 See our [issue tracker](https://github.com/nebari-dev/nebari-landing/issues) for open issues.
 
 ## License
