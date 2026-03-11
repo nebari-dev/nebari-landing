@@ -227,8 +227,21 @@ func buildHealthCheckConfig(a *sdapp.App) *HealthCheckConfig {
 	if servicePort == 0 {
 		servicePort = 80
 	}
+	// Allow healthCheck.port to override the service port for services that
+	// expose health endpoints on a separate management port (e.g. Keycloak X
+	// management port 9000 vs main HTTP port 8080).
+	if hc.Port > 0 {
+		servicePort = hc.Port
+	}
+	// Use ServiceNamespace (spec.service.namespace) so cross-namespace services
+	// (e.g. Keycloak in 'keycloak', ArgoCD in 'argocd') are probed via the
+	// correct in-cluster DNS name rather than the NebariApp's own namespace.
+	serviceNamespace := a.ServiceNamespace
+	if serviceNamespace == "" {
+		serviceNamespace = a.Namespace
+	}
 	return &HealthCheckConfig{
-		ProbeURL:        fmt.Sprintf("http://%s.%s:%d%s", serviceName, a.Namespace, servicePort, path),
+		ProbeURL:        fmt.Sprintf("http://%s.%s:%d%s", serviceName, serviceNamespace, servicePort, path),
 		IntervalSeconds: interval,
 		TimeoutSeconds:  timeout,
 	}
