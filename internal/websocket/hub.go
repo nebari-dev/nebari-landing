@@ -138,7 +138,9 @@ func (h *Hub) publish(v any) {
 		return
 	}
 	if err := h.rdb.Publish(context.Background(), redisPubSubChannel, data).Err(); err != nil {
-		log.Error(err, "Failed to publish WebSocket event to Redis")
+		// Downgraded from Error to Info: publish failures are transient Redis
+		// infrastructure errors that generate noisy stack traces at Error level.
+		log.Info("WebSocket publish failed (transient Redis error)", "error", err)
 	}
 }
 

@@ -275,6 +275,10 @@ redis:
 
   auth:
     enabled: true
+    # Redis 6 ACL username. Empty string means the Redis "default" user, which
+    # is what the Bitnami subchart creates. Set only when using a custom ACL
+    # user provisioned outside the chart.
+    username: ""
     # Name of an existing secret with key `redis-password`.
     # When empty, the subchart auto-generates a password.
     existingSecret: ""
