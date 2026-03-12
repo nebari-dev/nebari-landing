@@ -49,6 +49,9 @@ type Handler struct {
 	// in diagnosing auth and proxy-forwarding issues (similar to Keycloak's
 	// KC_HOSTNAME_DEBUG mode). Never enable in production.
 	debugMode bool
+	// healthChecker powers the GET /api/v1/cluster/services recent_activity field.
+	// When nil the endpoint still returns aggregate counts; recent_activity is empty.
+	healthChecker HealthEventSource
 	// claimsExtractor, when non-nil, replaces the JWT validation step.
 	// Use WithClaimsExtractor in tests to inject synthetic claims without
 	// needing a real Keycloak instance or signed token.
@@ -148,6 +151,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/v1/health", h.handleHealth)
 	mux.HandleFunc("/api/v1/notifications", h.handleGetNotifications)
 	mux.HandleFunc("/api/v1/notifications/", h.handleNotificationSub) // /{id}/read
+	mux.HandleFunc("/api/v1/cluster/services", h.handleClusterServices)
 
 	// WebSocket — real-time service updates
 	if h.hub != nil {

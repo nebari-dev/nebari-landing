@@ -14,6 +14,16 @@ import (
 
 var log = ctrl.Log.WithName("health-checker")
 
+// eventBufSize is the number of recent health-transition events retained in memory.
+const eventBufSize = 50
+
+// HealthEvent records a single service health-status transition.
+type HealthEvent struct {
+	Name      string    `json:"name"`      // service DisplayName
+	Status    string    `json:"status"`    // "recovered" | "down" | "unknown"
+	Timestamp time.Time `json:"timestamp"` // UTC time of the transition
+}
+
 // Publisher is an optional sink that receives a notification whenever a
 // service's health status changes. *websocket.Hub satisfies this interface.
 type Publisher interface {
@@ -41,6 +51,12 @@ type HealthChecker struct {
 	// the probe goroutine when a NebariApp's healthCheck spec is updated.
 	mu      sync.Mutex
 	running map[string]runningProbe
+
+	// events is a fixed-size ring-buffer of recent health-transition events.
+	evMu    sync.Mutex
+	events  [eventBufSize]HealthEvent
+	evHead  int // next write position (wraps at eventBufSize)
+	evCount int // number of valid entries (0..eventBufSize)
 }
 
 type runningProbe struct {
@@ -76,6 +92,63 @@ func (h *HealthChecker) SetNotificationStore(s *notifications.Store) {
 // notifications to connected WebSocket clients (e.g. *websocket.Hub).
 func (h *HealthChecker) SetNotificationPublisher(p NotificationPublisher) {
 	h.notifPublisher = p
+}
+
+// appendEvent writes a health transition event into the ring-buffer.
+// status should be the UI-facing string: "recovered", "down", or "unknown".
+func (h *HealthChecker) appendEvent(displayName, status string) {
+	h.evMu.Lock()
+	defer h.evMu.Unlock()
+	h.events[h.evHead] = HealthEvent{
+		Name:      displayName,
+		Status:    status,
+		Timestamp: time.Now().UTC(),
+	}
+	h.evHead = (h.evHead + 1) % eventBufSize
+	if h.evCount < eventBufSize {
+		h.evCount++
+	}
+}
+
+// logTransition records a health status transition event if the status
+// actually changed. prevStatus == "" (first probe) is silently ignored.
+func (h *HealthChecker) logTransition(uid, prevStatus, newStatus string) {
+	if prevStatus == "" || prevStatus == newStatus {
+		return
+	}
+	svc := h.cache.Get(uid)
+	if svc == nil {
+		return
+	}
+	name := svc.DisplayName
+	if name == "" {
+		name = svc.Name
+	}
+	eventStatus := newStatus
+	switch newStatus {
+	case "healthy":
+		eventStatus = "recovered"
+	case "unhealthy":
+		eventStatus = "down"
+	}
+	h.appendEvent(name, eventStatus)
+}
+
+// RecentEvents returns up to n health-transition events, newest first.
+func (h *HealthChecker) RecentEvents(n int) []HealthEvent {
+	h.evMu.Lock()
+	defer h.evMu.Unlock()
+	count := h.evCount
+	if n < count {
+		count = n
+	}
+	out := make([]HealthEvent, count)
+	for i := 0; i < count; i++ {
+		// Use double-modulo to handle negative values safely in Go.
+		idx := ((h.evHead-1-i)%eventBufSize + eventBufSize) % eventBufSize
+		out[i] = h.events[idx]
+	}
+	return out
 }
 
 // postRecoveryNotif posts a "back online" notification for the given service UID
@@ -239,6 +312,7 @@ func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client 
 	if err != nil {
 		log.Info("Health probe request error", "uid", uid, "url", probeURL, "err", err)
 		h.setStatus(uid, "unknown", fmt.Sprintf("failed to build request: %v", err))
+		h.logTransition(uid, prevStatus, "unknown")
 		return
 	}
 
@@ -247,6 +321,7 @@ func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client 
 	if err != nil {
 		log.Info("Health probe failed", "uid", uid, "url", probeURL, "err", err)
 		h.setStatus(uid, "unhealthy", fmt.Sprintf("probe error: %v", err))
+		h.logTransition(uid, prevStatus, "unhealthy")
 		return
 	}
 	defer func() {
@@ -266,9 +341,11 @@ func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client 
 		if prevStatus == "unhealthy" {
 			h.postRecoveryNotif(uid)
 		}
+		h.logTransition(uid, prevStatus, "healthy")
 	} else {
 		log.Info("Health probe unhealthy", "uid", uid, "url", probeURL, "status", resp.StatusCode)
 		h.setStatus(uid, "unhealthy", fmt.Sprintf("HTTP %d", resp.StatusCode))
+		h.logTransition(uid, prevStatus, "unhealthy")
 	}
 
 	h.publishIfChanged(uid)

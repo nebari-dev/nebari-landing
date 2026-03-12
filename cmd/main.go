@@ -261,6 +261,7 @@ func main() {
 		api.WithNotificationStore(notificationStore),
 		api.WithKeycloakAdminClient(keycloakAdminClient),
 		api.WithAllowedOrigins(splitOrigins(allowedOrigins)),
+		api.WithHealthChecker(healthChecker),
 	}
 	if debugMode {
 		setupLog.Info("Debug mode enabled — GET /api/v1/debug is active; do not use in production")
