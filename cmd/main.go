@@ -234,6 +234,7 @@ func main() {
 	healthChecker.SetPublisher(hub)
 	if notifLifecycle {
 		healthChecker.SetNotificationStore(notificationStore)
+		healthChecker.SetNotificationPublisher(hub)
 	}
 	go healthChecker.Start(ctx)
 

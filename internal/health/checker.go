@@ -20,15 +20,22 @@ type Publisher interface {
 	Publish(eventType string, service *cache.ServiceInfo)
 }
 
+// NotificationPublisher broadcasts a new notification to connected WebSocket
+// clients. *websocket.Hub satisfies this interface.
+type NotificationPublisher interface {
+	PublishNotification(n *notifications.Notification)
+}
+
 // HealthChecker performs periodic HTTP health checks on services registered
 // in the ServiceCache. Each service that has a HealthCheckConfig is probed
 // independently on its own interval using a lightweight goroutine-per-service
 // model; goroutines exit when ctx is cancelled or the service is removed.
 type HealthChecker struct {
-	cache      *cache.ServiceCache
-	interval   time.Duration        // fallback global interval when service doesn't specify one
-	publisher  Publisher            // optional; may be nil
-	notifStore *notifications.Store // optional; when set, "back online" notifications are posted
+	cache          *cache.ServiceCache
+	interval       time.Duration         // fallback global interval when service doesn't specify one
+	publisher      Publisher             // optional; may be nil
+	notifPublisher NotificationPublisher // optional; may be nil
+	notifStore     *notifications.Store  // optional; when set, "back online" notifications are posted
 	// running maps UID → (cancel func, current ProbeURL).
 	// The ProbeURL is stored so reconcile can detect config changes and restart
 	// the probe goroutine when a NebariApp's healthCheck spec is updated.
@@ -65,7 +72,14 @@ func (h *HealthChecker) SetNotificationStore(s *notifications.Store) {
 	h.notifStore = s
 }
 
-// postRecoveryNotif posts a "back online" notification for the given service UID.
+// SetNotificationPublisher attaches a publisher that broadcasts new
+// notifications to connected WebSocket clients (e.g. *websocket.Hub).
+func (h *HealthChecker) SetNotificationPublisher(p NotificationPublisher) {
+	h.notifPublisher = p
+}
+
+// postRecoveryNotif posts a "back online" notification for the given service UID
+// and broadcasts it to connected WebSocket clients.
 func (h *HealthChecker) postRecoveryNotif(uid string) {
 	if h.notifStore == nil {
 		return
@@ -78,12 +92,17 @@ func (h *HealthChecker) postRecoveryNotif(uid string) {
 	if name == "" {
 		name = svc.Name
 	}
-	if _, err := h.notifStore.Create(
+	n, err := h.notifStore.Create(
 		svc.Icon,
 		fmt.Sprintf("%s is back online!", name),
 		fmt.Sprintf("%s is back online! Service is ready to use.", name),
-	); err != nil {
+	)
+	if err != nil {
 		log.Error(err, "Failed to post recovery notification", "uid", uid, "name", name)
+		return
+	}
+	if h.notifPublisher != nil {
+		h.notifPublisher.PublishNotification(n)
 	}
 }
 
