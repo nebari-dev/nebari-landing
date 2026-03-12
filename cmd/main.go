@@ -176,6 +176,7 @@ func main() {
 	nebariAppWatcher.SetPublisher(hub)
 	if notifLifecycle {
 		nebariAppWatcher.SetNotificationStore(notificationStore)
+		nebariAppWatcher.SetNotificationPublisher(hub)
 	}
 
 	go func() {
@@ -194,13 +195,14 @@ func main() {
 
 	// Post a one-time welcome/feedback notification on every startup (opt-out via --notifications-startup=false).
 	if notifStartup {
-		if _, err := notificationStore.Create(
+		if n, err := notificationStore.Create(
 			"https://github.com/nebari-dev/nebari-design/blob/main/symbol/Nebari-Symbol.svg?raw=true",
 			"Welcome to Nebari!",
 			"User feedback is welcomed! We value your input to improve Nebari.",
 		); err != nil {
 			setupLog.Error(err, "Failed to post startup notification")
 		} else {
+			hub.PublishNotification(n)
 			setupLog.Info("Startup notification posted")
 		}
 	}
