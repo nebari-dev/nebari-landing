@@ -16,3 +16,6 @@ frontend/dist/
 
 # OS
 .DS_Store
+
+# Local dev binaries (auto-downloaded by dev/Makefile)
+.bin/
