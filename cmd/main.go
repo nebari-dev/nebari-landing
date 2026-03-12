@@ -25,6 +25,7 @@ import (
 	"github.com/nebari-dev/nebari-landing/internal/api"
 	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
+	"github.com/nebari-dev/nebari-landing/internal/cluster"
 	"github.com/nebari-dev/nebari-landing/internal/health"
 	webkeycloak "github.com/nebari-dev/nebari-landing/internal/keycloak"
 	"github.com/nebari-dev/nebari-landing/internal/notifications"
@@ -48,6 +49,12 @@ func init() {
 	nebariGV := schema.GroupVersion{Group: "reconcilers.nebari.dev", Version: "v1"}
 	scheme.AddKnownTypeWithName(nebariGV.WithKind("NebariApp"), &unstructured.Unstructured{})
 	scheme.AddKnownTypeWithName(nebariGV.WithKind("NebariAppList"), &unstructured.UnstructuredList{})
+
+	// Register ArgoCD Application CRs as unstructured so the cluster info
+	// client can list them via the controller-runtime direct client.
+	argoCDGV := schema.GroupVersion{Group: "argoproj.io", Version: "v1alpha1"}
+	scheme.AddKnownTypeWithName(argoCDGV.WithKind("Application"), &unstructured.Unstructured{})
+	scheme.AddKnownTypeWithName(argoCDGV.WithKind("ApplicationList"), &unstructured.UnstructuredList{})
 }
 
 func main() {
@@ -66,6 +73,8 @@ func main() {
 		allowedOrigins string
 		notifStartup   bool
 		notifLifecycle bool
+		clusterName    string
+		minNodes       int
 	)
 
 	// Flags fall back to environment variables so the binary works naturally when
@@ -100,6 +109,10 @@ func main() {
 		"Post a welcome/feedback notification on every startup (env: NOTIFICATIONS_STARTUP)")
 	flag.BoolVar(&notifLifecycle, "notifications-lifecycle", envBool("NOTIFICATIONS_LIFECYCLE", true),
 		"Auto-post notifications for service lifecycle events: added, removed, back online (env: NOTIFICATIONS_LIFECYCLE)")
+	flag.StringVar(&clusterName, "cluster-name", envStr("CLUSTER_NAME", ""),
+		"Human-readable cluster name shown in the cluster info endpoint (env: CLUSTER_NAME)")
+	flag.IntVar(&minNodes, "min-nodes", envInt("MIN_NODES", 0),
+		"Minimum node count reported in the cluster nodes endpoint; 0 = omit (env: MIN_NODES)")
 
 	opts := zap.Options{
 		Development: true,
@@ -134,6 +147,16 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Build cluster info client — powers the /api/v1/cluster/* endpoints.
+	// Non-fatal on error: the endpoints return 501 when clusterClient is nil.
+	clusterClient, err := cluster.New(config, k8sClient, clusterName, minNodes)
+	if err != nil {
+		setupLog.Error(err, "Failed to create cluster client — cluster overview endpoints will return 501")
+		clusterClient = nil
+	} else {
+		setupLog.Info("Cluster client ready", "clusterName", clusterName)
+	}
 
 	serviceCache := cache.NewServiceCache()
 
@@ -262,6 +285,9 @@ func main() {
 		api.WithKeycloakAdminClient(keycloakAdminClient),
 		api.WithAllowedOrigins(splitOrigins(allowedOrigins)),
 		api.WithHealthChecker(healthChecker),
+	}
+	if clusterClient != nil {
+		handlerOpts = append(handlerOpts, api.WithClusterClient(clusterClient))
 	}
 	if debugMode {
 		setupLog.Info("Debug mode enabled — GET /api/v1/debug is active; do not use in production")

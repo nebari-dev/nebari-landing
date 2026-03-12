@@ -52,6 +52,9 @@ type Handler struct {
 	// healthChecker powers the GET /api/v1/cluster/services recent_activity field.
 	// When nil the endpoint still returns aggregate counts; recent_activity is empty.
 	healthChecker HealthEventSource
+	// clusterClient powers the GET /api/v1/cluster/{nodes,resources,info} endpoints.
+	// When nil those endpoints return 501 Not Implemented.
+	clusterClient ClusterClient
 	// claimsExtractor, when non-nil, replaces the JWT validation step.
 	// Use WithClaimsExtractor in tests to inject synthetic claims without
 	// needing a real Keycloak instance or signed token.
@@ -152,6 +155,9 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/v1/notifications", h.handleGetNotifications)
 	mux.HandleFunc("/api/v1/notifications/", h.handleNotificationSub) // /{id}/read
 	mux.HandleFunc("/api/v1/cluster/services", h.handleClusterServices)
+	mux.HandleFunc("/api/v1/cluster/nodes", h.handleClusterNodes)
+	mux.HandleFunc("/api/v1/cluster/resources", h.handleClusterResources)
+	mux.HandleFunc("/api/v1/cluster/info", h.handleClusterInfo)
 
 	// WebSocket — real-time service updates
 	if h.hub != nil {
