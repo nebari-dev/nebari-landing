@@ -43,14 +43,14 @@ type NotificationPublisher interface {
 
 // NebariAppWatcher watches NebariApp resources and updates the service cache
 type NebariAppWatcher struct {
-	cache        *landingcache.ServiceCache
-	publisher    Publisher             // optional; may be nil
+	cache          *landingcache.ServiceCache
+	publisher      Publisher             // optional; may be nil
 	notifPublisher NotificationPublisher // optional; may be nil
-	notifStore   *notifications.Store  // optional; when set, lifecycle notifications are posted
-	kubeCache   cachepkg.Cache
-	client      client.Client
-	syncedCh    chan struct{}
-	cacheSynced bool
+	notifStore     *notifications.Store  // optional; when set, lifecycle notifications are posted
+	kubeCache      cachepkg.Cache
+	client         client.Client
+	syncedCh       chan struct{}
+	cacheSynced    bool
 	// initialUIDs holds the UID of every NebariApp that existed at startup so
 	// that the informer's initial-state replay (onAdd callbacks fired for
 	// already-known objects) does not generate spurious "new service" notifications.
