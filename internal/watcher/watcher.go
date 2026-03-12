@@ -35,11 +35,18 @@ type Publisher interface {
 	Publish(eventType string, service *landingcache.ServiceInfo)
 }
 
+// NotificationPublisher broadcasts a new notification to connected WebSocket
+// clients. *websocket.Hub satisfies this interface.
+type NotificationPublisher interface {
+	PublishNotification(n *notifications.Notification)
+}
+
 // NebariAppWatcher watches NebariApp resources and updates the service cache
 type NebariAppWatcher struct {
-	cache       *landingcache.ServiceCache
-	publisher   Publisher            // optional; may be nil
-	notifStore  *notifications.Store // optional; when set, lifecycle notifications are posted
+	cache        *landingcache.ServiceCache
+	publisher    Publisher             // optional; may be nil
+	notifPublisher NotificationPublisher // optional; may be nil
+	notifStore   *notifications.Store  // optional; when set, lifecycle notifications are posted
 	kubeCache   cachepkg.Cache
 	client      client.Client
 	syncedCh    chan struct{}
@@ -91,13 +98,25 @@ func (w *NebariAppWatcher) SetNotificationStore(s *notifications.Store) {
 	w.notifStore = s
 }
 
-// postNotif creates a notification, logging but not propagating errors.
+// SetNotificationPublisher attaches a publisher that broadcasts new
+// notifications to connected WebSocket clients (e.g. *websocket.Hub).
+func (w *NebariAppWatcher) SetNotificationPublisher(p NotificationPublisher) {
+	w.notifPublisher = p
+}
+
+// postNotif creates a notification and broadcasts it to WebSocket clients.
+// Errors are logged but not propagated.
 func (w *NebariAppWatcher) postNotif(image, title, message string) {
 	if w.notifStore == nil {
 		return
 	}
-	if _, err := w.notifStore.Create(image, title, message); err != nil {
+	n, err := w.notifStore.Create(image, title, message)
+	if err != nil {
 		log.Error(err, "Failed to post automatic notification", "title", title)
+		return
+	}
+	if w.notifPublisher != nil {
+		w.notifPublisher.PublishNotification(n)
 	}
 }
 
