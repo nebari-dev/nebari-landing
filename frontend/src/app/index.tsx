@@ -13,6 +13,8 @@ import {
 import { createWebSocketClient } from "../api/ws";
 import { mapService } from "../api/mapServices";
 
+const DARK_MODE_STORAGE_KEY = "launchpad:isDarkMode";
+
 type BackendSocketService = {
   uid: string;
   name: string;
@@ -42,20 +44,35 @@ type BackendSocketNotification = {
 
 type AppSocketMessage =
   | {
-    type: "added" | "modified" | "deleted";
-    service: BackendSocketService;
-  }
+      type: "added" | "modified" | "deleted";
+      service: BackendSocketService;
+    }
   | {
-    type: "notification.created";
-    notification: BackendSocketNotification;
-  };
+      type: "notification.created";
+      notification: BackendSocketNotification;
+    };
 
 export default function App() {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+
   const [services, setServices] = useState<Service[] | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const { user } = useUser();
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DARK_MODE_STORAGE_KEY, String(isDarkMode));
+    } catch {
+      console.error("Failed to persist dark mode preference");
+    }
+  }, [isDarkMode]);
 
   useEffect(() => {
     listServices()

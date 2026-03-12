@@ -1,7 +1,7 @@
 @use "../../app/uswds-theme" as *;
 
 .app-card--detailed {
-  height: 234px;
+  min-height: 252px;
 }
 
 .app-card--detailed .app-card-detailed__mainLink {
@@ -27,6 +27,12 @@
   justify-content: space-between;
 }
 
+.app-card-detailed__avatar {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+}
+
 .app-card--detailed .app-card-detailed__status {
   flex: 0 0 auto;
   background-color: var(--color-bg-surface-muted);
@@ -45,11 +51,15 @@
 .app-card--detailed .app-card-detailed__description {
   margin-top: 0.5rem;
   color: var(--color-text-primary);
+  @include u-font("sans", "xs");
+  @include u-line-height("sans", 4);
+
+  overflow: hidden;
 }
 
 .app-card--detailed .app-card__footer--detailed {
   border-top: 1px solid var(--color-border-strong);
-  padding: 0.75rem 1rem;
+  padding: 0.875rem 1rem;
   background-color: var(--color-bg-surface);
   color: var(--color-text-primary);
 }
