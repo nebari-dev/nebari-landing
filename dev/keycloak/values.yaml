@@ -41,12 +41,15 @@ extraEnv: |
   # to the cluster-internal service via --oidc-issuer-url in the sidecar args,
   # so KC_HOSTNAME_ADMIN_URL is intentionally omitted — setting it to the internal
   # service URL would redirect the browser-based admin console there too.
-  - name: KC_HTTP_RELATIVE_PATH
-    value: /auth
   - name: KC_HOSTNAME_STRICT
     value: "false"
   - name: KC_HOSTNAME_DEBUG
     value: "true"
+
+# Expose Keycloak under /auth — uses the chart's native key so the StatefulSet
+# only receives KC_HTTP_RELATIVE_PATH once (avoids "duplicate entries" helm error).
+http:
+  relativePath: "/auth"
 
 proxy:
   enabled: false
