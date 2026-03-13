@@ -24,6 +24,11 @@ on:
   # Allow manual runs from the Actions tab (useful for testing).
   workflow_dispatch:
     inputs:
+      tag:
+        description: "Release tag to sync (e.g. v0.2.0) — required when not triggered by a release event"
+        required: false
+        default: ''
+        type: string
       dry-run:
         description: "Lint only — skip PR creation"
         required: false
@@ -41,10 +46,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ── Resolve the release tag ───────────────────────────────────────────
+      # On release events use tag_name; on workflow_dispatch fall back to the
+      # manually supplied 'tag' input so dry-run / manual testing works.
+      - name: Resolve release tag
+        id: tag
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          if [[ -z "$TAG" ]]; then
+            echo "::error::No release tag found. When using workflow_dispatch, provide the 'tag' input (e.g. v0.2.0)."
+            exit 1
+          fi
+          echo "value=${TAG}" >> "$GITHUB_OUTPUT"
+
       # ── Bump chart version to the release tag ─────────────────────────────
       - name: Bump chart version to release tag
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ steps.tag.outputs.value }}"
           VERSION="${TAG#v}"   # strip leading 'v', e.g. v1.2.3 → 1.2.3
 
           sed -i "s/^version:.*/version: ${VERSION}/" charts/nebari-landing/Chart.yaml
@@ -59,7 +77,7 @@ jobs:
       # (already pinned or third-party) are not touched.
       - name: Pin nebari image tags in values.yaml
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ steps.tag.outputs.value }}"
           python3 - <<PYEOF
           import re, sys
           tag = "$TAG"

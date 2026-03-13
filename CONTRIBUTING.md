@@ -6,7 +6,7 @@ Thank you for your interest in contributing! This guide will help you get starte
 
 ### Prerequisites
 
-- Go 1.23 or later
+- Go 1.25 or later (see `go.mod`)
 - Node.js 22+ (see `frontend/.node-version`)
 - Docker or Podman (for building images)
 - Kubernetes cluster (kind, k3d, minikube, or cloud provider)

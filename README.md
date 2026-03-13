@@ -12,6 +12,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/static/imgs/landingpage-overview.png" alt="Nebari Landing page overview" width="800">
+</p>
+
+<p align="center">
   <a href="https://github.com/nebari-dev/nebari-landing/actions/workflows/webapi.yml"><img
   src="https://github.com/nebari-dev/nebari-landing/actions/workflows/webapi.yml/badge.svg" alt="WebAPI CI"></a> <a
   href="https://github.com/nebari-dev/nebari-landing/actions/workflows/frontend.yml"><img
@@ -24,9 +28,13 @@
 </p>
 
 <p align="center">
-  <a href="#architecture">Architecture</a> &middot; <a href="#quick-start">Quick Start</a> &middot; <a
-  href="#development">Development</a> &middot; <a href="docs/api.md">API Reference</a> &middot; <a
-  href="dev/QUICKSTART.md">Local Dev Guide</a>
+  <a href="#architecture">Architecture</a> &middot;
+  <a href="#quick-start">Quick Start</a> &middot;
+  <a href="#helm-install">Helm Install</a> &middot;
+  <a href="#development">Development</a> &middot;
+  <a href="docs/api.md">API Reference</a> &middot;
+  <a href="dev/QUICKSTART.md">Local Dev Guide</a> &middot;
+  <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 
@@ -70,6 +78,8 @@ of NIC's foundational software. Two components work together:
 
 Both pods are deployed via the `charts/nebari-landing` Helm chart, typically managed by ArgoCD through NIC.
 
+Release artifacts — the Go webapi binary (linux/darwin, amd64/arm64) and the packaged Helm chart — are attached to every [GitHub release](https://github.com/nebari-dev/nebari-landing/releases) via GoReleaser.
+
 ## Key Features
 
 | Feature | Description |
@@ -79,6 +89,32 @@ Both pods are deployed via the `charts/nebari-landing` Helm chart, typically man
 | **SSO-Aware** | OAuth2 Proxy + Keycloak JWT validation — users land authenticated, admins see admin controls |
 | **Pins & Access Requests** | Users can pin favourite services and request access to restricted ones |
 | **USWDS Design System** | Accessible, government-grade UI components out of the box |
+
+## Helm Install
+
+> **Note**: In a full Nebari / NIC deployment the chart is managed by the Nebari Operator and ArgoCD — you do not need to install it manually.
+
+### Add the Helm repository
+
+```sh
+helm repo add nebari https://nebari-dev.github.io/helm-repository
+helm repo update
+```
+
+### Install
+
+```sh
+helm upgrade --install nebari-landing nebari/nebari-landing \
+  --namespace nebari-system --create-namespace \
+  --set frontend.oauth2Proxy.oidcIssuerURL=https://<keycloak-host>/realms/<realm> \
+  --set frontend.oauth2Proxy.clientID=<client-id> \
+  --set frontend.oauth2Proxy.clientSecret=<client-secret> \
+  --set frontend.oauth2Proxy.cookieSecret=<32-byte-base64-secret>
+```
+
+See [`charts/nebari-landing/values.yaml`](charts/nebari-landing/values.yaml) for the full set of configurable values.
+
+---
 
 ## Quick Start
 
@@ -115,6 +151,19 @@ make test
 
 # Port-forward a running webapi deployment
 make pf
+```
+
+### Helm chart targets
+
+```sh
+# Package the chart into dist/
+make helm-package
+
+# Update Chart.yaml version and appVersion (does NOT commit values.yaml — CI pins image tags)
+make helm-chart-version VERSION=0.2.0 APP_VERSION=v0.2.0
+
+# Full release preparation (must be on a release tag)
+make prepare-release
 ```
 
 ### Run the frontend in watch mode
@@ -182,6 +231,15 @@ go generate ./internal/api/...
 ```sh
 make fmt   # go fmt
 make vet   # go vet
+```
+
+### Local GoReleaser snapshot
+
+To test the full binary build locally before tagging:
+
+```sh
+goreleaser release --snapshot --clean
+# Artifacts land in dist/
 ```
 
 ## Contributing
