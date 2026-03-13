@@ -12,7 +12,7 @@ spec:
             - name: KEYCLOAK_ENABLED
               value: "true"
             - name: KEYCLOAK_URL
-              value: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080/auth"
+              value: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080"
             - name: KEYCLOAK_REALM
               value: "nebari"
             - name: KEYCLOAK_ADMIN_SECRET_NAME

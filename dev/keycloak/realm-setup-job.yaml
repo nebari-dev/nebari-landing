@@ -25,7 +25,7 @@ spec:
                   name: nebari-realm-admin-credentials
                   key: password
             - name: KEYCLOAK_URL
-              value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth
+              value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local
           command:
             - /bin/bash
             - -c

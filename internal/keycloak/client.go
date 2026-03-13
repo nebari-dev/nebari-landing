@@ -8,7 +8,7 @@
 // operator (internal/config/auth.go) so that the same Deployment env block
 // works for both binaries:
 //
-//	KEYCLOAK_URL            – Keycloak base URL (all /auth traffic)
+//	KEYCLOAK_URL            – Keycloak base URL (Keycloak 17+; no /auth context root)
 //	KEYCLOAK_REALM          – target realm  (default: nebari)
 //	KEYCLOAK_ADMIN_USERNAME – master-realm admin username
 //	KEYCLOAK_ADMIN_PASSWORD – master-realm admin password
@@ -35,7 +35,7 @@ var log = ctrl.Log.WithName("keycloak-admin")
 
 // Config holds the credentials and target needed by Client.
 type Config struct {
-	// URL is the Keycloak base URL, e.g. http://keycloak:8080/auth
+	// URL is the Keycloak base URL, e.g. http://keycloak:8080
 	URL string
 	// Realm is the target realm in which users and groups are managed.
 	Realm string
@@ -51,12 +51,12 @@ type Config struct {
 // Required variables: KEYCLOAK_ADMIN_USERNAME, KEYCLOAK_ADMIN_PASSWORD
 // Optional:
 //
-//	KEYCLOAK_URL   (default: http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080/auth)
+//	KEYCLOAK_URL   (default: http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080)
 //	KEYCLOAK_REALM (default: nebari)
 func ConfigFromEnv() (Config, error) {
 	url := os.Getenv("KEYCLOAK_URL")
 	if url == "" {
-		url = "http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080/auth"
+		url = "http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080"
 	}
 	realm := os.Getenv("KEYCLOAK_REALM")
 	if realm == "" {
@@ -107,7 +107,7 @@ func NewFromEnv() (*Client, error) {
 func NewFromEnvWithK8sClient(ctx context.Context, k8sClient client.Client) (*Client, error) {
 	url := os.Getenv("KEYCLOAK_URL")
 	if url == "" {
-		url = "http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080/auth"
+		url = "http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080"
 	}
 	realm := os.Getenv("KEYCLOAK_REALM")
 	if realm == "" {

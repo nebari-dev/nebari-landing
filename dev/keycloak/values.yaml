@@ -46,17 +46,14 @@ extraEnv: |
   - name: KC_HOSTNAME_DEBUG
     value: "true"
 
-# Expose Keycloak under /auth — uses the chart's native key so the StatefulSet
-# only receives KC_HTTP_RELATIVE_PATH once (avoids "duplicate entries" helm error).
-http:
-  relativePath: "/auth"
-
+# Keycloak 17+ no longer uses /auth as a context root by default.
+# Do not set http.relativePath here — let Keycloak serve from /.
 proxy:
   enabled: false
 
 livenessProbe: |
   httpGet:
-    path: /auth/health/live
+    path: /health/live
     port: 8080
   initialDelaySeconds: 90
   periodSeconds: 10
@@ -65,7 +62,7 @@ livenessProbe: |
 
 readinessProbe: |
   httpGet:
-    path: /auth/health/ready
+    path: /health/ready
     port: 8080
   initialDelaySeconds: 60
   periodSeconds: 10
@@ -74,7 +71,7 @@ readinessProbe: |
 
 startupProbe: |
   httpGet:
-    path: /auth/health
+    path: /health
     port: 8080
   initialDelaySeconds: 60
   periodSeconds: 10

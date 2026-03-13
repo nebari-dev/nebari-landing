@@ -331,7 +331,7 @@ keycloak-install:
 	$(HELM_BIN) repo add codecentric $(KEYCLOAK_CHART) --force-update
 	@MINIKUBE_IP=$$($(MINIKUBE_BIN) ip -p $(CLUSTER_NAME)); \
 	 SUBNET=$$(echo "$$MINIKUBE_IP" | sed 's/\.[0-9]*$$//'); \
-	 export KC_HOSTNAME_URL="http://localhost:8180/auth"; \
+	 export KC_HOSTNAME_URL="http://localhost:8180"; \
 	 echo "→  Keycloak public URL (KC_HOSTNAME_URL): $$KC_HOSTNAME_URL"; \
 	 envsubst < dev/keycloak/values.yaml | \
 	 $(HELM_BIN) upgrade --install $(HELM_RELEASE_KC) codecentric/$(KEYCLOAK_CHART_NAME) \
@@ -636,7 +636,7 @@ info:
 	 echo "║    http://$${API_IP}:8080/api/v1/health"; \
 	 echo "║"; \
 	 echo "║  Keycloak admin console:"; \
-	 echo "║    http://$${KC_IP}/auth/admin  (admin / $(KEYCLOAK_ADMIN_PASSWORD))"; \
+	 echo "║    http://$${KC_IP}/admin  (admin / $(KEYCLOAK_ADMIN_PASSWORD))"; \
 	 echo "║    Realm: $(KEYCLOAK_REALM)  /  test user: admin / $(REALM_ADMIN_PASSWORD)"; \
 	 echo "║"; \
 	 echo "║  Operator namespace : $(NAMESPACE_OPERATOR)"; \
@@ -644,7 +644,7 @@ info:
 	 echo "║  Integration tests:"; \
 	 echo "║    python3 dev/webapi_test.py \\"; \
 	 echo "║      --webapi-url http://$${API_IP}:8080 \\"; \
-	 echo "║      --keycloak-url http://$${KC_IP}/auth \\"; \
+	 echo "║      --keycloak-url http://$${KC_IP} \\"; \
 	 echo "║      -u admin -p $(REALM_ADMIN_PASSWORD)"; \
 	 echo "║"; \
 	 echo "║  Hot-reload dev (Vite HMR via minikube mount):"; \
@@ -674,7 +674,7 @@ port-forward:
 	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-frontend        $(PORT_LANDING):4180 > /tmp/pf-landing.log 2>&1 &
 	@sleep 2
 	@echo "✔  Port-forwards active (logs: /tmp/pf-*.log):"
-	@echo "     Keycloak   : http://localhost:$(PORT_KEYCLOAK)/auth"
+	@echo "     Keycloak   : http://localhost:$(PORT_KEYCLOAK)"
 	@echo "     WebAPI     : http://localhost:$(PORT_WEBAPI)/api/v1/services"
 	@echo "     Landing    : http://localhost:$(PORT_LANDING)/"
 

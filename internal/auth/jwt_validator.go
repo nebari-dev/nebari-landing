@@ -88,7 +88,7 @@ func NewJWTValidator(keycloakURL, realm string) (*JWTValidator, error) {
 		log.Info("Failed to fetch Keycloak public keys, retrying",
 			"attempt", attempt, "maxRetries", retryMaxAttempts,
 			"backoff", backoff, "error", lastErr,
-			"hint", "verify KEYCLOAK_URL includes the context path (e.g. /auth for Keycloak X)")
+			"hint", "verify KEYCLOAK_URL is correct — Keycloak 17+ does not use /auth as a context root")
 		if attempt < retryMaxAttempts {
 			retryDelay(backoff)
 			backoff *= 2
