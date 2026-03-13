@@ -1,0 +1,118 @@
+# Sync Helm Chart to nebari-dev/helm-repository
+#
+# On every published GitHub release this workflow:
+#
+#   1. Bumps Chart.yaml version + appVersion to match the release tag.
+#   2. Pins nebari image tags (quay.io/nebari/*) in values.yaml to the
+#      release tag; third-party images (oauth2-proxy, busybox, …) are left
+#      untouched.
+#   3. Opens a PR in nebari-dev/helm-repository via the sync-chart composite
+#      action.  When that PR is merged the helm-repository CI packages and
+#      publishes the chart to both GitHub Pages and quay.io/nebari-dev (OCI).
+#
+# Prerequisites (one-time maintainer setup):
+#   A fine-grained PAT with contents+PR write access on nebari-dev/helm-repository
+#   stored as the NEBARI_HELM_REPO_TOKEN organisation (or repository) secret.
+#   See: https://github.com/nebari-dev/helm-repository/blob/main/.github/actions/sync-chart/README.md
+
+name: Sync Helm Chart to nebari-dev/helm-repository
+
+on:
+  release:
+    types: [published]
+
+  # Allow manual runs from the Actions tab (useful for testing).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to sync (e.g. v0.2.0) — required when not triggered by a release event"
+        required: false
+        default: ''
+        type: string
+      dry-run:
+        description: "Lint only — skip PR creation"
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  sync:
+    name: Sync chart
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read  # to check out this repository
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Resolve the release tag ───────────────────────────────────────────
+      # On release events use tag_name; on workflow_dispatch fall back to the
+      # manually supplied 'tag' input so dry-run / manual testing works.
+      - name: Resolve release tag
+        id: tag
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          if [[ -z "$TAG" ]]; then
+            echo "::error::No release tag found. When using workflow_dispatch, provide the 'tag' input (e.g. v0.2.0)."
+            exit 1
+          fi
+          echo "value=${TAG}" >> "$GITHUB_OUTPUT"
+
+      # ── Bump chart version to the release tag ─────────────────────────────
+      - name: Bump chart version to release tag
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          VERSION="${TAG#v}"   # strip leading 'v', e.g. v1.2.3 → 1.2.3
+
+          sed -i "s/^version:.*/version: ${VERSION}/" charts/nebari-landing/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${TAG}\"/" charts/nebari-landing/Chart.yaml
+
+          echo "Chart version  → ${VERSION}"
+          echo "Chart appVersion → ${TAG}"
+
+      # ── Pin nebari image tags; leave third-party images alone ─────────────
+      # Only lines whose preceding `repository:` value starts with
+      # quay.io/nebari/ are updated.  The oauth2-proxy and busybox images
+      # (already pinned or third-party) are not touched.
+      - name: Pin nebari image tags in values.yaml
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          python3 - <<PYEOF
+          import re, sys
+          tag = "$TAG"
+          path = "charts/nebari-landing/values.yaml"
+          content = open(path).read()
+          # Match: "repository: quay.io/nebari/<anything>\n<whitespace>tag: "latest""
+          # and replace tag value with the release tag.
+          updated = re.sub(
+              r'(repository: quay\.io/nebari/[^\n]+\n\s+tag:) "latest"',
+              fr'\1 "{tag}"',
+              content,
+          )
+          open(path, "w").write(updated)
+          changed = updated != content
+          print(f"values.yaml {'updated' if changed else 'unchanged'}")
+          PYEOF
+
+      # ── Sync to nebari-dev/helm-repository ────────────────────────────────
+      - name: Sync chart to helm-repository
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true'
+        uses: nebari-dev/helm-repository/.github/actions/sync-chart@main
+        with:
+          chart-path: charts/nebari-landing
+          token: ${{ secrets.NEBARI_HELM_REPO_TOKEN }}
+          pr-labels: 'automated,helm-sync'
+
+      # ── Dry-run path: lint only ────────────────────────────────────────────
+      - name: Install Helm (dry-run)
+        if: github.event.inputs.dry-run == 'true'
+        uses: azure/setup-helm@v4
+
+      - name: Update Helm dependencies (dry-run)
+        if: github.event.inputs.dry-run == 'true'
+        run: helm dependency update charts/nebari-landing
+
+      - name: Lint chart (dry-run)
+        if: github.event.inputs.dry-run == 'true'
+        run: helm lint charts/nebari-landing

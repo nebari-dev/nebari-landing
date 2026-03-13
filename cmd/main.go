@@ -33,6 +33,13 @@ import (
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
 )
 
+// Build-time version info — injected by GoReleaser via -ldflags.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
@@ -110,6 +117,9 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	setupLog.Info("Starting Nebari Landing Page API Server",
+		"version", version,
+		"commit", commit,
+		"date", date,
 		"port", port,
 		"authEnabled", enableAuth,
 		"debugMode", debugMode,

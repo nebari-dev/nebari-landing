@@ -93,3 +93,57 @@ dev: ## Build image, load into Kind, and deploy for local testing.
 .PHONY: pf
 pf: ## Port-forward the webapi to localhost:8080.
 	kubectl port-forward -n nebari-system svc/webapi 8080:8080
+
+##@ Helm Chart
+
+CHART_DIR := charts/nebari-landing
+
+.PHONY: helm-package
+helm-package: ## Package the Helm chart (requires Helm).
+	@echo "📦 Packaging Helm chart..."
+	@mkdir -p dist
+	helm package $(CHART_DIR) --destination dist/
+	@echo "✅ Chart packaged to dist/"
+
+.PHONY: helm-chart-version
+helm-chart-version: ## Update Helm chart version and appVersion (requires VERSION and APP_VERSION vars).
+	@if [ -z "$(VERSION)" ] || [ -z "$(APP_VERSION)" ]; then \
+		echo "❌ Error: VERSION and APP_VERSION are required"; \
+		echo "   Usage: make helm-chart-version VERSION=0.2.0 APP_VERSION=v0.2.0"; \
+		exit 1; \
+	fi
+	@echo "⎈  Updating chart version to $(VERSION), appVersion to $(APP_VERSION)..."
+	@sed -i 's/^version:.*/version: $(VERSION)/' $(CHART_DIR)/Chart.yaml
+	@sed -i 's/^appVersion:.*/appVersion: "$(APP_VERSION)"/' $(CHART_DIR)/Chart.yaml
+	@echo "✅ Chart versions updated"
+	@echo "   Note: values.yaml image tags are pinned by CI at release time; do not commit them."
+
+##@ Release
+
+.PHONY: prepare-release
+prepare-release: ## Prepare release artifacts (must be on a release tag)
+	@if ! git describe --exact-match --tags HEAD 2>/dev/null; then \
+		echo "❌ Error: Not on a release tag. Create and checkout tag first."; \
+		echo "   Example: git tag v0.2.0 && git checkout v0.2.0"; \
+		exit 1; \
+	fi
+	@TAG=$$(git describe --exact-match --tags HEAD); \
+	VERSION="$${TAG#v}"; \
+	echo "📦 Preparing release artifacts for $$TAG..."; \
+	echo ""; \
+	echo "1️⃣  Updating Helm chart versions..."; \
+	$(MAKE) helm-chart-version VERSION="$$VERSION" APP_VERSION="$$TAG"; \
+	echo ""; \
+	echo "2️⃣  Packaging Helm chart..."; \
+	$(MAKE) helm-package; \
+	echo ""; \
+	echo "3️⃣  Staging Chart.yaml for commit (values.yaml tag stays 'latest' — CI pins it)..."; \
+	git add $(CHART_DIR)/Chart.yaml; \
+	echo ""; \
+	echo "✅ Release artifacts prepared for $$TAG"; \
+	echo ""; \
+	echo "Next steps:"; \
+	echo "  1. Review changes: git status && git diff --cached"; \
+	echo "  2. Commit: git commit -m 'chore: prepare chart for $$TAG'"; \
+	echo "  3. Push tag: git push origin $$TAG"; \
+	echo "  4. Publish the GitHub release to trigger CI"
