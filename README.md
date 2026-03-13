@@ -21,7 +21,9 @@
   href="https://github.com/nebari-dev/nebari-landing/actions/workflows/frontend.yml"><img
   src="https://github.com/nebari-dev/nebari-landing/actions/workflows/frontend.yml/badge.svg" alt="Frontend CI"></a> <a
   href="https://github.com/nebari-dev/nebari-landing/blob/main/LICENSE"><img
-  src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a> <a href="https://golang.org"><img
+  src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a> <a
+  href="https://github.com/nebari-dev/nebari-landing/releases/latest"><img
+  src="https://img.shields.io/github/v/release/nebari-dev/nebari-landing?logo=github&label=release" alt="Latest Release"></a> <a href="https://golang.org"><img
   src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go 1.25+"></a> <a
   href="https://react.dev"><img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React
   19"></a>
@@ -126,6 +128,7 @@ See [`charts/nebari-landing/values.yaml`](charts/nebari-landing/values.yaml) for
 | `kubectl` | 1.28+ | Cluster interaction |
 | `helm` | 3.14+ | Installs Keycloak and PostgreSQL |
 | `minikube` | any | Auto-downloaded to `.bin/` if absent |
+| `node` | 22+ | Frontend development only (see `frontend/.node-version`) |
 | `python3` | 3.10+ | Integration test script only |
 
 See [dev/QUICKSTART.md](dev/QUICKSTART.md) for the full local dev walkthrough.
@@ -170,16 +173,19 @@ make prepare-release
 
 ```sh
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
+
+> **Note**: `npm run dev` serves the SPA at `http://localhost:5173` but does **not** proxy `/api/*` calls — those require a running webapi.
+> For a fully connected local dev loop (Keycloak + webapi + frontend with hot-reload) use the dev cluster described in [dev/QUICKSTART.md](dev/QUICKSTART.md).
 
 ## Development
 
 ### Project structure
 
 ```
-cmd/                  webapi entry point
+cmd/                  webapi entry point (main.go)
 internal/
   ├── accessrequests/ Access request store
   ├── api/            HTTP handlers and routes
@@ -200,7 +206,13 @@ frontend/
     └── components/   UI components
 charts/nebari-landing/ Helm chart
 dev/                  Local dev environment (minikube + Keycloak)
+docs/
+  ├── api.md          HTTP API reference (auto-generated)
+  ├── design/         Architecture and design documents
+  ├── maintainers/    Release checklist and maintainer guides
+  └── static/imgs/    Screenshots and static assets
 test/e2e/             End-to-end tests (Ginkgo)
+tools/apidoc/         API documentation generator (go generate)
 ```
 
 ### Running tests
