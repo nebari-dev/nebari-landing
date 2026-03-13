@@ -24,7 +24,7 @@ spec:
             - --http-address=0.0.0.0:4180
             - --upstream=http://localhost:8080
             # Keycloak realm discovery endpoint
-            - --oidc-issuer-url=http://192.168.49.100/auth/realms/nebari
+            - --oidc-issuer-url=http://192.168.49.100/realms/nebari
             - --insecure-oidc-skip-issuer-verification=true
             # --client-id is NOT set here; oauth2-proxy reads OAUTH2_PROXY_CLIENT_ID from env.
             # This keeps the arg list free of client-specific values and lets the

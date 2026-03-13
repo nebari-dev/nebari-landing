@@ -224,7 +224,8 @@ kubectl logs -f deployment/webapi -c api -n nebari-system
 
 ## Release Process
 
-Releases are automated. See [docs/maintainers/release-checklist.md](docs/maintainers/release-checklist.md) for maintainer instructions.
+Releases are automated. See [docs/maintainers/release-checklist.md](docs/maintainers/release-checklist.md) for
+maintainer instructions.
 
 ## Getting Help
 

@@ -37,7 +37,7 @@ spec:
                   name: keycloak-admin-credentials
                   key: admin-password
             - name: KEYCLOAK_URL
-              value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth
+              value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local
             # Static dev secret for the confidential oauth2-proxy client.
             # Safe only for local minikube; the operator generates a random one in prod.
             - name: CLIENT_SECRET

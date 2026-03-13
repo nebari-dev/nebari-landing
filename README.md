@@ -23,20 +23,18 @@
   href="https://github.com/nebari-dev/nebari-landing/blob/main/LICENSE"><img
   src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a> <a
   href="https://github.com/nebari-dev/nebari-landing/releases/latest"><img
-  src="https://img.shields.io/github/v/release/nebari-dev/nebari-landing?logo=github&label=release" alt="Latest Release"></a> <a href="https://golang.org"><img
+  src="https://img.shields.io/github/v/release/nebari-dev/nebari-landing?logo=github&label=release" alt="Latest
+  Release"></a> <a href="https://golang.org"><img
   src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go 1.25+"></a> <a
   href="https://react.dev"><img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React
   19"></a>
 </p>
 
 <p align="center">
-  <a href="#architecture">Architecture</a> &middot;
-  <a href="#quick-start">Quick Start</a> &middot;
-  <a href="#helm-install">Helm Install</a> &middot;
-  <a href="#development">Development</a> &middot;
-  <a href="docs/api.md">API Reference</a> &middot;
-  <a href="dev/QUICKSTART.md">Local Dev Guide</a> &middot;
-  <a href="CONTRIBUTING.md">Contributing</a>
+  <a href="#architecture">Architecture</a> &middot; <a href="#quick-start">Quick Start</a> &middot; <a
+  href="#helm-install">Helm Install</a> &middot; <a href="#development">Development</a> &middot; <a
+  href="docs/api.md">API Reference</a> &middot; <a href="dev/QUICKSTART.md">Local Dev Guide</a> &middot; <a
+  href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 
@@ -80,7 +78,8 @@ of NIC's foundational software. Two components work together:
 
 Both pods are deployed via the `charts/nebari-landing` Helm chart, typically managed by ArgoCD through NIC.
 
-Release artifacts — the Go webapi binary (linux/darwin, amd64/arm64) and the packaged Helm chart — are attached to every [GitHub release](https://github.com/nebari-dev/nebari-landing/releases) via GoReleaser.
+Release artifacts — the Go webapi binary (linux/darwin, amd64/arm64) and the packaged Helm chart — are attached to every
+[GitHub release](https://github.com/nebari-dev/nebari-landing/releases) via GoReleaser.
 
 ## Key Features
 
@@ -94,7 +93,8 @@ Release artifacts — the Go webapi binary (linux/darwin, amd64/arm64) and the p
 
 ## Helm Install
 
-> **Note**: In a full Nebari / NIC deployment the chart is managed by the Nebari Operator and ArgoCD — you do not need to install it manually.
+> **Note**: In a full Nebari / NIC deployment the chart is managed by the Nebari Operator and ArgoCD — you do not need
+> to install it manually.
 
 ### Add the Helm repository
 
@@ -116,7 +116,7 @@ helm upgrade --install nebari-landing nebari/nebari-landing \
 
 See [`charts/nebari-landing/values.yaml`](charts/nebari-landing/values.yaml) for the full set of configurable values.
 
----
+
 
 ## Quick Start
 
@@ -177,8 +177,9 @@ npm ci
 npm run dev
 ```
 
-> **Note**: `npm run dev` serves the SPA at `http://localhost:5173` but does **not** proxy `/api/*` calls — those require a running webapi.
-> For a fully connected local dev loop (Keycloak + webapi + frontend with hot-reload) use the dev cluster described in [dev/QUICKSTART.md](dev/QUICKSTART.md).
+> **Note**: `npm run dev` serves the SPA at `http://localhost:5173` but does **not** proxy `/api/*` calls — those
+> require a running webapi. For a fully connected local dev loop (Keycloak + webapi + frontend with hot-reload) use the
+> dev cluster described in [dev/QUICKSTART.md](dev/QUICKSTART.md).
 
 ## Development
 

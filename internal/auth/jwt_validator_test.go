@@ -330,7 +330,7 @@ func withNoBackoff(t *testing.T, maxAttempts int) {
 }
 
 func TestNewJWTValidator_404_ReturnsError(t *testing.T) {
-	// Regression: KEYCLOAK_URL missing /auth context path causes HTTP 404.
+	// Regression: KEYCLOAK_URL pointing to a wrong endpoint returns HTTP 404.
 	withNoBackoff(t, 1)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -442,8 +442,8 @@ func TestSetIssuerURL_SetsURL(t *testing.T) {
 	key := generateTestKey(t)
 	srv := startJWKSServer(t, key)
 	v := newValidator(t, srv)
-	v.SetIssuerURL("https://keycloak.example.com/auth")
-	if v.issuerURL != "https://keycloak.example.com/auth" {
+	v.SetIssuerURL("https://keycloak.example.com")
+	if v.issuerURL != "https://keycloak.example.com" {
 		t.Errorf("expected issuerURL to be set, got %q", v.issuerURL)
 	}
 }
