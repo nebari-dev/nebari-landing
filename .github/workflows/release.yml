@@ -351,6 +351,10 @@ jobs:
           print(f"Pinned nebari image tags to {tag}")
           PYEOF
 
+      - name: Update Helm dependencies
+        run: |
+          helm dependency update charts/nebari-landing
+
       - name: Package Helm chart
         run: |
           helm package charts/nebari-landing --destination dist/

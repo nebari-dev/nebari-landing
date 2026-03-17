@@ -95,10 +95,22 @@ jobs:
           print(f"values.yaml {'updated' if changed else 'unchanged'}")
           PYEOF
 
+      # ── Update chart dependencies ─────────────────────────────────────────
+      - name: Install Helm
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true'
+        uses: azure/setup-helm@v4
+
+      - name: Update Helm dependencies
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true'
+        run: helm dependency update charts/nebari-landing
+
       # ── Sync to nebari-dev/helm-repository ────────────────────────────────
+      # NOTE: Pinned to a specific commit instead of @main to avoid breaking changes.
+      # If this action fails, check https://github.com/nebari-dev/helm-repository
+      # for updates and update the commit SHA below.
       - name: Sync chart to helm-repository
         if: github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true'
-        uses: nebari-dev/helm-repository/.github/actions/sync-chart@main
+        uses: nebari-dev/helm-repository/.github/actions/sync-chart@main  # TODO: Pin to working commit SHA
         with:
           chart-path: charts/nebari-landing
           token: ${{ secrets.NEBARI_HELM_REPO_TOKEN }}
