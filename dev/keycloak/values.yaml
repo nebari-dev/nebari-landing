@@ -1,6 +1,7 @@
 args:
   - start-dev
   - --cache=local
+  - --health-enabled=true
 
 image:
   repository: quay.io/keycloak/keycloak
@@ -47,7 +48,13 @@ extraEnv: |
     value: "true"
 
 # Keycloak 17+ no longer uses /auth as a context root by default.
-# Do not set http.relativePath here — let Keycloak serve from /.
+# The codecentric keycloakx chart sets KC_HTTP_RELATIVE_PATH=/auth by default for
+# backward compatibility, so we must explicitly override it to "/" here.
+# Without this, ALL endpoints (health, realms, OIDC) are served under /auth/...
+# which breaks every URL the rest of the stack uses (/realms/..., /health/...).
+http:
+  relativePath: "/"
+
 proxy:
   enabled: false
 
