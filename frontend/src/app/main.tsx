@@ -1,6 +1,6 @@
-// import {
-//   StrictMode
-// } from 'react'
+import {
+  StrictMode
+} from 'react'
 
 import {
   createRoot
@@ -11,13 +11,13 @@ import {
 } from '../auth/keycloak.ts';
 
 import App from './index.tsx'
-import "./index.scss";
-import "@trussworks/react-uswds/lib/index.css";
+
+import "./index.css";
 
 await initKeycloak();
 
 createRoot(document.getElementById('root')!).render(
-  // <StrictMode>
-  <App />
-  //</StrictMode>
+  <StrictMode>
+    <App />
+  </StrictMode>
 )

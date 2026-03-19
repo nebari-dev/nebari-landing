@@ -1,8 +1,22 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "path";
 
 export default defineConfig({
-  plugins: [react()],
+  // Enable both React and Tailwind's Vite plugin.
+  // The Tailwind plugin is required for Tailwind v4 utilities and shadcn
+  // component styles to be compiled during development and build.
+  plugins: [react(), tailwindcss()],
+
+  resolve: {
+    alias: {
+      // shadcn uses the @ alias for generated imports such as "@/components"
+      // and "@/lib/utils", so we map @ to the src directory here.
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+
   server: {
     // When running in the dev-watch pod (VITE_USE_POLLING=true), Vite takes
     // nginx's place. Proxy /api/ to the webapi ClusterIP so the browser's
@@ -16,6 +30,7 @@ export default defineConfig({
         ws: true,
       },
     } : undefined,
+
     // usePolling is required when the source directory is on a network-mounted
     // filesystem (9p via minikube mount, NFS, etc.) where inotify is not
     // supported.  The VITE_USE_POLLING env var lets us opt-in only inside the
@@ -24,6 +39,7 @@ export default defineConfig({
       usePolling: process.env.VITE_USE_POLLING === "true",
       interval: 500,
     },
+
     // When running behind oauth2-proxy the browser connects to the proxy port
     // (PORT_LANDING, forwarded to 4180), not to Vite's internal port (80).
     // Setting clientPort to 0 tells Vite to echo back whatever port the
@@ -32,18 +48,9 @@ export default defineConfig({
       ? { clientPort: Number(process.env.VITE_HMR_CLIENT_PORT ?? 0) || undefined }
       : undefined,
   },
-  css: {
-    preprocessorOptions: {
-      scss: {
-        loadPaths: ["node_modules/@uswds/uswds/packages"],
-        // Suppress deprecation warnings emitted by @uswds/uswds internals.
-        // These are upstream issues in the dependency, not in our code.
-        quietDeps: true,
-        // Silence the @import deprecation specifically — USWDS still uses
-        // @import internally and this propagates through our @use of its theme.
-        // Remove once USWDS migrates to @use/@forward (tracked upstream).
-        silenceDeprecations: ["import"],
-      }
-    },
-  },
+
+  // No SCSS preprocessor configuration is needed for shadcn/Tailwind.
+  // USWDS-specific Sass load paths were removed as part of the migration away
+  // from @uswds/uswds. Styling now comes from Tailwind utilities, theme tokens
+  // in src/index.css, and shadcn component classes.
 });
