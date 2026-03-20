@@ -94,6 +94,13 @@ Both pods are deployed via the `charts/nebari-landing` Helm chart, typically man
 
 See [dev/QUICKSTART.md](dev/QUICKSTART.md) for the full local dev walkthrough.
 
+### Initial setup
+
+```sh
+# Setup the project
+make -f dev/Makefile setup
+```
+
 ### Start the local dev cluster
 
 ```sh
@@ -102,6 +109,16 @@ make -f dev/Makefile up
 
 # Tear everything down
 make -f dev/Makefile down
+```
+
+### Front end development
+
+```sh
+# Start the dev-watch (hot reaload for the front end for continuous development)
+make -f dev/Makefile dev-watch
+
+# Stop dev-watch, - Run this when manually reloading the front end. (will result in errors if not)
+make -f dev/Makefile stop-dev-watch
 ```
 
 ### Build and run the webapi
@@ -117,13 +134,6 @@ make test
 make pf
 ```
 
-### Run the frontend in watch mode
-
-```sh
-cd frontend
-npm install
-npm run dev
-```
 
 ## Development
 

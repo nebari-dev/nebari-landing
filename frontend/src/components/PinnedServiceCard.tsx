@@ -1,5 +1,6 @@
 import { Card, CardContent } from "../components/ui/card"
 import { StatusBadge } from "./StatusBadge"
+import { ServiceIcon } from "./ServiceIcon"
 import type { Service } from "../api/listServices"
 
 type PinnedServiceCardProps = {
@@ -16,19 +17,7 @@ export function PinnedServiceCard({ service }: PinnedServiceCardProps) {
     >
       <Card className="h-24 rounded-[4px] border border-border bg-card text-card-foreground shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
         <CardContent className="flex h-full items-center gap-4 p-6">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-muted">
-            {service.image ? (
-              <img
-                src={service.image}
-                alt={service.name}
-                className="h-8 w-8 object-contain"
-              />
-            ) : (
-              <span className="text-xs font-semibold">
-                {service.name.slice(0, 2)}
-              </span>
-            )}
-          </div>
+          <ServiceIcon imageUrl={service.image} />
 
           <div className="min-w-0">
             <p className="truncate text-[16px] font-bold leading-none text-foreground">

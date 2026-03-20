@@ -23,6 +23,11 @@
 #   make cluster-delete – delete the minikube cluster
 #   make info           – print useful URLs / credentials
 #
+# Secondary commands to run after the setup
+#   make dev-watch      – hot reaload for the front end development
+#   make stop-dev-watch – stops hot reaload for the front end development (run this first, if reloading the front end manually)
+#   make port-forward   – sets up port forward to localhost if one is needed (runs by default with setup. But should be ran if manually reload)
+#
 # Prerequisites:
 #   docker  (kubectl, helm, and minikube are downloaded automatically to .bin/)
 ##############################################################################

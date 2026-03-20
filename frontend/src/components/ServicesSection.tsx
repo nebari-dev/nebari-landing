@@ -57,18 +57,18 @@ export function ServicesSection({
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 px-1 md:flex-row md:items-center md:justify-between">
-        <div className="flex w-full max-w-[262px] overflow-visible">
+        <div className="flex h-[46px] w-full max-w-[262px] overflow-visible">
           <Input
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search"
-            className="h-11 rounded-r-none rounded-l-[8px] border border-input px-3"
+            className="h-full rounded-r-none rounded-l-[8px] border border-input border-r-0 px-3"
           />
 
           <Button
             type="button"
-            className="h-11 w-[49px] rounded-l-none rounded-r-[8px] bg-[#9B3DCC] px-[13px] py-1 hover:bg-[#9B3DCC]/90"
+            className="h-full w-[49px] rounded-l-none rounded-r-[8px] border border-[#9B3DCC] bg-[#9B3DCC] px-[13px] py-1 hover:bg-[#9B3DCC]/90"
             aria-label="Search"
             onClick={() => inputRef.current?.focus()}
           >

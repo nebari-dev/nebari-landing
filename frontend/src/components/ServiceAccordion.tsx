@@ -5,6 +5,7 @@ import {
   AccordionTrigger,
 } from "../components/ui/accordion"
 import type { Service } from "../api/listServices"
+import { cn } from "../lib/cn"
 import { PinnedServicesGrid } from "./PinnedServicesGrid"
 import { ServicesSection } from "./ServicesSection"
 
@@ -26,7 +27,16 @@ export function ServicesAccordion({
       className="w-full"
     >
       <AccordionItem value="pinned-services" className="border-0">
-        <AccordionTrigger className="relative z-10 justify-start gap-3 rounded-md py-4 transition-none hover:no-underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&>svg]:order-first [&>svg]:shrink-0">
+        <AccordionTrigger
+          className={cn(
+            "relative z-10",
+            "justify-start gap-3",
+            "rounded-md py-4",
+            "transition-none hover:no-underline",
+            "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            "[&>svg]:order-first [&>svg]:shrink-0"
+          )}
+        >
           <div className="text-left">
             <div className="text-sm font-semibold uppercase tracking-wide text-(--text-secondary)">
               Pinned services
@@ -43,7 +53,16 @@ export function ServicesAccordion({
       </AccordionItem>
 
       <AccordionItem value="all-services" className="border-0">
-        <AccordionTrigger className="relative z-10 justify-start gap-3 rounded-md py-4 transition-none hover:no-underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&>svg]:order-first [&>svg]:shrink-0">
+        <AccordionTrigger
+          className={cn(
+            "relative z-10",
+            "justify-start gap-3",
+            "rounded-md py-4",
+            "transition-none hover:no-underline",
+            "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            "[&>svg]:order-first [&>svg]:shrink-0"
+          )}
+        >
           <div className="text-left">
             <div className="text-sm font-semibold uppercase tracking-wide text-(--text-secondary)">
               All services

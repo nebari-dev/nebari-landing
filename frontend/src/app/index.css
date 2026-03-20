@@ -27,6 +27,8 @@
   --accent: #e7eaee;
   --accent-foreground: #1b1b1b;
 
+  --pill-category-fg: #475467;
+
   --destructive: #d92d20;
 
   --border: #d0d5dd;
@@ -61,8 +63,8 @@
   --status-unhealthy-dot: #ef4444;
 
   --status-default-bg: var(--muted);
-  --status-default-fg: var(--muted-foreground);
-  --status-default-dot: var(--muted-foreground);
+  --status-default-fg: #475467;
+  --status-default-dot: #475467;
 }
 
 .dark {
@@ -86,6 +88,8 @@
 
   --accent: #3d4553;
   --accent-foreground: #f3f5f6;
+
+  --pill-category-fg: #ffffff;
 
   --destructive: #f04438;
 
@@ -118,8 +122,8 @@
   --status-unhealthy-dot: #f97066;
 
   --status-default-bg: var(--muted);
-  --status-default-fg: var(--muted-foreground);
-  --status-default-dot: var(--muted-foreground);
+  --status-default-fg: #f3f5f6;
+  --status-default-dot: #f3f5f6;
 }
 
 @theme inline {

@@ -3,6 +3,7 @@ import unpinIcon from "../assets/unpin.svg"
 import type { Service } from "../api/listServices"
 import { StatusBadge } from "./StatusBadge"
 import { Button } from "../components/ui/button"
+import { ServiceIcon } from "./ServiceIcon"
 import {
   Table,
   TableBody,
@@ -26,16 +27,16 @@ export function ServicesTable({
       <Table>
         <TableHeader>
           <TableRow className="h-[54px] border-b border-border transition-none">
-            <TableHead className="px-5 py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+            <TableHead className="px-5 py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
               Service
             </TableHead>
-            <TableHead className="px-5 py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+            <TableHead className="px-5 py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
               Category
             </TableHead>
-            <TableHead className="px-5 py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+            <TableHead className="px-5 py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
               Status
             </TableHead>
-            <TableHead className="px-5 py-4 text-right text-[13px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+            <TableHead className="px-5 py-4 text-right text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
               Actions
             </TableHead>
           </TableRow>
@@ -84,19 +85,7 @@ function ServiceRow({
     >
       <TableCell className="px-5 py-4 align-middle">
         <div className="flex items-start gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-muted">
-            {service.image ? (
-              <img
-                src={service.image}
-                alt={service.name}
-                className="h-8 w-8 object-contain"
-              />
-            ) : (
-              <span className="text-xs font-semibold">
-                {service.name.slice(0, 2)}
-              </span>
-            )}
-          </div>
+          <ServiceIcon imageUrl={service.image} />
 
           <div className="min-w-0">
             <p className="text-sm font-semibold leading-5 text-foreground">
@@ -114,7 +103,7 @@ function ServiceRow({
           {service.category.map((item) => (
             <span
               key={item}
-              className="inline-flex items-center rounded-sm bg-muted px-2 py-0.5 text-xs capitalize text-muted-foreground"
+              className="inline-flex items-center rounded-sm bg-accent px-2 py-0.5 text-xs capitalize text-(--pill-category-fg)"
             >
               {item}
             </span>

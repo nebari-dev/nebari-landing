@@ -2,6 +2,7 @@ import type { Service } from "../api/listServices"
 import { Button } from "./ui/button"
 import { Card, CardContent } from "./ui/card"
 import { StatusBadge } from "./StatusBadge"
+import { ServiceIcon } from "./ServiceIcon"
 import pinIcon from "../assets/pin.svg"
 import unpinIcon from "../assets/unpin.svg"
 
@@ -24,19 +25,7 @@ export function ServiceGridCard({
       <Card className="overflow-hidden rounded-md border border-border bg-background shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-muted">
-              {service.image ? (
-                <img
-                  src={service.image}
-                  alt={service.name}
-                  className="h-9 w-9 object-contain"
-                />
-              ) : (
-                <span className="text-xs font-semibold">
-                  {service.name.slice(0, 2)}
-                </span>
-              )}
-            </div>
+            <ServiceIcon imageUrl={service.image} />
 
             <StatusBadge status={service.status} />
           </div>
