@@ -8,7 +8,7 @@ type PinnedServicesGridProps = {
 export function PinnedServicesGrid({ services }: PinnedServicesGridProps) {
   if (services.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-(--text-secondary)">
         No pinned services yet.
       </p>
     )

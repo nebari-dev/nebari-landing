@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -47,6 +48,15 @@ export default defineConfig({
     hmr: process.env.VITE_USE_POLLING === "true"
       ? { clientPort: Number(process.env.VITE_HMR_CLIENT_PORT ?? 0) || undefined }
       : undefined,
+  },
+
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: "./src/test/setup.ts",
+    css: true,
+    include: ["tests/unit/**/*.{test,spec}.ts", "tests/unit/**/*.{test,spec}.tsx"],
+    exclude: ["tests/e2e/**", "node_modules/**", "dist/**"],
   },
 
   // No SCSS preprocessor configuration is needed for shadcn/Tailwind.
