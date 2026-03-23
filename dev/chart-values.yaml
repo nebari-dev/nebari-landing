@@ -26,9 +26,9 @@ webapi:
 
   keycloak:
     # Cluster-internal URL for back-channel calls (JWKS fetch, admin API)
-    url: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth"
+    url: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local"
     # Issuer URL that Keycloak stamps in JWTs (matches KC_HOSTNAME_URL in values.yaml)
-    issuerUrl: "http://localhost:8180/auth"
+    issuerUrl: "http://localhost:8180"
     realm: "nebari"
     enableAuth: true
     adminGroup: "admin"
@@ -72,13 +72,13 @@ frontend:
 
   keycloak:
     # Browser-visible Keycloak URL — exposed via port-forward at localhost:8180
-    url: "http://localhost:8180/auth"
+    url: "http://localhost:8180"
     realm: "nebari"
     clientId: "nebari-frontend-spa"
 
   oauth2Proxy:
     # Keycloak realm discovery endpoint — cluster-internal for the pod
-    oidcIssuerUrl: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth/realms/nebari"
+    oidcIssuerUrl: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/realms/nebari"
     clientId: "nebari-landingpage"
     # Secrets created by 'make frontend-client' — secret name: nebari-landing-oauth2-proxy
     # keys: client-secret (OIDC client secret) and cookie-secret (session encryption)

@@ -1,6 +1,7 @@
 args:
   - start-dev
   - --cache=local
+  - --health-enabled=true
 
 image:
   repository: quay.io/keycloak/keycloak
@@ -46,17 +47,20 @@ extraEnv: |
   - name: KC_HOSTNAME_DEBUG
     value: "true"
 
-# Expose Keycloak under /auth — uses the chart's native key so the StatefulSet
-# only receives KC_HTTP_RELATIVE_PATH once (avoids "duplicate entries" helm error).
+# Keycloak 17+ no longer uses /auth as a context root by default.
+# The codecentric keycloakx chart sets KC_HTTP_RELATIVE_PATH=/auth by default for
+# backward compatibility, so we must explicitly override it to "/" here.
+# Without this, ALL endpoints (health, realms, OIDC) are served under /auth/...
+# which breaks every URL the rest of the stack uses (/realms/..., /health/...).
 http:
-  relativePath: "/auth"
+  relativePath: "/"
 
 proxy:
   enabled: false
 
 livenessProbe: |
   httpGet:
-    path: /auth/health/live
+    path: /health/live
     port: 8080
   initialDelaySeconds: 90
   periodSeconds: 10
@@ -65,7 +69,7 @@ livenessProbe: |
 
 readinessProbe: |
   httpGet:
-    path: /auth/health/ready
+    path: /health/ready
     port: 8080
   initialDelaySeconds: 60
   periodSeconds: 10
@@ -74,7 +78,7 @@ readinessProbe: |
 
 startupProbe: |
   httpGet:
-    path: /auth/health
+    path: /health
     port: 8080
   initialDelaySeconds: 60
   periodSeconds: 10

@@ -29,8 +29,8 @@ frontend:
   # by the frontend ConfigMap. The frontend fetches this file at startup so
   # the image is config-agnostic (no build-time VITE_* args needed).
   keycloak:
-    # Full Keycloak base URL including the /auth path.
-    # e.g. https://keycloak.example.com/auth
+    # Full Keycloak base URL (Keycloak 17+ no longer uses /auth as a context root).
+    # e.g. https://keycloak.example.com
     url: ""
     realm: "nebari"
     # OIDC client ID sent by the Keycloak JS adapter in the browser.
@@ -52,7 +52,7 @@ frontend:
   oauth2Proxy:
     image:
       repository: quay.io/oauth2-proxy/oauth2-proxy
-      tag: "latest"
+      tag: "v7.14.3"
       pullPolicy: IfNotPresent
 
     # Port exposed by the Service / Envoy Gateway route.
@@ -155,7 +155,7 @@ webapi:
 
   # Keycloak JWT validation.
   keycloak:
-    url: ""           # http://keycloak-keycloakx-http.keycloak.svc:8080/auth
+    url: ""           # http://keycloak-keycloakx-http.keycloak.svc:8080
     realm: "nebari"
     issuerUrl: ""     # overrides `url` for `iss` claim validation when different
     enableAuth: true

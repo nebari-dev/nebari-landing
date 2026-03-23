@@ -35,7 +35,7 @@ Enable debug mode in the webapi (restarts the pod):
 Usage:
     python dev/webapi_test.py
     python dev/webapi_test.py -u admin -p nebari-realm-admin
-    python dev/webapi_test.py --keycloak-url http://localhost:8180/auth
+    python dev/webapi_test.py --keycloak-url http://localhost:8180
     python dev/webapi_test.py --webapi-url http://localhost:8090 --path /api/v1/health
 """
 
@@ -51,7 +51,7 @@ except ImportError:
     sys.exit("Missing dependency: pip install requests")
 
 # ── Local defaults (port-forwarded) ───────────────────────────────────────────
-KEYCLOAK_URL = "http://localhost:8180/auth"
+KEYCLOAK_URL = "http://localhost:8180"
 WEBAPI_URL = "http://localhost:8090"
 DEFAULT_REALM = "nebari"
 DEFAULT_PATH = "/api/v1/services"
@@ -293,9 +293,7 @@ def run_pins(webapi_url: str, token: str, uid: Optional[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Nebari WebAPI integration tests (local port-forward)")
-    parser.add_argument(
-        "--keycloak-url", default=KEYCLOAK_URL, help=f"Keycloak base URL with /auth (default: {KEYCLOAK_URL})"
-    )
+    parser.add_argument("--keycloak-url", default=KEYCLOAK_URL, help=f"Keycloak base URL (default: {KEYCLOAK_URL})")
     parser.add_argument("--webapi-url", default=WEBAPI_URL, help=f"WebAPI base URL (default: {WEBAPI_URL})")
     parser.add_argument("--realm", default=DEFAULT_REALM, help=f"Keycloak realm (default: {DEFAULT_REALM})")
     parser.add_argument("--path", default=None, help="Run a single ad-hoc GET against this path (skips test suite)")

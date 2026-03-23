@@ -33,7 +33,7 @@ alias mk='make -f dev/Makefile'
 │                                                                                 │
 │  Browser → http://192.168.49.102/    (landing page + oauth2-proxy)             │
 │  curl    → http://192.168.49.101:8080/api/v1/services  (webapi)               │
-│  browser → http://192.168.49.100/auth/admin            (Keycloak UI)           │
+│  browser → http://192.168.49.100/admin                  (Keycloak UI)           │
 │                                                                                 │
 │               minikube cluster (docker driver, 4 CPU / 8 GB)                  │
 │  ┌─────────────────────────────────────────────────────────────────────────┐   │
@@ -78,8 +78,8 @@ alias mk='make -f dev/Makefile'
 ### Key design decisions
 
 **MetalLB instead of port-forwards** MetalLB assigns real IPs from `192.168.49.100–150` (inside minikube's docker bridge
-subnet). All three IPs are reachable from the host _and_ from pods, so the JWT `iss` claim
-(`http://192.168.49.100/auth/…`) is verifiable by both the browser and the webapi without any routing tricks.
+subnet). All three IPs are reachable from the host _and_ from pods, so the JWT `iss` claim (`http://192.168.49.100/…`)
+is verifiable by both the browser and the webapi without any routing tricks.
 
 **oauth2-proxy as a sidecar** The landing page container (nginx) doesn't know about authentication — that's
 OAuth2-proxy's job. oauth2-proxy runs on port 4180 next to nginx (port 8080) in the same pod. The LoadBalancer points at
@@ -166,7 +166,7 @@ the IPs in this guide stay valid. If you rename the cluster via `CLUSTER_NAME=�
 
 ```powershell
 # From PowerShell on Windows:
-curl http://192.168.49.100/auth/admin
+curl http://192.168.49.100/admin
 # Should return a redirect (302) — not a timeout
 ```
 
@@ -212,7 +212,7 @@ make -f dev/Makefile wsl-setup
 |---------|-----|
 | Landing page | `http://localhost:8080/` |
 | WebAPI | `http://localhost:8090/api/v1/` |
-| Keycloak admin | `http://localhost:8180/auth/admin` |
+| Keycloak admin | `http://localhost:8180/admin` |
 
 The port-forwards run in the background. Restart them at any time with:
 
@@ -223,7 +223,7 @@ make -f dev/Makefile stop-port-forward # stop
 
 **How it differs from the MetalLB setup** (see `dev/keycloak/values-wsl.yaml` and
 `dev/manifests/nebari-landingpage/overlays/wsl/`):
-- Keycloak `KC_HOSTNAME_URL=http://localhost:8180/auth` (the JWT `iss` matches the Windows-visible URL).
+- Keycloak `KC_HOSTNAME_URL=http://localhost:8180` (the JWT `iss` matches the Windows-visible URL).
 - `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` — pods fetch Keycloak discovery via the cluster-internal service name; the
   returned `token_endpoint` / `jwks_uri` use that same internal hostname so back-channel calls never go through the
   forward.
@@ -265,7 +265,7 @@ back to the landing page.
 |---------|-----|-------------|
 | Landing page | `http://192.168.49.102/` | log in as `admin` / `nebari-realm-admin` |
 | WebAPI | `http://192.168.49.101:8080/api/v1/` | — |
-| Keycloak admin | `http://192.168.49.100/auth/admin` | `admin` / `nebari-admin-secret` |
+| Keycloak admin | `http://192.168.49.100/admin` | `admin` / `nebari-admin-secret` |
 
 
 
@@ -327,7 +327,7 @@ kustomize overlay and triggers a rolling restart.
 ```sh
 python3 dev/webapi_test.py \
   --webapi-url   http://192.168.49.101:8080 \
-  --keycloak-url http://192.168.49.100/auth \
+  --keycloak-url http://192.168.49.100 \
   -u admin -p nebari-realm-admin
 ```
 
@@ -459,7 +459,7 @@ SPA (in browser)
 | Realm | `nebari` |
 | Admin user | `admin` / `nebari-realm-admin` |
 | Admin group | `admin` (gives access to `visibility: private` services) |
-| OIDC issuer | `http://192.168.49.100/auth/realms/nebari` |
+| OIDC issuer | `http://192.168.49.100/realms/nebari` |
 | `webapi` client | public, direct grants — used by the test script |
 | `nebari-landingpage` client | confidential, standard flow — used by oauth2-proxy |
 | Client Secret (dev) | `nebari-frontend-dev-secret` (in k8s Secret `nebari-landingpage-oidc-client`) |
@@ -495,18 +495,18 @@ The `KEYCLOAK_ISSUER_URL` in the webapi must be the _base_ URL — the webapi ap
 kubectl get deploy webapi -n nebari-system \
   -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -m json.tool \
   | grep -A1 KEYCLOAK_ISSUER_URL
-# Should be: "http://192.168.49.100/auth"  (no /realms/nebari suffix)
+# Should be: "http://192.168.49.100"  (no /realms/nebari suffix)
 ```
 
 The JWT `iss` claim must exactly match what Keycloak's OIDC discovery returns. Check Keycloak's discovery:
 
 ```sh
-curl -s http://192.168.49.100/auth/realms/nebari/.well-known/openid-configuration \
+curl -s http://192.168.49.100/realms/nebari/.well-known/openid-configuration \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['issuer'])"
-# Should be: http://192.168.49.100/auth/realms/nebari
+# Should be: http://192.168.49.100/realms/nebari
 ```
 
-If the discovery returns `http://localhost:8180/auth/realms/nebari` instead, Keycloak's `KC_HOSTNAME_URL` was set to the
+If the discovery returns `http://localhost:8180/realms/nebari` instead, Keycloak's `KC_HOSTNAME_URL` was set to the
 localhost port-forward URL. `make keycloak-install` now injects the correct MetalLB IP automatically via `envsubst`.
 Redeploy to fix it:
 
@@ -530,7 +530,7 @@ MetalLB v0.9.6 (minikube addon) uses a ConfigMap — not the newer CRD API. The 
 ### A kcadm Job is stuck / not completing
 
 All kcadm jobs connect to Keycloak on its cluster-internal service, which now listens on **port 80** (not 8080) after
-the Helm upgrade to LoadBalancer. The URL used is: `http://keycloak-keycloakx-http.keycloak.svc.cluster.local/auth`
+the Helm upgrade to LoadBalancer. The URL used is: `http://keycloak-keycloakx-http.keycloak.svc.cluster.local`
 
 If you need to run a job again:
 

@@ -158,7 +158,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		Expect(keycloakPFCmd.Start()).NotTo(HaveOccurred(), "keycloak port-forward should start")
 		var keycloakIssuer string
 		Eventually(func() error {
-			resp, err := http.Get(fmt.Sprintf("http://localhost:18090/auth/realms/%s/.well-known/openid-configuration", kcRealm))
+			resp, err := http.Get(fmt.Sprintf("http://localhost:18090/realms/%s/.well-known/openid-configuration", kcRealm))
 			if err != nil {
 				return err
 			}
@@ -175,7 +175,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			if disc.Issuer == "" {
 				return fmt.Errorf("OIDC discovery returned empty issuer")
 			}
-			// issuer looks like "http://<host>/auth/realms/<realm>";
+			// issuer looks like "http://<host>/realms/<realm>";
 			// strip the realm suffix to get the base URL for KEYCLOAK_ISSUER_URL.
 			keycloakIssuer = strings.TrimSuffix(disc.Issuer, fmt.Sprintf("/realms/%s", kcRealm))
 			return nil
@@ -217,7 +217,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to patch webapi container image")
 
 		By("Patching webapi deployment with discovered KEYCLOAK_ISSUER_URL")
-		// The issuer in tokens is set by KC_HOSTNAME_URL (e.g. http://<minikube-lb-ip>/auth).
+		// The issuer in tokens is set by KC_HOSTNAME_URL (e.g. http://<minikube-lb-ip>).
+		// Keycloak 17+ no longer uses /auth as a context root.
 		// The Helm chart value webapi.keycloak.issuerUrl may point to an in-cluster
 		// URL ≠ the token issuer.  Patch the live deployment so the JWT validator
 		// accepts tokens from this cluster regardless of the values file.
@@ -330,7 +331,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				"scope":      {"openid profile"},
 			}
 			tokenReq, err := http.NewRequest(http.MethodPost,
-				fmt.Sprintf("http://localhost:18090/auth/realms/%s/protocol/openid-connect/token", kcRealm),
+				fmt.Sprintf("http://localhost:18090/realms/%s/protocol/openid-connect/token", kcRealm),
 				strings.NewReader(tokenForm.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -446,4 +447,3 @@ func serviceNames(r ServiceListResponse) []string {
 	}
 	return names
 }
-

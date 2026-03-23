@@ -33,6 +33,13 @@ import (
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
 )
 
+// Build-time version info — injected by GoReleaser via -ldflags.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
@@ -75,7 +82,7 @@ func main() {
 		"Port to listen on (env: PORT)")
 	// Note: controller-runtime registers --kubeconfig in its own init(); use ctrl.GetConfig() below.
 	flag.StringVar(&keycloakURL, "keycloak-url", os.Getenv("KEYCLOAK_URL"),
-		"Keycloak base URL for JWK fetching, e.g. http://keycloak-internal:8080/auth (env: KEYCLOAK_URL)")
+		"Keycloak base URL for JWK fetching, e.g. http://keycloak-internal:8080 (env: KEYCLOAK_URL)")
 	flag.StringVar(&keycloakRealm, "keycloak-realm", envStr("KEYCLOAK_REALM", "main"),
 		"Keycloak realm name (env: KEYCLOAK_REALM)")
 	flag.BoolVar(&enableAuth, "enable-auth", envBool("ENABLE_AUTH", false),
@@ -110,6 +117,9 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	setupLog.Info("Starting Nebari Landing Page API Server",
+		"version", version,
+		"commit", commit,
+		"date", date,
 		"port", port,
 		"authEnabled", enableAuth,
 		"debugMode", debugMode,
