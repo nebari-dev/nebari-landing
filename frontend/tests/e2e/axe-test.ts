@@ -6,7 +6,7 @@ type AxeFixture = {
 };
 
 export const test = base.extend<AxeFixture>({
-  makeAxeBuilder: async ({ page }, use) => {
+  makeAxeBuilder: async ({ page }, provide) => {
     const makeAxeBuilder = () =>
       new AxeBuilder({ page }).withTags([
         "wcag2a",
@@ -15,7 +15,7 @@ export const test = base.extend<AxeFixture>({
         "wcag21aa",
       ]);
 
-    await use(makeAxeBuilder);
+    await provide(makeAxeBuilder);
   },
 });
 
