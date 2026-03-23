@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 
-dotenv.config({ path: ".env.local" });
+dotenv.config({ path: ".env" });
 
 const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:8080";
 const screenshotMode =
