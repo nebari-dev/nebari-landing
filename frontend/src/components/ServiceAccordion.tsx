@@ -30,18 +30,19 @@ export function ServicesAccordion({
         <AccordionTrigger
           className={cn(
             "relative z-10",
+            "w-fit flex-none",
             "justify-start gap-3",
-            "rounded-md py-4",
+            "rounded-md py-4 pr-0",
             "transition-none hover:no-underline",
             "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
             "[&>svg]:order-first [&>svg]:shrink-0"
           )}
         >
           <div className="text-left">
-            <div className="text-sm font-semibold uppercase tracking-wide text-(--text-secondary)">
+            <div className="text-sm font-semibold text-(--text-secondary)">
               Pinned services
             </div>
-            <p className="mt-1 text-sm font-normal normal-case tracking-normal text-(--text-secondary)">
+            <p className="mt-1 text-sm font-normal text-(--text-secondary)">
               Quick access to your most-used tools
             </p>
           </div>
@@ -56,15 +57,16 @@ export function ServicesAccordion({
         <AccordionTrigger
           className={cn(
             "relative z-10",
+            "w-fit flex-none",
             "justify-start gap-3",
-            "rounded-md py-4",
+            "rounded-md py-4 pr-0",
             "transition-none hover:no-underline",
             "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
             "[&>svg]:order-first [&>svg]:shrink-0"
           )}
         >
           <div className="text-left">
-            <div className="text-sm font-semibold uppercase tracking-wide text-(--text-secondary)">
+            <div className="text-sm font-semibold text-(--text-secondary)">
               All services
             </div>
           </div>

@@ -39,6 +39,12 @@ export default defineConfig({
     watch: {
       usePolling: process.env.VITE_USE_POLLING === "true",
       interval: 500,
+      ignored: [
+        "**/.playwright/**",
+        "**/test-results/**",
+        "**/playwright-report/**",
+        "**/.playwright-artifacts-*/**",
+      ],
     },
 
     // When running behind oauth2-proxy the browser connects to the proxy port
