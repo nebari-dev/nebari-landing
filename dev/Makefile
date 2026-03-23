@@ -123,12 +123,13 @@ HELM_URL       := https://get.helm.sh/helm-$(HELM_VERSION)-$(OS)-$(ARCH).tar.gz
         argocd-apps install uninstall dev-watch stop-dev-watch dev-watch-status info \
         port-forward stop-port-forward \
         minikube-tunnel stop-minikube-tunnel \
-        deps-check _minikube _kubectl _helm
+        deps-check _minikube _kubectl _helm \
+        frontend-test-unit frontend-test-e2e frontend-test-e2e-all frontend-test
 
 # ── Main entry point ─────────────────────────────────────────────────────────
 
-## setup: full end-to-end setup (cluster + image + keycloak + app)
-setup: _minikube _kubectl _helm cluster-start image-build cert-manager metallb keycloak keycloak-client frontend-client operator-install install test-apps port-forward info
+## setup: full end-to-end setup (cluster + image + keycloak + app + frontend unit tests)
+setup: _minikube _kubectl _helm cluster-start image-build cert-manager metallb keycloak keycloak-client frontend-client operator-install install test-apps port-forward info frontend-test-unit
 	@echo ""
 	@echo "✅  Setup complete. Run 'make info' at any time for URLs."
 
@@ -709,3 +710,27 @@ stop-minikube-tunnel:
 ## help: list all documented targets
 help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## //' | column -t -s ':'
+
+## frontend-test-unit: run frontend Vitest unit/component tests
+frontend-test-unit:
+	@echo "→  Running frontend unit tests (Vitest) …"
+	cd frontend && npx vitest run
+	@echo "✔  Frontend unit tests passed"
+
+## frontend-test-e2e: run frontend Playwright e2e tests in Chromium
+## Assumes the app is reachable at http://localhost:8080 and auth setup is configured.
+frontend-test-e2e:
+	@echo "→  Running frontend e2e tests (Playwright, chromium) …"
+	cd frontend && npx playwright test --project=chromium
+	@echo "✔  Frontend e2e tests passed"
+
+## frontend-test-e2e-all: run frontend Playwright e2e tests in all configured browsers
+frontend-test-e2e-all:
+	@echo "→  Running frontend e2e tests (Playwright, all browsers) …"
+	cd frontend && npx playwright test
+	@echo "✔  Frontend e2e tests passed in all configured browsers"
+
+## frontend-test: run frontend unit tests + chromium e2e tests
+frontend-test: frontend-test-unit frontend-test-e2e
+	@echo ""
+	@echo "✅  Frontend test suite complete"
