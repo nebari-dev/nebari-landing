@@ -54,6 +54,9 @@ jobs:
       CAPTURE_SCREENSHOTS: "true"
       SCREENSHOT_DIR: "${{ github.workspace }}/docs/static/screenshots"
       E2E_BASE_URL: "http://localhost:8080"
+      # medyagh/setup-minikube always creates a profile named 'minikube'.
+      # Override CLUSTER_NAME so every make target uses the correct profile.
+      CLUSTER_NAME: minikube
 
     steps:
       # ── Checkout (full history so we can push back) ──────────────────────────

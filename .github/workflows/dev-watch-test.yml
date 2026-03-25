@@ -57,6 +57,9 @@ jobs:
       # Playwright auth — used by the quick reachability check after stop-dev-watch
       E2E_USERNAME: admin
       E2E_PASSWORD: nebari-realm-admin
+      # medyagh/setup-minikube always creates a profile named 'minikube'.
+      # Override CLUSTER_NAME so every make target uses the correct profile.
+      CLUSTER_NAME: minikube
 
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
