@@ -149,10 +149,12 @@ jobs:
           fi
 
           COMMIT_SHA="${GITHUB_SHA::7}"
-          git commit -m "docs: update frontend screenshots [skip ci]
-
-Automated screenshot capture from Playwright run on ${COMMIT_SHA}.
-Source: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          printf 'docs: update frontend screenshots [skip ci]\n\nAutomated screenshot capture from Playwright run on %s.\nSource: %s/%s/actions/runs/%s\n' \
+            "${COMMIT_SHA}" \
+            "${{ github.server_url }}" \
+            "${{ github.repository }}" \
+            "${{ github.run_id }}" \
+            | git commit -F -
 
           git push origin HEAD:main
 
