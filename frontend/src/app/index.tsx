@@ -1,217 +1,34 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import Header from "../components/header";
-import Content from "../components/content";
-import { signOut } from "../auth/keycloak";
-import { useUser } from "../auth/user";
+import { Header } from "../components/Header"
+import { Content } from "../components/Content"
+import { signOut } from "../auth/keycloak"
+import { useUser } from "../auth/user"
 
-import { listServices, type Service } from "../api/listServices";
-import {
-  listNotifications,
-  markNotificationRead,
-  type Notification,
-} from "../api/notifications";
-import { createWebSocketClient } from "../api/ws";
-import { mapService } from "../api/mapServices";
+import { useThemePreference } from "../hooks/useThemePreference"
+import { useLaunchpadData } from "../hooks/useLaunchpadData"
 
-const DARK_MODE_STORAGE_KEY = "launchpad:isDarkMode";
-
-type BackendSocketService = {
-  uid: string;
-  name: string;
-  namespace: string;
-  displayName: string;
-  description: string;
-  url: string;
-  icon: string;
-  category: string;
-  priority: number;
-  visibility: string;
-  health: {
-    status: string;
-    lastCheck: string;
-    message?: string;
-  };
-};
-
-type BackendSocketNotification = {
-  id: string;
-  title: string;
-  message: string;
-  createdAt: string;
-  image?: string;
-  read?: boolean;
-};
-
-type AppSocketMessage =
-  | {
-      type: "added" | "modified" | "deleted";
-      service: BackendSocketService;
-    }
-  | {
-      type: "notification.created";
-      notification: BackendSocketNotification;
-    };
 
 export default function App() {
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
-
-  const [services, setServices] = useState<Service[] | null>(null);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-
-  const { user } = useUser();
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(DARK_MODE_STORAGE_KEY, String(isDarkMode));
-    } catch {
-      console.error("Failed to persist dark mode preference");
-    }
-  }, [isDarkMode]);
-
-  useEffect(() => {
-    listServices()
-      .then(setServices)
-      .catch((err) => {
-        console.error("listServices failed", err);
-      });
-
-    listNotifications()
-      .then(setNotifications)
-      .catch((err) => {
-        console.error("listNotifications failed", err);
-      });
-  }, [user]);
-
-  const onNotificationsViewed = useCallback(async (ids: string[]) => {
-    const uniqueIds = [...new Set(ids)];
-    if (uniqueIds.length === 0) return;
-
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        uniqueIds.includes(notification.id)
-          ? { ...notification, read: true }
-          : notification
-      )
-    );
-
-    try {
-      await Promise.all(uniqueIds.map((id) => markNotificationRead(id)));
-    } catch (err) {
-      console.error("markNotificationRead failed", err);
-
-      setNotifications((prev) =>
-        prev.map((notification) =>
-          uniqueIds.includes(notification.id)
-            ? { ...notification, read: false }
-            : notification
-        )
-      );
-    }
-  }, []);
-
-  const appSocket = useMemo(() => {
-    return createWebSocketClient<AppSocketMessage>({
-      path: "/ws",
-      onOpen: () => {
-        console.log("app websocket connected");
-      },
-      onClose: () => {
-        console.log("app websocket disconnected");
-      },
-      onError: (event) => {
-        console.error("app websocket error", event);
-      },
-      onMessage: (message) => {
-        if (message.type === "notification.created") {
-          const nextNotification: Notification = {
-            id: message.notification.id,
-            title: message.notification.title,
-            message: message.notification.message,
-            createdAt: message.notification.createdAt,
-            image: message.notification.image ?? "",
-            read: message.notification.read ?? false,
-          };
-
-          setNotifications((prev) => {
-            const exists = prev.some(
-              (notification) => notification.id === nextNotification.id
-            );
-
-            if (exists) {
-              return prev;
-            }
-
-            return [nextNotification, ...prev];
-          });
-
-          return;
-        }
-
-        const nextService = mapService(message.service);
-
-        setServices((prev) => {
-          const current = prev ?? [];
-
-          switch (message.type) {
-            case "added": {
-              const exists = current.some(
-                (service) => service.id === nextService.id
-              );
-
-              if (exists) {
-                return current.map((service) =>
-                  service.id === nextService.id
-                    ? { ...nextService, pinned: service.pinned }
-                    : service
-                );
-              }
-
-              return [nextService, ...current];
-            }
-
-            case "modified":
-              return current.map((service) =>
-                service.id === nextService.id
-                  ? { ...nextService, pinned: service.pinned }
-                  : service
-              );
-
-            case "deleted":
-              return current.filter((service) => service.id !== nextService.id);
-
-            default:
-              return current;
-          }
-        });
-      },
-    });
-  }, []);
-
-  useEffect(() => {
-    appSocket.connect();
-
-    return () => {
-      appSocket.disconnect();
-    };
-  }, [appSocket]);
+  const { isDarkMode, toggleTheme } = useThemePreference()
+  const { user } = useUser()
+  const {
+    services,
+    notifications,
+    onNotificationsViewed,
+    onTogglePin,
+  } = useLaunchpadData(user)
 
   return (
-    <div className={isDarkMode ? "app-shell app-shell--dark" : "app-shell app-shell--light"}>
+    <main className="w-full">
       <Header
         isDarkMode={isDarkMode}
-        onToggleTheme={() => setIsDarkMode((prev) => !prev)}
+        onToggleTheme={toggleTheme}
         user={user}
         onSignOut={() => signOut()}
         notifications={notifications}
         onNotificationsViewed={onNotificationsViewed}
       />
-      <Content services={services} />
-    </div>
-  );
+
+      <Content services={services} onTogglePin={onTogglePin} />
+    </main>
+  )
 }

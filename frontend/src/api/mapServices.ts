@@ -1,7 +1,7 @@
-import type { Service } from "./listServices";
-import type { BackendService } from "./serviceSocket";
+import type { Service } from "./listServices"
+import type { BackendSocketService } from "./servicesSocket"
 
-export function mapService(service: BackendService): Service {
+export function mapService(service: BackendSocketService): Service {
   return {
     id: service.uid,
     name: service.displayName,
@@ -16,5 +16,5 @@ export function mapService(service: BackendService): Service {
     pinned: false,
     image: service.icon,
     url: service.url,
-  };
+  }
 }

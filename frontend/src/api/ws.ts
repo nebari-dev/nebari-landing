@@ -84,11 +84,9 @@ export function createWebSocketClient<TMessage = unknown>(
     });
 
     socket.addEventListener("message", (event) => {
-      console.log("raw websocket message:", event.data);
 
       try {
         const parsed = parseMessage(event.data);
-        console.log("parsed websocket message:", parsed);
         onMessage?.(parsed);
       } catch (error) {
         console.error("Failed to parse websocket message", error, event.data);
