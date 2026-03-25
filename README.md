@@ -147,11 +147,15 @@ make -f dev/Makefile setup
 ### Start the local dev cluster
 
 ```sh
-# Bring up minikube + Keycloak + the landing page stack
-make -f dev/Makefile up
+# Restart an existing cluster (after minikube was stopped or the host rebooted)
+make -f dev/Makefile cluster-start
+make -f dev/Makefile port-forward
 
-# Tear everything down
-make -f dev/Makefile down
+# Tear down the deployed app (keeps the cluster running)
+make -f dev/Makefile uninstall
+
+# Or delete the cluster entirely
+make -f dev/Makefile cluster-delete
 ```
 
 ### Front end development

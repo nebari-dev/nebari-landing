@@ -1,0 +1,182 @@
+# screenshots — capture Playwright screenshots and commit them to docs/static/screenshots/
+#
+# Runs after every merge to main that touches frontend or chart code.
+# Takes full-page screenshots of the landing page (light + dark theme) and
+# commits the updated PNGs back to main so the docs are always in sync with
+# what the frontend actually looks like.
+#
+# Anti-recursion safeguard:
+#   The commit is made with [skip ci] in the message.  GitHub Actions also
+#   never triggers push-event workflows when the committer is
+#   github-actions[bot], but [skip ci] gives an extra layer of safety for
+#   branch-protection rules that check workflow status.
+#
+# The job requires a live cluster (minikube + Keycloak + nebari-landing) so it
+# re-uses the same bootstrap flow as the dev-watch-test workflow.
+
+name: Update docs screenshots
+
+on:
+  push:
+    # Only run on merges to main, never on the screenshot commit itself.
+    # The '[skip ci]' commit message is the primary guard; this path filter
+    # avoids triggering on purely infrastructure changes that don't affect
+    # the visual appearance of the frontend.
+    branches: [main]
+    paths:
+      - frontend/**
+      - charts/**
+      - .github/workflows/screenshots.yml
+  workflow_dispatch:
+
+concurrency:
+  # Only one screenshot job per branch at a time so commits don't race.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # needed to push the screenshot commit
+
+jobs:
+  capture-and-commit:
+    name: Capture screenshots and commit to docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      KEYCLOAK_ADMIN_PASSWORD: nebari-admin-secret
+      KEYCLOAK_DB_PASSWORD: keycloak-db-secret
+      REALM_ADMIN_PASSWORD: nebari-realm-admin
+      E2E_USERNAME: admin
+      E2E_PASSWORD: nebari-realm-admin
+      # Tell Playwright to run the dedicated screenshot spec and write PNGs
+      # directly into docs/static/screenshots/ (relative to repo root).
+      CAPTURE_SCREENSHOTS: "true"
+      SCREENSHOT_DIR: "${{ github.workspace }}/docs/static/screenshots"
+      E2E_BASE_URL: "http://localhost:8080"
+
+    steps:
+      # ── Checkout (full history so we can push back) ──────────────────────────
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Fetch full history; needed for git push back to the same branch.
+          fetch-depth: 0
+
+      # ── Node ─────────────────────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install chromium --with-deps
+
+      # ── minikube + full cluster bootstrap ────────────────────────────────────
+      - name: Start minikube
+        uses: medyagh/setup-minikube@v0.0.19
+        with:
+          minikube-version: latest
+          driver: docker
+          cpus: 4
+          memory: 8192m
+          addons: ingress,metrics-server
+
+      - name: Install kubectl + helm
+        run: make -f dev/Makefile _kubectl _helm
+
+      - name: Build and load dev images
+        run: make -f dev/Makefile image-build
+
+      - name: Install cert-manager
+        run: make -f dev/Makefile cert-manager
+
+      - name: Configure MetalLB
+        run: make -f dev/Makefile metallb
+
+      - name: Install Keycloak + nebari realm
+        run: make -f dev/Makefile keycloak
+
+      - name: Create Keycloak OIDC clients
+        run: make -f dev/Makefile keycloak-client frontend-client
+
+      - name: Install nebari-operator + test NebariApps
+        run: make -f dev/Makefile operator-install test-apps
+
+      - name: Deploy nebari-landing via Helm
+        run: make -f dev/Makefile install
+
+      - name: Start port-forwards
+        run: make -f dev/Makefile port-forward
+
+      - name: Wait for frontend to be reachable
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf --max-time 5 http://localhost:8080/ -o /dev/null; then
+              echo "✔  frontend reachable"; break
+            fi
+            echo "  attempt $i/30 — not ready yet, retrying in 5 s …"
+            sleep 5
+          done
+          curl -sf --max-time 10 http://localhost:8080/ -o /dev/null || \
+            (echo "✗  frontend did not become reachable" && exit 1)
+
+      # ── Playwright screenshot run ─────────────────────────────────────────────
+      - name: Run Playwright (screenshot spec)
+        working-directory: frontend
+        run: |
+          mkdir -p "$SCREENSHOT_DIR"
+          npx playwright test --project=chromium tests/e2e/screenshots.spec.ts
+
+      # ── Commit back to main ──────────────────────────────────────────────────
+      - name: Commit updated screenshots
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add docs/static/screenshots/
+
+          # Only commit if there is actually something changed.
+          if git diff --cached --quiet; then
+            echo "No screenshot changes — nothing to commit."
+            exit 0
+          fi
+
+          COMMIT_SHA="${GITHUB_SHA::7}"
+          git commit -m "docs: update frontend screenshots [skip ci]
+
+Automated screenshot capture from Playwright run on ${COMMIT_SHA}.
+Source: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          git push origin HEAD:main
+
+      # ── Upload Playwright report as artifact ─────────────────────────────────
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-screenshots
+          path: |
+            frontend/.playwright/report
+            docs/static/screenshots
+          retention-days: 14
+
+      # ── Diagnostics on failure ────────────────────────────────────────────────
+      - name: Collect cluster diagnostics on failure
+        if: failure()
+        run: |
+          KUBECTL="$(command -v kubectl 2>/dev/null || echo .bin/kubectl)"
+          echo "=== frontend pods ==="
+          $KUBECTL -n nebari-system get pods -o wide || true
+          echo "=== frontend logs ==="
+          POD=$($KUBECTL -n nebari-system get pods -l app.kubernetes.io/component=frontend \
+                  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          [ -n "$POD" ] && $KUBECTL -n nebari-system logs "$POD" --all-containers --tail=80 || true
+          echo "=== port-forward log ==="
+          cat /tmp/pf-landing.log 2>/dev/null || echo "(no pf log)"

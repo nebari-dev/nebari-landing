@@ -553,6 +553,11 @@ stop-dev-watch:
 	  --namespace $(NAMESPACE_APP) \
 	  --values dev/chart-values.yaml \
 	  --wait --timeout 5m
+	@echo "→  Restarting port-forward for the restored frontend …"
+	@pkill -f "kubect[l].*port-forward.*$(HELM_RELEASE)-frontend" 2>/dev/null || true
+	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-frontend $(PORT_LANDING):4180 \
+	  > /tmp/pf-landing.log 2>&1 &
+	@sleep 1
 	@echo "✔  dev-watch stopped — nginx frontend restored at http://localhost:$(PORT_LANDING)/"
 	@echo "   Run 'make -f dev/Makefile image-build' to rebuild the prebuilt image if needed."
 
