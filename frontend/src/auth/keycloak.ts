@@ -12,24 +12,9 @@
 // the webapi first is validated the same way.
 
 import Keycloak from "keycloak-js";
+import { loadAppConfig } from "../app/config";
 
-type KeycloakConfig = { url: string; realm: string; clientId: string };
-
-let _config: KeycloakConfig | null = null;
 let _keycloak: Keycloak | null = null;
-
-/**
- * Load Keycloak connection settings from the runtime config endpoint.
- * Cached after the first successful fetch — safe to call multiple times.
- */
-async function loadKeycloakConfig(): Promise<KeycloakConfig> {
-  if (_config) return _config;
-  const res = await fetch("/config.json");
-  if (!res.ok) throw new Error(`Failed to load /config.json: ${res.status}`);
-  const data = await res.json();
-  _config = data.keycloak as KeycloakConfig;
-  return _config;
-}
 
 /**
  * Initialise Keycloak.js and perform the OIDC login flow (PKCE/S256).
@@ -43,7 +28,8 @@ async function loadKeycloakConfig(): Promise<KeycloakConfig> {
 export async function initKeycloak(): Promise<Keycloak> {
   if (_keycloak) return _keycloak;
 
-  const cfg = await loadKeycloakConfig();
+  const appConfig = await loadAppConfig();
+  const cfg = appConfig.keycloak;
   const kc = new Keycloak({ url: cfg.url, realm: cfg.realm, clientId: cfg.clientId });
 
   await kc.init({

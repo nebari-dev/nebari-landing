@@ -5,6 +5,7 @@ import { useUser } from "../auth/user"
 
 import { useThemePreference } from "../hooks/useThemePreference"
 import { useLaunchpadData } from "../hooks/useLaunchpadData"
+import { getAppConfig } from "./config"
 
 
 export default function App() {
@@ -17,6 +18,8 @@ export default function App() {
     onTogglePin,
   } = useLaunchpadData(user)
 
+  const config = getAppConfig()
+
   return (
     <main className="w-full">
       <Header
@@ -26,6 +29,7 @@ export default function App() {
         onSignOut={() => signOut()}
         notifications={notifications}
         onNotificationsViewed={onNotificationsViewed}
+        logoSrc={config?.logoUrl || undefined}
       />
 
       <Content services={services} onTogglePin={onTogglePin} />
