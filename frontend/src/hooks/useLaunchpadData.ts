@@ -13,74 +13,14 @@ import type { NotificationSocketMessage } from "../api/notificationsSocket";
 
 type AppSocketMessage = ServiceSocketMessage | NotificationSocketMessage;
 
-const mockServices: Service[] = [
-  {
-    id: "svc-1",
-    name: "JupyterHub",
-    status: "Healthy",
-    description: "Notebook platform",
-    category: ["Data Science"],
-    pinned: true,
-    image: "",
-    url: "https://example.com/jupyterhub",
-  },
-  {
-    id: "svc-2",
-    name: "Grafana",
-    status: "Unhealthy",
-    description: "Metrics dashboards",
-    category: ["Monitoring"],
-    pinned: false,
-    image: "",
-    url: "https://example.com/grafana",
-  },
-  {
-    id: "svc-3",
-    name: "Admin Panel",
-    status: "Unknown",
-    description: "Administrative tools",
-    category: ["Platform"],
-    pinned: false,
-    image: "",
-    url: "https://example.com/admin",
-  },
-];
-
-const mockNotifications: Notification[] = [
-  {
-    id: "notif-1",
-    image: "",
-    title: "JupyterHub is back online!",
-    message: "JupyterHub is back online and ready to use.",
-    read: false,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "notif-2",
-    image: "",
-    title: "Scheduled maintenance planned",
-    message: "Maintenance will occur on the first Saturday of each month.",
-    read: true,
-    createdAt: new Date().toISOString(),
-  },
-];
-
 export function useLaunchpadData(user: unknown) {
-  const shouldBypassAuth = import.meta.env.VITE_BYPASS_AUTH === "true";
-
-  const [services, setServices] = useState<Service[]>(() =>
-    shouldBypassAuth ? mockServices : []
-  );
-  const [notifications, setNotifications] = useState<Notification[]>(() =>
-    shouldBypassAuth ? mockNotifications : []
-  );
+  const [services, setServices] = useState<Service[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
-    if (shouldBypassAuth) return;
-
     listServices().then(setServices).catch(console.error);
     listNotifications().then(setNotifications).catch(console.error);
-  }, [user, shouldBypassAuth]);
+  }, [user]);
 
   const onNotificationsViewed = useCallback(
     async (ids: string[]) => {
@@ -95,8 +35,6 @@ export function useLaunchpadData(user: unknown) {
         )
       );
 
-      if (shouldBypassAuth) return;
-
       try {
         await Promise.all(uniqueIds.map((id) => markNotificationRead(id)));
       } catch (err) {
@@ -110,7 +48,7 @@ export function useLaunchpadData(user: unknown) {
         );
       }
     },
-    [shouldBypassAuth]
+    []
   );
 
   const onTogglePin = useCallback(
@@ -126,8 +64,6 @@ export function useLaunchpadData(user: unknown) {
           return service;
         })
       );
-
-      if (shouldBypassAuth) return;
 
       try {
         if (nextPinned) {
@@ -150,12 +86,10 @@ export function useLaunchpadData(user: unknown) {
         );
       }
     },
-    [shouldBypassAuth]
+    []
   );
 
   const appSocket = useMemo(() => {
-    if (shouldBypassAuth) return null;
-
     return createWebSocketClient<AppSocketMessage>({
       path: "/ws",
       onOpen: () => console.log("app websocket connected"),
@@ -216,7 +150,7 @@ export function useLaunchpadData(user: unknown) {
         });
       },
     });
-  }, [shouldBypassAuth]);
+  }, []);
 
   useEffect(() => {
     if (!appSocket) return;

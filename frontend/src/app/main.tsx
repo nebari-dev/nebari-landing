@@ -14,11 +14,7 @@ import App from './index.tsx';
 
 import "./index.css";
 
-const shouldBypassAuth = import.meta.env.VITE_BYPASS_AUTH === "true";
-
-if (!shouldBypassAuth) {
-  await initKeycloak();
-}
+await initKeycloak();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

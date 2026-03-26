@@ -6,25 +6,11 @@ export type User = {
   email: string;
 };
 
-const mockUser: User = {
-  name: "Test User",
-  email: "test.user@example.com",
-};
-
 /**
  * Returns the authenticated user from the Keycloak ID token.
- *
- * In bypass mode, returns a local mock user so the app can render without
- * Keycloak or a real authenticated session.
  */
 export function useUser(): { user: User | null; loading: boolean } {
   const user = useMemo<User | null>(() => {
-    const shouldBypassAuth = import.meta.env.VITE_BYPASS_AUTH === "true";
-
-    if (shouldBypassAuth) {
-      return mockUser;
-    }
-
     const kc = getKeycloakInstance();
     if (!kc?.authenticated || !kc.idTokenParsed) return null;
 
