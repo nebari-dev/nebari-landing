@@ -1,24 +1,27 @@
-name: Frontend E2E
+name: Frontend Accessibility
 
 on:
+  push:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-accessibility.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-accessibility.yml"
   workflow_dispatch:
-    inputs:
-      base_url:
-        description: Hosted frontend URL to test
-        required: true
-        default: https://your-hosted-instance.example.com
 
 jobs:
-  playwright:
+  playwright-mock:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
 
     env:
-      E2E_BASE_URL: ${{ inputs.base_url }}
-      E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
-      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+      VITE_BYPASS_AUTH: "true"
+      MOCK_E2E_BASE_URL: "http://127.0.0.1:5173"
       PW_SCREENSHOTS: only-on-failure
       PW_OUTPUT_DIR: .playwright/artifacts
 
@@ -37,14 +40,23 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install chromium --with-deps
 
-      - name: Run Playwright against hosted app
-        run: npx playwright test --project=chromium
+      - name: Start frontend in bypass mode
+        run: |
+          npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/frontend-dev.log 2>&1 &
+          echo $! > /tmp/frontend-dev.pid
+
+      - name: Wait for frontend
+        run: npx wait-on http://127.0.0.1:5173
+
+      - name: Run Playwright accessibility/browser tests
+        run: npx playwright test --project=mock-chromium
 
       - name: Upload Playwright artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-hosted-report
+          name: playwright-mock-report
           path: |
             frontend/.playwright/report
             frontend/.playwright/artifacts
+            /tmp/frontend-dev.log
