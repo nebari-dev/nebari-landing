@@ -14,7 +14,7 @@
  */
 
 import path from "path";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures/e2e"
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);

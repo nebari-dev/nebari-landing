@@ -1,7 +1,7 @@
-import { Header } from "../components/Header"
-import { Content } from "../components/Content"
-import { signOut } from "../auth/keycloak"
-import { useUser } from "../auth/user"
+import { Header } from "../components/Header";
+import { Content } from "../components/Content";
+import { signOut } from "@/auth/keycloak";
+import { useUser } from "@/auth/user";
 
 import { useThemePreference } from "../hooks/useThemePreference"
 import { useLaunchpadData } from "../hooks/useLaunchpadData"

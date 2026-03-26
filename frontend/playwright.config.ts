@@ -8,8 +8,7 @@ const screenshotMode =
   "off";
 
 const outputDir = process.env.PW_OUTPUT_DIR ?? ".playwright/artifacts";
-const realBaseURL = process.env.E2E_BASE_URL ?? "http://localhost:8080";
-const mockBaseURL = process.env.MOCK_E2E_BASE_URL ?? "http://localhost:5173";
+const E2E_BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:5173";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -21,36 +20,25 @@ export default defineConfig({
   reporter: [["html", { outputFolder: ".playwright/report", open: "never" }]],
 
   use: {
+    baseURL: E2E_BASE_URL,
     headless: true,
     trace: "on-first-retry",
     screenshot: screenshotMode,
+    serviceWorkers: "block",
   },
 
   projects: [
     {
-      name: "setup",
-      testMatch: /.*\.setup\.ts/,
-      use: {
-        baseURL: realBaseURL,
-      },
-    },
-    {
-      name: "mock-chromium",
-      testIgnore: /.*\.setup\.ts/,
-      use: {
-        ...devices["Desktop Chrome"],
-        baseURL: mockBaseURL,
-      },
-    },
-    {
       name: "chromium",
-      dependencies: ["setup"],
-      testIgnore: /.*\.setup\.ts/,
       use: {
         ...devices["Desktop Chrome"],
-        baseURL: realBaseURL,
-        storageState: ".playwright/auth/user.json",
       },
     },
   ],
+
+  webServer: {
+    command: "npm run dev",
+    url: E2E_BASE_URL,
+    reuseExistingServer: !process.env.CI,
+  },
 });
