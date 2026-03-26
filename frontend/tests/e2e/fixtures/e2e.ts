@@ -6,7 +6,7 @@ export const test = base.extend<{
   mockApp: [
     async ({ context, page }, use) => {
       await context.addInitScript(() => {
-        (window as any).__PW_E2E_AUTH__ = {
+        window.__PW_E2E_AUTH__ = {
           authenticated: true,
           token: "mock-token",
           idTokenParsed: {
@@ -72,7 +72,9 @@ export const test = base.extend<{
 
       await use();
     },
-    { auto: true }],
+    { auto: true },
+  ],
 });
 
 export { expect };
+export {};
