@@ -15,6 +15,10 @@
 
 import path from "path";
 import { test, expect } from "@playwright/test";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Skip the whole file unless explicitly opted in, so normal CI runs are unaffected.
 test.skip(

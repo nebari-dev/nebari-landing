@@ -49,7 +49,7 @@ jobs:
         run: npx wait-on http://127.0.0.1:5173
 
       - name: Run Playwright accessibility/browser tests
-        run: npx playwright test --project=mock-chromium
+        run: npm run e2e:mock
 
       - name: Upload Playwright artifacts
         if: always()
