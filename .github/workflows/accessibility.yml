@@ -2,11 +2,6 @@ name: Frontend E2E
 
 on:
   workflow_dispatch:
-    inputs:
-      base_url:
-        description: Hosted frontend URL to test
-        required: true
-        default: https://your-hosted-instance.example.com
 
 jobs:
   playwright:
@@ -16,11 +11,10 @@ jobs:
         working-directory: frontend
 
     env:
-      E2E_BASE_URL: ${{ inputs.base_url }}
       E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
       E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
       PW_SCREENSHOTS: only-on-failure
-      PW_OUTPUT_DIR: .playwright/artifacts
+      PW_OUTPUT_DIR: playwright_temp
 
     steps:
       - uses: actions/checkout@v4
@@ -37,14 +31,14 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install chromium --with-deps
 
-      - name: Run Playwright against hosted app
+      - name: Run Playwright
         run: npx playwright test --project=chromium
 
-      - name: Upload Playwright artifacts
+      - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-hosted-report
+          name: playwright-report
           path: |
-            frontend/.playwright/report
-            frontend/.playwright/artifacts
+            frontend/playwright-report
+            frontend/playwright_temp

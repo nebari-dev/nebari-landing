@@ -10,7 +10,7 @@ import {
   initKeycloak
 } from '../auth/keycloak.ts';
 
-import App from './index.tsx'
+import App from './index.tsx';
 
 import "./index.css";
 

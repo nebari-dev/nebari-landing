@@ -1,0 +1,232 @@
+# dev-watch-test — validates that the dev-watch hot-reload workflow works end-to-end
+#
+# What it tests:
+#   1. Full cluster bootstrap (minikube + Keycloak + nebari-landing stack)
+#   2. Start dev-watch  → verify Vite dev server responds at localhost:8080
+#   3. Stop dev-watch   → verify nginx is restored and responds at localhost:8080
+#
+# Triggers:
+#   push/PR touching the patch, chart, or this workflow
+#   workflow_dispatch (manual run)
+#
+# NOTE: dev-watch relies on 'minikube mount' (9p filesystem) which requires a
+# real Linux host — GitHub's ubuntu-latest runners satisfy this requirement.
+# The iptables rule added by dev-watch needs sudo, which is available on all
+# GitHub-hosted runners.
+
+name: Dev-watch smoke test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - dev/patches/frontend-dev-watch.yaml
+      - dev/Makefile
+      - charts/**
+      - .github/workflows/dev-watch-test.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - dev/patches/frontend-dev-watch.yaml
+      - dev/Makefile
+      - charts/**
+      - .github/workflows/dev-watch-test.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dev-watch-smoke:
+    name: dev-watch smoke test
+    runs-on: ubuntu-latest
+
+    # Generous timeout — full cluster bootstrap takes ~15 min; npm install inside
+    # the Vite pod adds ~3 min on top.
+    timeout-minutes: 60
+
+    env:
+      # Makefile credentials (dev-only defaults match dev/Makefile)
+      KEYCLOAK_ADMIN_PASSWORD: nebari-admin-secret
+      KEYCLOAK_DB_PASSWORD: keycloak-db-secret
+      REALM_ADMIN_PASSWORD: nebari-realm-admin
+      # Playwright auth — used by the quick reachability check after stop-dev-watch
+      E2E_USERNAME: admin
+      E2E_PASSWORD: nebari-realm-admin
+      # medyagh/setup-minikube always creates a profile named 'minikube'.
+      # Override CLUSTER_NAME so every make target uses the correct profile.
+      CLUSTER_NAME: minikube
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - uses: actions/checkout@v4
+
+      # ── minikube ────────────────────────────────────────────────────────────
+      - name: Start minikube
+        uses: medyagh/setup-minikube@v0.0.19
+        with:
+          minikube-version: latest
+          driver: docker
+          cpus: 4
+          memory: 8192m
+          # The dev/Makefile installs cert-manager and MetalLB as add-ons; we
+          # only need ingress + metrics-server here (same as cluster-start target).
+          addons: ingress,metrics-server
+
+      # ── Tools ───────────────────────────────────────────────────────────────
+      - name: Install kubectl + helm
+        run: make -f dev/Makefile _kubectl _helm
+
+      # ── Build images ────────────────────────────────────────────────────────
+      - name: Build and load dev images into minikube
+        run: make -f dev/Makefile image-build
+
+      # ── Infrastructure ──────────────────────────────────────────────────────
+      - name: Install cert-manager
+        run: make -f dev/Makefile cert-manager
+
+      - name: Configure MetalLB
+        run: make -f dev/Makefile metallb
+
+      - name: Install Keycloak + nebari realm
+        run: make -f dev/Makefile keycloak
+
+      - name: Create Keycloak OIDC clients
+        run: make -f dev/Makefile keycloak-client frontend-client
+
+      # ── App ─────────────────────────────────────────────────────────────────
+      - name: Install nebari-operator + test NebariApps
+        run: make -f dev/Makefile operator-install test-apps
+
+      - name: Deploy nebari-landing via Helm
+        run: make -f dev/Makefile install
+
+      - name: Start port-forwards
+        run: make -f dev/Makefile port-forward
+
+      # ── Baseline: nginx frontend must be reachable ───────────────────────────
+      - name: Verify nginx frontend is up (baseline)
+        run: |
+          echo "Waiting for nginx to respond at http://localhost:8080 …"
+          for i in $(seq 1 30); do
+            if curl -sf --max-time 5 http://localhost:8080/ -o /dev/null; then
+              echo "✔  nginx reachable at http://localhost:8080/"
+              break
+            fi
+            echo "  attempt $i/30 — not ready yet, retrying …"
+            sleep 5
+          done
+          curl -sf --max-time 10 http://localhost:8080/ -o /dev/null || \
+            (echo "✗  nginx did not become reachable" && exit 1)
+
+      # ── dev-watch ON ────────────────────────────────────────────────────────
+      - name: Start dev-watch (swap nginx → Vite HMR)
+        # dev-watch adds an iptables rule (sudo) and calls minikube mount
+        run: make -f dev/Makefile dev-watch
+
+      - name: Verify Vite dev server is reachable
+        run: |
+          echo "Waiting for Vite to respond at http://localhost:8080 …"
+          for i in $(seq 1 36); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:8080/ 2>/dev/null || echo 000)
+            # Vite returns 200 on the root; oauth2-proxy may return 302 (auth redirect) — both are OK
+            if [ "$STATUS" = "200" ] || [ "$STATUS" = "302" ]; then
+              echo "✔  Vite reachable — HTTP $STATUS"
+              break
+            fi
+            echo "  attempt $i/36 — HTTP $STATUS, retrying in 5 s …"
+            sleep 5
+          done
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://localhost:8080/ 2>/dev/null || echo 000)
+          if [ "$STATUS" != "200" ] && [ "$STATUS" != "302" ]; then
+            echo "✗  Vite did not become reachable (last HTTP status: $STATUS)"
+            make -f dev/Makefile dev-watch-status || true
+            exit 1
+          fi
+
+      - name: Confirm frontend pod is running Vite (not nginx)
+        run: |
+          KUBECTL="$(command -v kubectl 2>/dev/null || echo .bin/kubectl)"
+          POD=$($KUBECTL -n nebari-system get pods -l app.kubernetes.io/component=frontend \
+                  --field-selector=status.phase=Running \
+                  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+          if [ -z "$POD" ]; then
+            echo "✗  No running frontend pod found"
+            exit 1
+          fi
+          echo "Frontend pod: $POD"
+          # The dev-watch patch replaces the image with node:22-alpine; confirm it.
+          IMAGE=$($KUBECTL -n nebari-system get pod "$POD" \
+                    -o jsonpath='{.spec.containers[?(@.name=="frontend")].image}')
+          echo "Container image: $IMAGE"
+          if [[ "$IMAGE" != node:* ]]; then
+            echo "✗  Expected node:* image (Vite), got: $IMAGE"
+            exit 1
+          fi
+          echo "✔  Pod is running Vite dev server ($IMAGE)"
+
+      # ── dev-watch OFF ────────────────────────────────────────────────────────
+      - name: Stop dev-watch (restore nginx)
+        run: make -f dev/Makefile stop-dev-watch
+
+      - name: Verify nginx frontend is restored
+        run: |
+          echo "Waiting for nginx to respond at http://localhost:8080 …"
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:8080/ 2>/dev/null || echo 000)
+            if [ "$STATUS" = "200" ] || [ "$STATUS" = "302" ]; then
+              echo "✔  nginx restored — HTTP $STATUS"
+              break
+            fi
+            echo "  attempt $i/30 — HTTP $STATUS, retrying …"
+            sleep 5
+          done
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://localhost:8080/ 2>/dev/null || echo 000)
+          if [ "$STATUS" != "200" ] && [ "$STATUS" != "302" ]; then
+            echo "✗  nginx did not become reachable after stop-dev-watch (HTTP $STATUS)"
+            exit 1
+          fi
+
+      - name: Confirm frontend pod is running nginx (not Vite)
+        run: |
+          KUBECTL="$(command -v kubectl 2>/dev/null || echo .bin/kubectl)"
+          POD=$($KUBECTL -n nebari-system get pods -l app.kubernetes.io/component=frontend \
+                  --field-selector=status.phase=Running \
+                  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+          if [ -z "$POD" ]; then
+            echo "✗  No running frontend pod found after restore"
+            exit 1
+          fi
+          echo "Frontend pod: $POD"
+          IMAGE=$($KUBECTL -n nebari-system get pod "$POD" \
+                    -o jsonpath='{.spec.containers[?(@.name=="frontend")].image}')
+          echo "Container image: $IMAGE"
+          if [[ "$IMAGE" == node:* ]]; then
+            echo "✗  Pod is still running Vite ($IMAGE) — stop-dev-watch did not restore nginx"
+            exit 1
+          fi
+          echo "✔  Pod is running nginx ($IMAGE)"
+
+      # ── Diagnostics on failure ───────────────────────────────────────────────
+      - name: Collect diagnostics on failure
+        if: failure()
+        run: |
+          KUBECTL="$(command -v kubectl 2>/dev/null || echo .bin/kubectl)"
+          echo "=== frontend pods ==="
+          $KUBECTL -n nebari-system get pods -l app.kubernetes.io/component=frontend -o wide || true
+          echo "=== frontend deployment ==="
+          $KUBECTL -n nebari-system describe deployment nebari-landing-frontend || true
+          echo "=== frontend pod logs ==="
+          POD=$($KUBECTL -n nebari-system get pods -l app.kubernetes.io/component=frontend \
+                  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [ -n "$POD" ]; then
+            $KUBECTL -n nebari-system logs "$POD" --all-containers --tail=100 || true
+          fi
+          echo "=== minikube mount log ==="
+          cat /tmp/minikube-mount-frontend.log 2>/dev/null || echo "(no mount log)"
+          echo "=== port-forward log ==="
+          cat /tmp/pf-landing.log 2>/dev/null || echo "(no pf log)"
