@@ -8,16 +8,16 @@ import {
 
 import {
   initKeycloak
-} from '../auth/keycloak.ts';
+} from '../auth/keycloak';
 
-import App from './index.tsx'
+import App from './index.tsx';
 
 import "./index.css";
 
 await initKeycloak();
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
   </StrictMode>
-)
+);

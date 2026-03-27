@@ -1,0 +1,48 @@
+name: Frontend Accessibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-accessibility.yml"
+  workflow_dispatch:
+
+jobs:
+  playwright-mock:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    env:
+      PW_SCREENSHOTS: only-on-failure
+      PW_OUTPUT_DIR: .playwright/artifacts
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Run Playwright accessibility/browser tests
+        run: npm run e2e
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-mock-report
+          path: |
+            frontend/.playwright/report
+            frontend/.playwright/artifacts
+            /tmp/frontend-dev.log
