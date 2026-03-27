@@ -8,7 +8,7 @@ import {
 
 import {
   initKeycloak
-} from '../auth/keycloak.ts';
+} from '../auth/keycloak';
 
 import { loadAppConfig, getAppConfig } from './config.ts';
 
@@ -28,4 +28,4 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>
-)
+);

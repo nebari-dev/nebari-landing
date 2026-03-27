@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "e2e": "playwright test",
-    "e2e:chromium": "playwright test --project=chromium"
+    "e2e": "playwright test --project=chromium",
+    "e2e:ui": "playwright test --project=chromium --ui"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
