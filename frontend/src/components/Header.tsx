@@ -41,6 +41,7 @@ export type HeaderProps = {
   onSignOut?: () => void
   notifications?: Notification[]
   onNotificationsViewed?: (ids: string[]) => void | Promise<void>
+  logoSrc?: string
 }
 
 export function Header(props: HeaderProps): ReactNode {
@@ -53,11 +54,12 @@ export function Header(props: HeaderProps): ReactNode {
     onSignOut,
     notifications = [],
     onNotificationsViewed,
+    logoSrc: logoSrcProp,
   } = props
 
   const unreadNotifications = notifications.filter((item) => !item.read)
   const unreadCount = unreadNotifications.length
-  const logoSrc = isDarkMode ? logoUrlDark : logoUrlLight
+  const logoSrc = logoSrcProp ?? (isDarkMode ? logoUrlDark : logoUrlLight)
 
   const initials = getUserInitials(user?.name, user?.email)
 

@@ -1,6 +1,5 @@
 import Keycloak from "keycloak-js";
-
-type KeycloakConfig = { url: string; realm: string; clientId: string };
+import { loadAppConfig } from "../app/config";
 
 declare global {
   interface Window {
@@ -12,17 +11,7 @@ declare global {
   }
 }
 
-let _config: KeycloakConfig | null = null;
 let _keycloak: Keycloak | null = null;
-
-async function loadKeycloakConfig(): Promise<KeycloakConfig> {
-  if (_config) return _config;
-  const res = await fetch("/config.json");
-  if (!res.ok) throw new Error(`Failed to load /config.json: ${res.status}`);
-  const data = await res.json();
-  _config = data.keycloak as KeycloakConfig;
-  return _config;
-}
 
 export async function initKeycloak(): Promise<Keycloak> {
   if (_keycloak) return _keycloak;
@@ -41,12 +30,9 @@ export async function initKeycloak(): Promise<Keycloak> {
     return _keycloak;
   }
 
-  const cfg = await loadKeycloakConfig();
-  const kc = new Keycloak({
-    url: cfg.url,
-    realm: cfg.realm,
-    clientId: cfg.clientId,
-  });
+  const appConfig = await loadAppConfig();
+  const cfg = appConfig.keycloak;
+  const kc = new Keycloak({ url: cfg.url, realm: cfg.realm, clientId: cfg.clientId });
 
   await kc.init({
     onLoad: "login-required",
