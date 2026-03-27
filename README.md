@@ -168,16 +168,6 @@ make -f dev/Makefile dev-watch
 make -f dev/Makefile stop-dev-watch
 ```
 
-### Front end development
-
-```sh
-# Start the dev-watch (hot reaload for the front end for continuous development)
-make -f dev/Makefile dev-watch
-
-# Stop dev-watch, - Run this when manually reloading the front end. (will result in errors if not)
-make -f dev/Makefile stop-dev-watch
-```
-
 ### Build and run the webapi
 
 ```sh

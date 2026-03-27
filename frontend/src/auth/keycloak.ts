@@ -28,7 +28,7 @@ export async function initKeycloak(): Promise<Keycloak> {
   if (_keycloak) return _keycloak;
 
   const injected = window.__PW_E2E_AUTH__;
-  if (injected?.authenticated) {
+  if (import.meta.env.MODE !== "production" && injected?.authenticated) {
     _keycloak = {
       authenticated: true,
       token: injected.token,
