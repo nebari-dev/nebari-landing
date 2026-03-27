@@ -20,9 +20,9 @@ export function ServiceGridCard({
       href={service.url}
       target="_blank"
       rel="noreferrer"
-      className="block rounded-md overflow-visible focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      className="block overflow-visible focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
-      <Card className="overflow-hidden rounded-md border border-border bg-background shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
+      <Card className="overflow-hidden border border-border bg-background shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-3">
             <ServiceIcon imageUrl={service.image} />
