@@ -39,6 +39,10 @@ export default defineConfig({
   webServer: {
     command: "npm run dev",
     url: E2E_BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    // Reuse an already-running server when:
+    //   - not in CI (local dev), OR
+    //   - E2E_BASE_URL is explicitly set (e.g. screenshots workflow pointing at
+    //     a port-forwarded cluster — no dev server to start).
+    reuseExistingServer: !process.env.CI || !!process.env.E2E_BASE_URL,
   },
 });
