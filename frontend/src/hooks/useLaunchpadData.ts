@@ -144,7 +144,7 @@ export function useLaunchpadData(user: unknown) {
         });
       },
     });
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     appSocket.connect();
