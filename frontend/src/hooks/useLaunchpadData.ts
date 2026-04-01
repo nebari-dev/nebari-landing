@@ -86,9 +86,12 @@ export function useLaunchpadData(user: unknown) {
   );
 
   const appSocket = useMemo(() => {
+    const isAuthenticated = Boolean(user);
+
     return createWebSocketClient<AppSocketMessage>({
       path: "/ws",
-      onOpen: () => console.log("app websocket connected"),
+      onOpen: () =>
+        console.log("app websocket connected", { authenticated: isAuthenticated }),
       onClose: () => console.log("app websocket disconnected"),
       onError: (event) => console.error("app websocket error", event),
       onMessage: (message) => {
