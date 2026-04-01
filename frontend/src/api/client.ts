@@ -25,6 +25,9 @@ type RequestOptions = Omit<RequestInit, "headers"> & {
  * token as `Authorization: Bearer <token>` when one is available, and also
  * includes the session cookie so that oauth2-proxy (when present in production)
  * can independently validate the session.
+ *
+ * On 401 responses, forces a token refresh and retries once. If the session
+ * is fully expired (refresh token gone), keycloak-js redirects to login.
  */
 export async function apiFetch(
     path: string,
@@ -32,18 +35,26 @@ export async function apiFetch(
 ): Promise<Response> {
     const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 
-    const token = await getToken();
-    const authHeader: Record<string, string> = token
-        ? { Authorization: `Bearer ${token}` }
-        : {};
+    const doFetch = async () => {
+        const token = await getToken();
+        return fetch(url, {
+            credentials: "include",
+            ...options,
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+                ...options.headers,
+            },
+        });
+    };
 
-    return fetch(url, {
-        credentials: "include",
-        ...options,
-        headers: {
-            "Content-Type": "application/json",
-            ...authHeader,
-            ...options.headers,
-        },
-    });
+    const response = await doFetch();
+
+    // On 401, the token may have expired between getToken() and the server
+    // receiving it. Force a refresh and retry once.
+    if (response.status === 401) {
+        return doFetch();
+    }
+
+    return response;
 }

@@ -151,7 +151,7 @@ func (h *Handler) Routes() http.Handler {
 
 	// WebSocket — real-time service updates
 	if h.hub != nil {
-		mux.HandleFunc("/api/v1/ws", h.hub.ServeWS)
+		mux.HandleFunc("/api/v1/ws", h.handleWS)
 	}
 
 	// Caller identity — returns JWT claims for the requesting user
@@ -181,6 +181,16 @@ func (h *Handler) Routes() http.Handler {
 	})
 
 	return corsMiddleware(h.allowedOrigins)(mux)
+}
+
+// handleWS serves GET /api/v1/ws.
+// It uses the same authentication gate as protected API endpoints before
+// allowing the WebSocket protocol upgrade.
+func (h *Handler) handleWS(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requireAuth(w, r); !ok {
+		return
+	}
+	h.hub.ServeWS(w, r)
 }
 
 // ServiceView is the client-facing representation of a service.

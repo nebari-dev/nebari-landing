@@ -48,17 +48,33 @@ export function getKeycloakInstance(): Keycloak | null {
   return _keycloak;
 }
 
-export async function getToken(): Promise<string | undefined> {
-  if (!_keycloak?.authenticated) return undefined;
+/**
+ * Returns a valid access token, refreshing if needed.
+ *
+ * Throws SessionExpiredError when the refresh token is expired and a
+ * full re-authentication is required. Callers should catch this and
+ * avoid making API calls (the redirect to Keycloak is already in flight).
+ */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super("Session expired — redirecting to login");
+    this.name = "SessionExpiredError";
+  }
+}
+
+export async function getToken(): Promise<string> {
+  if (!_keycloak?.authenticated) {
+    throw new SessionExpiredError();
+  }
 
   try {
     await _keycloak.updateToken(30);
   } catch {
     _keycloak.login();
-    return undefined;
+    throw new SessionExpiredError();
   }
 
-  return _keycloak.token;
+  return _keycloak.token!;
 }
 
 export function signIn() {
