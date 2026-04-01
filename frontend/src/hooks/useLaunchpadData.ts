@@ -132,11 +132,18 @@ export function useLaunchpadData(user: unknown) {
             }
 
             case "modified":
-              return prev.map((service) =>
-                service.id === nextService.id
-                  ? { ...nextService, pinned: service.pinned }
-                  : service
-              );
+              if (prev.some((service) => service.id === nextService.id)) {
+                return prev.map((service) =>
+                  service.id === nextService.id
+                    ? { ...nextService, pinned: service.pinned }
+                    : service
+                );
+              }
+
+              // A service can be re-enabled and come back as "modified" after a
+              // prior "deleted" event. Upsert it so the UI reflects re-additions
+              // without requiring a page refresh.
+              return [nextService, ...prev];
 
             case "deleted":
               return prev.filter((service) => service.id !== nextService.id);
