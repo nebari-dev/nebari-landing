@@ -109,6 +109,11 @@ frontend:
       - --skip-auth-route=^/assets/
       - --skip-auth-route=^/favicon
       - --skip-auth-route=^/config\.json$
+      # API and WebSocket calls are authenticated by the webapi's JWT validator.
+      # Bypassing oauth2-proxy auth checks here avoids 302 redirects to Keycloak
+      # on expired sessions, which otherwise surface as opaque CORS/network errors
+      # in the SPA fetch/WebSocket clients.
+      - --skip-auth-route=^/api/
       # Token refresh: tell oauth2-proxy to proactively refresh the access token
       # before it expires so the webapi never receives a stale Bearer token.
       # --cookie-refresh instructs oauth2-proxy to exchange the refresh token for
