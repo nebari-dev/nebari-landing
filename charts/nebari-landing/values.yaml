@@ -48,6 +48,9 @@ frontend:
     # URL to a custom logo image displayed in the header.
     # Leave empty to use the built-in Nebari logo.
     logoUrl: ""
+    # URL to a custom favicon.
+    # Leave empty to use the built-in Nebari favicon.
+    faviconUrl: ""
 
   resources:
     requests:

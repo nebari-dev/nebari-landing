@@ -11,6 +11,8 @@ export type AppConfig = {
   title?: string;
   /** Optional URL to a custom logo image rendered in the header. */
   logoUrl?: string;
+  /** Optional URL to a custom favicon. */
+  faviconUrl?: string;
 };
 
 let _config: AppConfig | null = null;
