@@ -51,6 +51,20 @@ frontend:
     # URL to a custom favicon.
     # Leave empty to use the built-in Nebari favicon.
     faviconUrl: ""
+    # CSS variable overrides injected at runtime — no image rebuild required.
+    # Supported tokens: primary, primaryForeground, background, foreground,
+    # secondary, secondaryForeground, muted, mutedForeground, accent,
+    # accentForeground, border, ring, radius.
+    # Example:
+    #   theme:
+    #     light:
+    #       primary: "#0066cc"
+    #       primaryForeground: "#ffffff"
+    #     dark:
+    #       primary: "#4da6ff"
+    theme:
+      light: {}
+      dark: {}
 
   resources:
     requests:
