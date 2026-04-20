@@ -163,7 +163,7 @@ export function Header(props: HeaderProps): ReactNode {
               >
                 <Avatar className="h-8 w-8">
                   {user.image ? <AvatarImage src={user.image} alt={user.name ?? "User"} /> : null}
-                  <AvatarFallback className="bg-violet-600 text-sm font-semibold text-white">
+                  <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">
                     {initials}
                   </AvatarFallback>
                 </Avatar>

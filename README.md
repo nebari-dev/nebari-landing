@@ -94,6 +94,52 @@ Release artifacts — the Go webapi binary (linux/darwin, amd64/arm64) and the p
 | **SSO-Aware** | OAuth2 Proxy + Keycloak JWT validation — users land authenticated, admins see admin controls |
 | **Pins & Access Requests** | Users can pin favourite services and request access to restricted ones |
 | **USWDS Design System** | Accessible, government-grade UI components out of the box |
+| **Runtime Branding** | Custom title, logo, favicon, and CSS theme tokens — no image rebuild required |
+
+## Branding & Theming
+
+The frontend reads `/config.json` at startup (rendered from `values.yaml` by the Helm chart) and applies branding
+settings to the document before React mounts. No image rebuild is needed — change `values.yaml` and redeploy.
+
+### Available settings
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `frontend.branding.title` | string | Browser tab title (default: `"Nebari \| Launchpad"`) |
+| `frontend.branding.logoUrl` | string | URL to a custom header logo image |
+| `frontend.branding.faviconUrl` | string | URL to a custom favicon |
+| `frontend.branding.theme.light` | map | CSS variable overrides for light mode |
+| `frontend.branding.theme.dark` | map | CSS variable overrides for dark mode |
+
+### Supported theme tokens
+
+The `theme.light` and `theme.dark` maps accept any combination of these token names (camelCase):
+
+`primary` · `primaryForeground` · `background` · `foreground` · `secondary` · `secondaryForeground` · `muted` · `mutedForeground` · `accent` · `accentForeground` · `border` · `ring` · `radius`
+
+Each token maps to a CSS custom property on `:root` (light) or `.dark` (dark). For example, `primary: "#0066cc"`
+becomes `--primary: #0066cc;`.
+
+### Example
+
+```yaml
+frontend:
+  branding:
+    title: "My Platform"
+    logoUrl: "https://example.com/logo.png"
+    faviconUrl: "https://example.com/favicon.ico"
+    theme:
+      light:
+        primary: "#0066cc"
+        primaryForeground: "#ffffff"
+        radius: "0.25rem"
+      dark:
+        primary: "#4da6ff"
+        primaryForeground: "#000000"
+```
+
+> **Security note:** Token values are validated at runtime. Values containing CSS injection vectors (`;`, `{`, `}`,
+> `url()`, `expression()`, `javascript:`, etc.) are silently dropped.
 
 ## Helm Install
 

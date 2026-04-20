@@ -68,7 +68,7 @@ export function ServicesSection({
 
           <Button
             type="button"
-            className="h-full w-[49px] rounded-l-none rounded-r-[8px] border border-[#9B3DCC] bg-[#9B3DCC] px-[13px] py-1 hover:bg-[#9B3DCC]/90"
+            className="h-full w-[49px] rounded-l-none rounded-r-[8px] border border-primary bg-primary px-[13px] py-1 hover:bg-primary/90"
             aria-label="Search"
             onClick={() => inputRef.current?.focus()}
           >
@@ -89,7 +89,7 @@ export function ServicesSection({
           <ToggleGroupItem
             value="table"
             aria-label="Table view"
-            className="h-9 w-9 !rounded-[6px] text-[#65748A] transition-none data-[state=on]:bg-accent data-[state=on]:text-foreground data-[state=on]:shadow-[0px_1px_2px_0px_#0000000D]"
+            className="h-9 w-9 !rounded-[6px] text-muted-foreground transition-none data-[state=on]:bg-accent data-[state=on]:text-foreground data-[state=on]:shadow-[0px_1px_2px_0px_#0000000D]"
           >
             <List className="h-4 w-4" />
           </ToggleGroupItem>
@@ -97,7 +97,7 @@ export function ServicesSection({
           <ToggleGroupItem
             value="grid"
             aria-label="Grid view"
-            className="h-9 w-9 !rounded-[6px] text-[#65748A] transition-none data-[state=on]:bg-accent data-[state=on]:text-foreground data-[state=on]:shadow-[0px_1px_2px_0px_#0000000D]"
+            className="h-9 w-9 !rounded-[6px] text-muted-foreground transition-none data-[state=on]:bg-accent data-[state=on]:text-foreground data-[state=on]:shadow-[0px_1px_2px_0px_#0000000D]"
           >
             <LayoutGrid className="h-4 w-4" />
           </ToggleGroupItem>
