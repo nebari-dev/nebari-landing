@@ -10,7 +10,7 @@ import {
   initKeycloak
 } from '../auth/keycloak';
 
-import { loadAppConfig, getAppConfig } from './config.ts';
+import { loadAppConfig, getAppConfig, applyAppConfig } from './config.ts';
 
 import App from './index.tsx'
 
@@ -20,15 +20,7 @@ await loadAppConfig();
 await initKeycloak();
 
 const appConfig = getAppConfig();
-if (appConfig?.title) {
-  document.title = appConfig.title;
-}
-if (appConfig?.faviconUrl) {
-  const link = (document.querySelector("link[rel~='icon']") ??
-    Object.assign(document.createElement("link"), { rel: "icon" })) as HTMLLinkElement;
-  link.href = appConfig.faviconUrl;
-  document.head.appendChild(link);
-}
+if (appConfig) applyAppConfig(appConfig);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

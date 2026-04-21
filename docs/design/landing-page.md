@@ -1546,29 +1546,100 @@ curl http://localhost:8080/api/v1/services | jq '.services | length'
 
 ## Open Questions
 
-1. **Branding**: Should the landing page support custom branding (logo, colors, title)?
-   - Consider ConfigMap-based theming configuration
-
-2. **Service Grouping**: Should we support nested categories or tags in addition to single category?
+1. **Service Grouping**: Should we support nested categories or tags in addition to single category?
    - Tags could enable multi-dimensional filtering (e.g., "python", "GPU", "production")
 
-3. **Favorites**: Should users be able to "favorite" services for quick access?
+2. **Favorites**: Should users be able to "favorite" services for quick access?
    - Requires backend storage (ConfigMap per user? Database? Browser localStorage?)
 
-4. **Announcements**: Should the landing page support system-wide announcements/banners?
+3. **Announcements**: Should the landing page support system-wide announcements/banners?
    - Platform-admin could post maintenance windows, new feature announcements
 
-5. **External Services**: Should we support registering services that don't have NebariApp CRs (e.g., external SaaS tools)?
+4. **External Services**: Should we support registering services that don't have NebariApp CRs (e.g., external SaaS tools)?
    - Could add `externalServices` ConfigMap for manual registration
 
-6. **Group Hierarchy**: Should `requiredGroups` support OR vs AND logic?
+5. **Group Hierarchy**: Should `requiredGroups` support OR vs AND logic?
    - Current: ANY group matches (OR logic)
    - Alternative: ALL groups required (AND logic)
    - Or support expressions: `requiredGroups: ["(admin OR data-science) AND users"]`
 
-7. **User Preferences**: Should authenticated users be able to customize their view?
+6. **User Preferences**: Should authenticated users be able to customize their view?
    - Hide categories, reorder services, change grid/list view
    - Store preferences in browser localStorage or backend ConfigMap
+
+
+
+## Branding & Theming
+
+The landing page supports runtime branding without requiring a container image rebuild. Settings are injected from
+`values.yaml` into `/config.json` (served by nginx) and applied by the frontend before React mounts.
+
+### How it works
+
+1. The Helm chart renders `frontend.branding.*` into the nginx ConfigMap as `/config.json`.
+2. `loadAppConfig()` fetches `/config.json` at startup and caches it.
+3. `applyAppConfig()` applies the settings to the document:
+   - Sets `document.title` if `title` is provided.
+   - Creates/updates the `<link rel="icon">` element if `faviconUrl` is provided.
+   - Injects a `<style>` tag with CSS custom property overrides for `:root` (light) and `.dark` (dark) if `theme` tokens are provided.
+
+### Configuration reference
+
+```yaml
+frontend:
+  branding:
+    # Browser tab title. Default: "Nebari | Launchpad"
+    title: ""
+    # URL to a custom logo image shown in the header.
+    logoUrl: ""
+    # URL to a custom favicon.
+    faviconUrl: ""
+    # CSS variable overrides — applied at runtime, no rebuild needed.
+    # Supported tokens (camelCase): primary, primaryForeground, background,
+    # foreground, secondary, secondaryForeground, muted, mutedForeground,
+    # accent, accentForeground, border, ring, radius.
+    theme:
+      light: {}
+      dark: {}
+```
+
+### Example
+
+```yaml
+frontend:
+  branding:
+    title: "My Platform"
+    logoUrl: "https://cdn.example.com/logo.png"
+    faviconUrl: "https://cdn.example.com/favicon.ico"
+    theme:
+      light:
+        primary: "#0066cc"
+        primaryForeground: "#ffffff"
+        radius: "0.25rem"
+      dark:
+        primary: "#4da6ff"
+        primaryForeground: "#000000"
+```
+
+This produces the following CSS injected into `<head>`:
+
+```css
+:root {
+  --primary: #0066cc;
+  --primary-foreground: #ffffff;
+  --radius: 0.25rem;
+}
+.dark {
+  --primary: #4da6ff;
+  --primary-foreground: #000000;
+}
+```
+
+### Security
+
+Token values are validated client-side before injection. Values containing CSS injection vectors — `;`, `{`, `}`, `<`,
+`>`, `"`, `'`, `\`, `url(`, `expression(`, `javascript:` — are silently dropped. This prevents stored-config-based CSS
+injection if `config.json` is ever sourced from an untrusted origin.
 
 
 

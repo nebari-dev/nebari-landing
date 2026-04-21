@@ -3,8 +3,7 @@ import { Button } from "./ui/button"
 import { Card, CardContent } from "./ui/card"
 import { StatusBadge } from "./StatusBadge"
 import { ServiceIcon } from "./ServiceIcon"
-import pinIcon from "../assets/pin.svg"
-import unpinIcon from "../assets/unpin.svg"
+import { PinIcon, UnpinIcon } from "./PinIcon"
 
 type ServiceGridCardProps = {
   service: Service
@@ -64,12 +63,10 @@ export function ServiceGridCard({
               title={service.pinned ? "Unpin service" : "Pin service"}
               aria-label={service.pinned ? "Unpin service" : "Pin service"}
             >
-              <img
-                src={service.pinned ? unpinIcon : pinIcon}
-                alt=""
-                aria-hidden="true"
-                className="h-4 w-4 object-contain"
-              />
+              {service.pinned
+                ? <UnpinIcon className="h-4 w-4 text-primary" />
+                : <PinIcon className="h-4 w-4 text-muted-foreground" />
+              }
             </Button>
           </div>
         </CardContent>

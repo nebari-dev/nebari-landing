@@ -19,7 +19,8 @@ data:
       },
       "title":      {{ .Values.frontend.branding.title      | quote }},
       "logoUrl":   {{ .Values.frontend.branding.logoUrl   | quote }},
-      "faviconUrl": {{ .Values.frontend.branding.faviconUrl | quote }}
+      "faviconUrl": {{ .Values.frontend.branding.faviconUrl | quote }},
+      "theme":      {{ .Values.frontend.branding.theme | toJson }}
     }
 
   # nginx configuration for the frontend pod.
