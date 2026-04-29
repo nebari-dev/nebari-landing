@@ -88,7 +88,7 @@ jobs:
       # ── Kubernetes cluster + Nebari platform ─────────────────────────────────
       - name: Setup Nebari Sandbox
         id: sandbox
-        uses: nebari-dev/action-nebari-sandbox@v1
+        uses: nebari-dev/action-nebari-sandbox@v1.0.1
         with:
           profile: platform
           cluster-name: nebari-e2e
