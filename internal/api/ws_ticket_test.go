@@ -328,7 +328,7 @@ func TestWSTicketExchange_FullFlow_IssueViaHTTP_ThenUpgradeWS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ticket request failed: %v", err)
 	}
-	defer ticketResp.Body.Close()
+	defer func() { _ = ticketResp.Body.Close() }()
 	if ticketResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 from ws-ticket, got %d", ticketResp.StatusCode)
 	}
@@ -378,7 +378,7 @@ func TestWSTicketExchange_TicketIsNotReusable_AfterSuccessfulUpgrade(t *testing.
 		http.MethodPost, srv.URL+"/api/v1/ws-ticket", nil)
 	req.Header.Set("Authorization", "Bearer test")
 	resp, _ := http.DefaultClient.Do(req)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var body WSTicketResponse
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 
