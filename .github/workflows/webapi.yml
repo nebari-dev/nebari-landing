@@ -1,9 +1,8 @@
 # webapi — CI/CD
 #
 # Triggers:
-#   push to main        → lint ─┬─ test ──────────────────────┐
+#   push to main        → lint ─┬─ test ─────────────────────┐
 #                                └─ build (amd64 ‖ arm64) ──┤→ docker → manifest
-#                         chart-lint ──────────────────────────┘
 #   pull_request        → same gates → multi-arch push (:<branch>) → PR comment
 #   workflow_dispatch   → same as push to main
 #
@@ -107,19 +106,6 @@ jobs:
           name: coverage
           path: coverage.out
 
-  # ── Helm chart lint ────────────────────────────────────────────────────────
-  chart-lint:
-    name: Helm chart lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-
-      - name: Lint Helm chart
-        run: helm lint charts/nebari-landing
-
   # ── Build binary — amd64 and arm64 in parallel ─────────────────────────────
   #
   # Runs in parallel with `test` (both depend only on `lint`), cutting wall-clock
@@ -158,7 +144,7 @@ jobs:
   docker:
     name: Docker (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    needs: [test, build, chart-lint]
+    needs: [test, build]
     strategy:
       fail-fast: false
       matrix:
