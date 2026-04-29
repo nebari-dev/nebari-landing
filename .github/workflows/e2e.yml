@@ -93,6 +93,37 @@ jobs:
             crd/nebariapps.reconcilers.nebari.dev \
             --timeout=60s
 
+      # ── Preflight: wait for Keycloak + nebari realm ──────────────────────────
+      # The sandbox waits for the keycloak pod to be Ready, but the realm
+      # provisioning PostSync hook runs asynchronously and may need a bit
+      # more time.  Poll the OIDC discovery endpoint via port-forward (port 8080,
+      # which is what keycloakx v7+ exposes on the service) until the realm
+      # responds, so the 30 s test timeout doesn't race with realm setup.
+      - name: Wait for Keycloak nebari realm
+        run: |
+          kubectl port-forward -n keycloak svc/keycloak-keycloakx-http 19090:8080 &
+          PF_PID=$!
+          trap "kill ${PF_PID} 2>/dev/null || true" EXIT
+          echo "Polling http://localhost:19090/realms/nebari/.well-known/openid-configuration …"
+          for i in $(seq 1 60); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+              http://localhost:19090/realms/nebari/.well-known/openid-configuration 2>/dev/null || echo 000)
+            if [ "$STATUS" = "200" ]; then
+              echo "✔  nebari realm ready (HTTP $STATUS)"
+              break
+            fi
+            echo "  attempt $i/60 — HTTP $STATUS, retrying in 5 s …"
+            sleep 5
+          done
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+            http://localhost:19090/realms/nebari/.well-known/openid-configuration 2>/dev/null || echo 000)
+          if [ "$STATUS" != "200" ]; then
+            echo "✗  nebari realm did not become ready (last HTTP $STATUS)"
+            kill "${PF_PID}" 2>/dev/null || true
+            exit 1
+          fi
+          kill "${PF_PID}" 2>/dev/null || true
+
       # ── E2E suite ─────────────────────────────────────────────────────────────
       - name: Run e2e tests
         env:

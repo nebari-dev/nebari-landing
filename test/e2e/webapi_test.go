@@ -83,6 +83,10 @@ var (
 
 	kcNamespace     = envOrDefault("E2E_KEYCLOAK_NAMESPACE", "keycloak")
 	kcService       = envOrDefault("E2E_KEYCLOAK_SERVICE", "keycloak-keycloakx-http")
+	// E2E_KEYCLOAK_PORT is the service port that the keycloakx chart exposes.
+	// keycloakx v7+ sets service.httpPort=8080 so the service listens on 8080,
+	// not the HTTP default 80.  Override to 80 only for older local deployments.
+	kcPort          = envOrDefault("E2E_KEYCLOAK_PORT", "8080")
 	kcRealm         = envOrDefault("E2E_KEYCLOAK_REALM", "nebari")
 	kcAdminUser     = envOrDefault("E2E_KEYCLOAK_ADMIN_USER", "admin")
 	kcAdminPassword = envOrDefault("E2E_KEYCLOAK_ADMIN_PASSWORD", "nebari-realm-admin")
@@ -154,7 +158,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		By("Starting Keycloak port-forward to discover issuer URL")
 		keycloakPFCmd = exec.Command("kubectl", "port-forward",
 			"-n", kcNamespace, fmt.Sprintf("svc/%s", kcService),
-			"18090:80")
+			fmt.Sprintf("18090:%s", kcPort))
 		Expect(keycloakPFCmd.Start()).NotTo(HaveOccurred(), "keycloak port-forward should start")
 		var keycloakIssuer string
 		Eventually(func() error {
