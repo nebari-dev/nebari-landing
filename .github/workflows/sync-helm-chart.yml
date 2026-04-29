@@ -44,7 +44,7 @@ jobs:
       contents: read  # to check out this repository
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ── Resolve the release tag ───────────────────────────────────────────
       # On release events use tag_name; on workflow_dispatch fall back to the
