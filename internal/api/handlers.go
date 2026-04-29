@@ -17,6 +17,7 @@ import (
 	"github.com/nebari-dev/nebari-landing/internal/notifications"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
+	"github.com/nebari-dev/nebari-landing/internal/wsticket"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -53,6 +54,11 @@ type Handler struct {
 	// Use WithClaimsExtractor in tests to inject synthetic claims without
 	// needing a real Keycloak instance or signed token.
 	claimsExtractor func(*http.Request) (*auth.Claims, bool)
+	// wsTicketStore, when non-nil, enables the POST /api/v1/ws-ticket endpoint.
+	// Browsers cannot send Authorization headers on WebSocket upgrade requests,
+	// so the frontend exchanges a short-lived single-use ticket via that endpoint
+	// and passes it as ?ticket=<id> when opening the WebSocket.
+	wsTicketStore *wsticket.Store
 }
 
 // HandlerOption configures optional Handler fields.
@@ -119,6 +125,12 @@ func WithClaimsExtractor(fn func(*http.Request) (*auth.Claims, bool)) HandlerOpt
 	return func(h *Handler) { h.claimsExtractor = fn }
 }
 
+// WithWSTicketStore attaches a WebSocket ticket store to the handler, enabling
+// the POST /api/v1/ws-ticket endpoint and ticket-based WebSocket authentication.
+func WithWSTicketStore(s *wsticket.Store) HandlerOption {
+	return func(h *Handler) { h.wsTicketStore = s }
+}
+
 // NewHandler creates a new API handler.
 // pinStore may be nil; when nil the /api/v1/pins endpoints return 501.
 func NewHandler(serviceCache *cache.ServiceCache, jwtValidator *auth.JWTValidator, enableAuth bool, hub *wshub.Hub, pinStore *pins.PinStore, opts ...HandlerOption) *Handler {
@@ -152,6 +164,10 @@ func (h *Handler) Routes() http.Handler {
 	// WebSocket — real-time service updates
 	if h.hub != nil {
 		mux.HandleFunc("/api/v1/ws", h.handleWS)
+		// Ticket exchange: browser calls this with Bearer auth to obtain a
+		// short-lived single-use ticket, then passes it as ?ticket=<id> on
+		// the WebSocket upgrade (browsers cannot send Authorization headers there).
+		mux.HandleFunc("/api/v1/ws-ticket", h.handleWSTicket)
 	}
 
 	// Caller identity — returns JWT claims for the requesting user
@@ -184,13 +200,79 @@ func (h *Handler) Routes() http.Handler {
 }
 
 // handleWS serves GET /api/v1/ws.
-// It uses the same authentication gate as protected API endpoints before
-// allowing the WebSocket protocol upgrade.
+//
+// Auth is validated before the WebSocket upgrade. Two mechanisms are accepted:
+//  1. Authorization: Bearer <token> — standard JWT, used by non-browser clients.
+//  2. ?ticket=<id>                 — single-use ticket issued by POST /api/v1/ws-ticket.
+//
+// Browsers cannot send Authorization headers on WebSocket upgrade requests, so
+// the frontend must call POST /api/v1/ws-ticket first and pass the returned
+// ticket as a query parameter.
 func (h *Handler) handleWS(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireAuth(w, r); !ok {
+	if h.claimsExtractor != nil {
+		// Test/dev injection — honour the extractor so tests work without a
+		// real Keycloak or Redis ticket store.
+		if _, ok := h.requireAuth(w, r); !ok {
+			return
+		}
+	} else if h.enableAuth && h.jwtValidator != nil {
+		authHeader := r.Header.Get("Authorization")
+		ticket := r.URL.Query().Get("ticket")
+		switch {
+		case authHeader != "":
+			if _, ok := h.requireAuth(w, r); !ok {
+				return
+			}
+		case ticket != "" && h.wsTicketStore != nil:
+			if _, err := h.wsTicketStore.Redeem(r.Context(), ticket); err != nil {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+		default:
+			http.Error(w, "Unauthorized: provide Authorization header or ?ticket", http.StatusUnauthorized)
+			return
+		}
+	}
+	// Auth disabled or passed — upgrade the connection.
+	h.hub.ServeWS(w, r)
+}
+
+// WSTicketResponse is the response body for POST /api/v1/ws-ticket.
+type WSTicketResponse struct {
+	Ticket string `json:"ticket"`
+}
+
+// handleWSTicket serves POST /api/v1/ws-ticket.
+// Issues a single-use ~30 s ticket for the authenticated caller. The browser
+// passes this ticket as ?ticket=<id> on the WebSocket upgrade request.
+// Returns 501 when no wsTicketStore is configured.
+func (h *Handler) handleWSTicket(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	h.hub.ServeWS(w, r)
+	if h.wsTicketStore == nil {
+		http.Error(w, "WebSocket ticket exchange not configured", http.StatusNotImplemented)
+		return
+	}
+	claims, ok := h.requireAuth(w, r)
+	if !ok {
+		return
+	}
+	username := claims.PreferredUsername
+	if username == "" {
+		username = claims.Subject
+	}
+	ticket, err := h.wsTicketStore.Issue(r.Context(), username)
+	if err != nil {
+		log.Error(err, "Failed to issue WebSocket ticket", "user", username)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(WSTicketResponse{Ticket: ticket}); err != nil {
+		log.Error(err, "Failed to encode ws-ticket response")
+	}
 }
 
 // ServiceView is the client-facing representation of a service.

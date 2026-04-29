@@ -15,6 +15,12 @@ export type CreateWebSocketClientOptions<TMessage = unknown> = {
   reconnect?: boolean;
   reconnectDelayMs?: number;
   queryParams?: Record<string, string | number | boolean | undefined>;
+  /**
+   * Called before each connect (and each auto-reconnect) to supply fresh query
+   * parameters. When provided, overrides `queryParams`. Use this to fetch a
+   * new short-lived ticket on every connection attempt.
+   */
+  getQueryParams?: () => Promise<Record<string, string | number | boolean | undefined>>;
 };
 
 export type WebSocketClient = {
@@ -60,6 +66,7 @@ export function createWebSocketClient<TMessage = unknown>(
     reconnect = true,
     reconnectDelayMs = 3000,
     queryParams,
+    getQueryParams,
   } = options;
 
   let socket: WebSocket | null = null;
@@ -73,10 +80,11 @@ export function createWebSocketClient<TMessage = unknown>(
     }
   };
 
-  const connect = () => {
+  const connect = async () => {
     clearReconnectTimer();
 
-    const url = buildWebSocketUrl(path, queryParams);
+    const params = getQueryParams ? await getQueryParams() : queryParams;
+    const url = buildWebSocketUrl(path, params);
     socket = protocols ? new WebSocket(url, protocols) : new WebSocket(url);
 
     socket.addEventListener("open", () => {

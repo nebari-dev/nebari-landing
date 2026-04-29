@@ -3,8 +3,8 @@
  *
  * Auth: the SPA authenticates directly with Keycloak (PKCE/S256) via keycloak-js
  * and attaches the access token as `Authorization: Bearer <token>` on every
- * request. This works in both dev (no oauth2-proxy) and production (oauth2-proxy
- * may also inject the header server-side — harmless duplication, same token).
+ * request. This is the sole auth mechanism — there is no server-side session
+ * or oauth2-proxy sidecar.
  *
  * In local dev (Vite dev server), the vite.config.ts proxy forwards /api/*
  * to the webapi running on localhost. Set VITE_WEBAPI_URL to override.
@@ -21,10 +21,8 @@ type RequestOptions = Omit<RequestInit, "headers"> & {
 /**
  * Authenticated fetch wrapper.
  *
- * Prepends /api/v1 to the given path, attaches the current Keycloak access
- * token as `Authorization: Bearer <token>` when one is available, and also
- * includes the session cookie so that oauth2-proxy (when present in production)
- * can independently validate the session.
+ * Prepends /api/v1 to the given path and attaches the current Keycloak access
+ * token as `Authorization: Bearer <token>`.
  *
  * On 401 responses, forces a token refresh and retries once. If the session
  * is fully expired (refresh token gone), keycloak-js redirects to login.
@@ -38,7 +36,6 @@ export async function apiFetch(
     const doFetch = async () => {
         const token = await getToken();
         return fetch(url, {
-            credentials: "include",
             ...options,
             headers: {
                 "Content-Type": "application/json",
