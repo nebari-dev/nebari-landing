@@ -202,38 +202,40 @@ func (h *Handler) Routes() http.Handler {
 // handleWS serves GET /api/v1/ws.
 //
 // Auth is validated before the WebSocket upgrade. Two mechanisms are accepted:
-//  1. Authorization: Bearer <token> — standard JWT, used by non-browser clients.
+//  1. Authorization: Bearer <token> — validated via the JWT validator or, in
+//     test mode, via the injected claimsExtractor.
 //  2. ?ticket=<id>                 — single-use ticket issued by POST /api/v1/ws-ticket.
 //
 // Browsers cannot send Authorization headers on WebSocket upgrade requests, so
 // the frontend must call POST /api/v1/ws-ticket first and pass the returned
 // ticket as a query parameter.
+//
+// The two paths are independent: a Bearer token header triggers path (1) even
+// when a ticket store is configured, and a ticket query param triggers path (2)
+// even when a claimsExtractor is injected (test mode).
 func (h *Handler) handleWS(w http.ResponseWriter, r *http.Request) {
-	if h.claimsExtractor != nil {
-		// Test/dev injection — honour the extractor so tests work without a
-		// real Keycloak or Redis ticket store.
+	authNeeded := h.enableAuth || h.claimsExtractor != nil
+	authHeader := r.Header.Get("Authorization")
+	ticket := r.URL.Query().Get("ticket")
+
+	switch {
+	case !authNeeded:
+		// Auth is globally disabled — allow all connections.
+	case authHeader != "":
+		// Bearer token: validate via the JWT validator or claimsExtractor.
 		if _, ok := h.requireAuth(w, r); !ok {
 			return
 		}
-	} else if h.enableAuth && h.jwtValidator != nil {
-		authHeader := r.Header.Get("Authorization")
-		ticket := r.URL.Query().Get("ticket")
-		switch {
-		case authHeader != "":
-			if _, ok := h.requireAuth(w, r); !ok {
-				return
-			}
-		case ticket != "" && h.wsTicketStore != nil:
-			if _, err := h.wsTicketStore.Redeem(r.Context(), ticket); err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-		default:
-			http.Error(w, "Unauthorized: provide Authorization header or ?ticket", http.StatusUnauthorized)
+	case ticket != "" && h.wsTicketStore != nil:
+		// Single-use ticket exchanged by the browser via POST /api/v1/ws-ticket.
+		if _, err := h.wsTicketStore.Redeem(r.Context(), ticket); err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
+	default:
+		http.Error(w, "Unauthorized: provide Authorization header or ?ticket", http.StatusUnauthorized)
+		return
 	}
-	// Auth disabled or passed — upgrade the connection.
 	h.hub.ServeWS(w, r)
 }
 
