@@ -1,0 +1,188 @@
+# e2e — runs the Ginkgo end-to-end suite against a real Kubernetes cluster
+# bootstrapped by nebari-dev/action-nebari-sandbox (platform profile).
+#
+# What the platform profile provides:
+#   - k3d cluster with MetalLB, cert-manager, Envoy Gateway
+#   - Keycloak (keycloakx chart, namespace: keycloak, svc: keycloak-keycloakx-http)
+#   - nebari realm pre-configured by NIC
+#   - ArgoCD managing all foundational apps
+#
+# The workflow adds on top:
+#   - Builds the webapi Docker image and imports it into k3d
+#   - Installs the NebariApp CRD directly (deterministic, no ArgoCD sync wait)
+#   - Runs the Ginkgo e2e suite with USE_EXISTING_CLUSTER=true
+
+name: E2E tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - test/e2e/**
+      - internal/**
+      - cmd/**
+      - charts/**
+      - .github/workflows/e2e.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - test/e2e/**
+      - internal/**
+      - cmd/**
+      - charts/**
+      - .github/workflows/e2e.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: e2e tests
+    runs-on: ubuntu-24.04
+
+    # platform bootstrap ~15 min + image build ~2 min + tests ~10 min
+    timeout-minutes: 60
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────────────
+      - uses: actions/checkout@v4
+
+      # ── Go toolchain ─────────────────────────────────────────────────────────
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # Unified Go cache — covers both e2e test modules and any Go build inside
+      # the sandbox action (NIC binary), so the sandbox step benefits too.
+      - name: Cache Go modules
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-
+
+      # ── Webapi image (built before cluster so it's ready to import) ──────────
+      # Buildx + GHA layer cache — first run primes the cache (~94s),
+      # subsequent runs skip unchanged layers (~20-30s).
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build webapi image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: nebari-landing/webapi:dev
+          load: true
+          cache-from: type=gha,scope=e2e-webapi
+          cache-to: type=gha,mode=max,scope=e2e-webapi
+
+      # ── Kubernetes cluster + Nebari platform ─────────────────────────────────
+      - name: Setup Nebari Sandbox
+        id: sandbox
+        uses: nebari-dev/action-nebari-sandbox@v1.0.1
+        with:
+          profile: platform
+          cluster-name: nebari-e2e
+
+      # ── Load webapi image into k3d ────────────────────────────────────────────
+      - name: Load webapi image into k3d
+        run: k3d image import nebari-landing/webapi:dev -c ${{ steps.sandbox.outputs.cluster-name }}
+
+      # ── NebariApp CRD ─────────────────────────────────────────────────────────
+      # Apply directly so the tests don't depend on ArgoCD sync timing.
+      - name: Install NebariApp CRD
+        run: |
+          kubectl apply -f \
+            https://raw.githubusercontent.com/nebari-dev/nebari-operator/main/config/crd/bases/reconcilers.nebari.dev_nebariapps.yaml
+          kubectl wait --for=condition=Established \
+            crd/nebariapps.reconcilers.nebari.dev \
+            --timeout=60s
+
+      # ── Preflight: wait for Keycloak + nebari realm ──────────────────────────
+      # The sandbox waits for the keycloak pod to be Ready, but the realm
+      # provisioning PostSync hook runs asynchronously and may need a bit
+      # more time.  Poll the OIDC discovery endpoint via port-forward (port 8080,
+      # which is what keycloakx v7+ exposes on the service) until the realm
+      # responds, so the 30 s test timeout doesn't race with realm setup.
+      - name: Wait for Keycloak nebari realm
+        run: |
+          kubectl port-forward -n keycloak svc/keycloak-keycloakx-http 19090:8080 &
+          PF_PID=$!
+          trap "kill ${PF_PID} 2>/dev/null || true" EXIT
+          echo "Polling http://localhost:19090/realms/nebari/.well-known/openid-configuration …"
+          for i in $(seq 1 60); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+              http://localhost:19090/realms/nebari/.well-known/openid-configuration 2>/dev/null || echo 000)
+            if [ "$STATUS" = "200" ]; then
+              echo "✔  nebari realm ready (HTTP $STATUS)"
+              break
+            fi
+            echo "  attempt $i/60 — HTTP $STATUS, retrying in 5 s …"
+            sleep 5
+          done
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+            http://localhost:19090/realms/nebari/.well-known/openid-configuration 2>/dev/null || echo 000)
+          if [ "$STATUS" != "200" ]; then
+            echo "✗  nebari realm did not become ready (last HTTP $STATUS)"
+            kill "${PF_PID}" 2>/dev/null || true
+            exit 1
+          fi
+          kill "${PF_PID}" 2>/dev/null || true
+
+      # ── Read nebari realm admin password ─────────────────────────────────────
+      # NIC creates nebari-realm-admin-credentials in the keycloak namespace
+      # with a randomly-generated password (separate from the master realm admin
+      # password output by the sandbox).  Read it here so the e2e tests can
+      # authenticate against the nebari realm.
+      - name: Read nebari realm admin password
+        run: |
+          PASS=$(kubectl -n keycloak get secret nebari-realm-admin-credentials \
+            -o jsonpath='{.data.password}' | base64 -d)
+          echo "::add-mask::${PASS}"
+          echo "NEBARI_REALM_ADMIN_PASSWORD=${PASS}" >> "$GITHUB_ENV"
+
+      # ── E2E suite ─────────────────────────────────────────────────────────────
+      - name: Run e2e tests
+        env:
+          # Cluster is already running — skip Kind creation and docker build.
+          USE_EXISTING_CLUSTER: "true"
+          CLUSTER_TYPE: k3d
+          K3D_CLUSTER_NAME: ${{ steps.sandbox.outputs.cluster-name }}
+          WEBAPI_IMG: nebari-landing/webapi:dev
+          # Password for the 'admin' user in the nebari realm (not the master realm).
+          E2E_KEYCLOAK_ADMIN_PASSWORD: ${{ env.NEBARI_REALM_ADMIN_PASSWORD }}
+        run: go test ./test/e2e/... -tags=e2e -v -timeout 10m
+
+      # ── Diagnostics ───────────────────────────────────────────────────────────
+      - name: Collect diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== Pods (all namespaces) ==="
+          kubectl get pods -A || true
+          echo ""
+          echo "=== Recent warning events ==="
+          kubectl get events -A --field-selector type=Warning \
+            --sort-by='.lastTimestamp' 2>/dev/null | tail -30 || true
+          echo ""
+          echo "=== webapi logs ==="
+          kubectl logs -n nebari-system \
+            -l app.kubernetes.io/component=webapi --tail=100 || true
+          echo ""
+          echo "=== ArgoCD applications ==="
+          kubectl get applications -n argocd -o wide || true
+
+      # ── Cleanup ───────────────────────────────────────────────────────────────
+      - name: Cleanup
+        if: always()
+        run: |
+          k3d cluster delete ${{ steps.sandbox.outputs.cluster-name }}
+          docker network rm ${{ steps.sandbox.outputs.network-name }} 2>/dev/null || true

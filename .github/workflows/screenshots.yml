@@ -60,7 +60,7 @@ jobs:
 
     steps:
       # ── Checkout (full history so we can push back) ──────────────────────────
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           # Fetch full history; needed for git push back to the same branch.
