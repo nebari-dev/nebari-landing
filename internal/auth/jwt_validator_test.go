@@ -468,3 +468,47 @@ func TestSetIssuerURL_TrailingSlashStripped(t *testing.T) {
 		t.Errorf("expected trailing slash stripped, got %q", v.issuerURL)
 	}
 }
+
+// --- missing optional claims ---
+
+func TestValidateToken_MissingPreferredUsername_ReturnsEmptyString(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	claims := &Claims{Email: "user@example.com"}
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
+
+	got, err := v.ValidateToken(tokenStr)
+	if err != nil {
+		t.Fatalf("ValidateToken should succeed with missing preferred_username: %v", err)
+	}
+	if got.PreferredUsername != "" {
+		t.Errorf("expected empty PreferredUsername, got %q", got.PreferredUsername)
+	}
+	if got.Email != "user@example.com" {
+		t.Errorf("expected email preserved, got %q", got.Email)
+	}
+}
+
+func TestValidateToken_MissingEmail_ReturnsEmptyString(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	claims := &Claims{PreferredUsername: "jdoe"}
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
+
+	got, err := v.ValidateToken(tokenStr)
+	if err != nil {
+		t.Fatalf("ValidateToken should succeed with missing email: %v", err)
+	}
+	if got.Email != "" {
+		t.Errorf("expected empty Email, got %q", got.Email)
+	}
+	if got.PreferredUsername != "jdoe" {
+		t.Errorf("expected username preserved, got %q", got.PreferredUsername)
+	}
+}

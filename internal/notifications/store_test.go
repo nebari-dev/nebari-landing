@@ -193,3 +193,60 @@ func TestClose_ReturnsNoError(t *testing.T) {
 		t.Errorf("Close() returned unexpected error: %v", err)
 	}
 }
+
+// --- Redis failure paths ---
+
+func TestCreate_RedisDown_ReturnsError(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	s := NewStore(rdb)
+
+	mr.SetError("server error")
+
+	_, err := s.Create("", "Title", "Body")
+	if err == nil {
+		t.Error("expected error when Redis is unavailable, got nil")
+	}
+}
+
+func TestGet_RedisDown_ReturnsError(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	s := NewStore(rdb)
+
+	mr.SetError("server error")
+
+	_, err := s.Get("any-id")
+	if err == nil {
+		t.Error("expected error when Redis is unavailable, got nil")
+	}
+}
+
+func TestList_RedisDown_ReturnsError(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	s := NewStore(rdb)
+
+	mr.SetError("server error")
+
+	_, err := s.List()
+	if err == nil {
+		t.Error("expected error when Redis is unavailable, got nil")
+	}
+}
+
+func TestMarkRead_RedisDown_ReturnsError(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	s := NewStore(rdb)
+
+	mr.SetError("server error")
+
+	if err := s.MarkRead("alice", "any-id"); err == nil {
+		t.Error("expected error when Redis is unavailable, got nil")
+	}
+}
