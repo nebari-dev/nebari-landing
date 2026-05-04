@@ -436,7 +436,7 @@ install:
 	$(HELM_BIN) upgrade --install $(HELM_RELEASE) charts/nebari-landing \
 	  --namespace $(NAMESPACE_APP) \
 	  --values dev/chart-values.yaml \
-	  --wait --timeout 5m
+	  --wait --timeout 10m
 	# Force pods to restart so pullPolicy:Never always picks up the freshly loaded :dev image.
 	# This is a no-op on first install (pods already started above) but essential on re-runs.
 	-$(KUBECTL_BIN) rollout restart deployment/$(HELM_RELEASE)-webapi    -n $(NAMESPACE_APP) 2>/dev/null || true
