@@ -1,7 +1,5 @@
 package api
 
-//go:generate go run ../../tools/apidoc/main.go
-
 import (
 	"context"
 	"encoding/json"

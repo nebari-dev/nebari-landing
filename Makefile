@@ -49,6 +49,23 @@ vet: ## Run go vet against code.
 generate-docs: ## Regenerate the OpenAPI 3.1 spec from swag annotations.
 	go tool swag init -g cmd/main.go -d ./,./internal -o internal/api/docs --v3.1 --parseInternal --quiet
 
+# Render the dark/light SVG endpoint cards into docs/assets/ from the OpenAPI
+# spec. Embedded into docs/api.md by the gendocs target via a <picture> block.
+.PHONY: apicard
+apicard: ## Render docs/assets/api-{dark,light}.svg from the OpenAPI spec.
+	go run ./cmd/genapicard
+
+# Inject the auto-generated apicard <picture> block and per-endpoint reference
+# into docs/api.md, replacing content between the gendocs:NAME markers.
+.PHONY: gendocs
+gendocs: ## Inject auto-generated sections into docs/api.md.
+	go run ./cmd/gendocs
+
+# One-shot target: regenerate the OpenAPI spec, the SVG cards, and the
+# markdown reference. Run this after editing handler annotations.
+.PHONY: docs
+docs: generate-docs apicard gendocs ## Regenerate spec, SVG cards, and docs/api.md.
+
 ##@ Testing
 
 .PHONY: test
