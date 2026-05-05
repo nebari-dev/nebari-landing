@@ -220,6 +220,12 @@ webapi:
   # NEVER enable in production (it exposes internal auth state).
   debugMode: false
 
+  # Expose the OpenAPI 3.1 spec at /api/v1/docs/openapi.json and a Scalar
+  # viewer at /api/v1/docs.  When false the routes are not registered and
+  # both paths return 404.  Useful in dev/CI for keeping MSW handlers in
+  # sync with the live API; never enable in production.
+  docsEnabled: false
+
   healthInterval: 30
 
   # Automatic platform notifications — require Redis (notifications.enabled implies redis.enabled).

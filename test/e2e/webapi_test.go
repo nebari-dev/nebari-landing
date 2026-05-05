@@ -220,18 +220,21 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		_, err = utils.Run(setImg)
 		Expect(err).NotTo(HaveOccurred(), "Failed to patch webapi container image")
 
-		By("Patching webapi deployment with discovered KEYCLOAK_ISSUER_URL")
+		By("Patching webapi deployment with discovered KEYCLOAK_ISSUER_URL and ENABLE_DOCS=true")
 		// The issuer in tokens is set by KC_HOSTNAME_URL (e.g. http://<minikube-lb-ip>).
 		// Keycloak 17+ no longer uses /auth as a context root.
 		// The Helm chart value webapi.keycloak.issuerUrl may point to an in-cluster
 		// URL ≠ the token issuer.  Patch the live deployment so the JWT validator
 		// accepts tokens from this cluster regardless of the values file.
+		// ENABLE_DOCS=true exposes the OpenAPI 3.1 spec at /api/v1/docs/openapi.json
+		// and the Scalar viewer at /api/v1/docs so the suite can assert on them.
 		setEnv := exec.Command("kubectl", "set", "env",
 			fmt.Sprintf("deployment/%s", e2eWebapiDeployment),
 			"-n", namespace,
-			fmt.Sprintf("KEYCLOAK_ISSUER_URL=%s", keycloakIssuer))
+			fmt.Sprintf("KEYCLOAK_ISSUER_URL=%s", keycloakIssuer),
+			"ENABLE_DOCS=true")
 		_, err = utils.Run(setEnv)
-		Expect(err).NotTo(HaveOccurred(), "Failed to patch KEYCLOAK_ISSUER_URL on webapi deployment")
+		Expect(err).NotTo(HaveOccurred(), "Failed to patch webapi deployment env vars")
 
 		By("Waiting for webapi deployment to become ready")
 		rollout := exec.Command("kubectl", "rollout", "status",
@@ -430,6 +433,83 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(body)).To(ContainSubstring(`"status"`),
 				"health response must contain a 'status' field")
+		})
+	})
+
+	Context("OpenAPI docs", func() {
+		// Asserts the --enable-docs / ENABLE_DOCS flag plumbing end-to-end:
+		// the chart must wire it into the deployment, the deployment must restart
+		// with the env var, and the binary must register the routes when set.
+		// BeforeAll above patches the webapi deployment with ENABLE_DOCS=true.
+		var (
+			pfCmd  *exec.Cmd
+			docsBase = "http://localhost:18081"
+		)
+		BeforeAll(func() {
+			By("Port-forwarding to webapi on :18081 for the docs probe")
+			pfCmd = exec.Command("kubectl", "port-forward",
+				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18081:8080")
+			Expect(pfCmd.Start()).NotTo(HaveOccurred(), "port-forward should start")
+			DeferCleanup(func() {
+				if pfCmd != nil && pfCmd.Process != nil {
+					_ = pfCmd.Process.Kill()
+				}
+			})
+
+			// The set-env patch above triggers a rollout; wait until /api/v1/health
+			// answers on the new pod before probing the docs routes.
+			Eventually(func() error {
+				resp, err := http.Get(docsBase + "/api/v1/health")
+				if err != nil {
+					return err
+				}
+				resp.Body.Close()
+				if resp.StatusCode != http.StatusOK {
+					return fmt.Errorf("health %d", resp.StatusCode)
+				}
+				return nil
+			}, 60*time.Second, time.Second).Should(Succeed(),
+				"webapi must be ready before docs probe")
+		})
+
+		It("should serve a valid OpenAPI 3.x spec at /api/v1/docs/openapi.json", func() {
+			resp, err := http.Get(docsBase + "/api/v1/docs/openapi.json")
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusOK),
+				"openapi.json should return 200 when ENABLE_DOCS=true")
+			Expect(resp.Header.Get("Content-Type")).To(Equal("application/json"))
+
+			var spec map[string]interface{}
+			Expect(json.NewDecoder(resp.Body).Decode(&spec)).To(Succeed(),
+				"response must be valid JSON")
+			version, _ := spec["openapi"].(string)
+			Expect(version).To(HavePrefix("3."),
+				"spec must declare OpenAPI 3.x, got %q", version)
+			_, hasPaths := spec["paths"].(map[string]interface{})
+			Expect(hasPaths).To(BeTrue(), "spec must include a 'paths' object")
+		})
+
+		It("should serve the Scalar viewer HTML at /api/v1/docs", func() {
+			resp, err := http.Get(docsBase + "/api/v1/docs")
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			Expect(resp.Header.Get("Content-Type")).To(HavePrefix("text/html"),
+				"viewer must declare HTML content type")
+			body, err := io.ReadAll(resp.Body)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(body)).To(ContainSubstring("/api/v1/docs/openapi.json"),
+				"viewer HTML must reference the spec endpoint")
+		})
+
+		It("should reject non-GET methods on docs routes with 405", func() {
+			req, err := http.NewRequest(http.MethodPost, docsBase+"/api/v1/docs/openapi.json", nil)
+			Expect(err).NotTo(HaveOccurred())
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusMethodNotAllowed))
 		})
 	})
 })
