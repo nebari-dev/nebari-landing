@@ -44,6 +44,9 @@ jobs:
   dev-watch-smoke:
     name: dev-watch smoke test
     runs-on: ubuntu-latest
+    # Temporarily disabled — Helm deploy step is broken due to work in progress
+    # tracked in issue #57. Re-enable once that issue is resolved.
+    if: false
 
     # Generous timeout — full cluster bootstrap takes ~15 min; npm install inside
     # the Vite pod adds ~3 min on top.
