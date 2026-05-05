@@ -12,8 +12,9 @@
 
 The webapi serves the routes below at the address chosen by `--port`
 (default `:8080`). When started with `--enable-docs` it additionally exposes
-the raw OpenAPI 3.1 spec at `/api/v1/docs/openapi.json` and an interactive
-Scalar viewer at `/api/v1/docs`. Both routes are absent in production.
+the raw OpenAPI 3.1 spec at `/api/v1/docs/openapi.json` and a server-rendered
+HTML reference at `/api/v1/docs` (no JavaScript, no CDN). Both routes are
+absent in production.
 
 ```sh
 ./bin/webapi --enable-docs ...

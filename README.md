@@ -306,10 +306,12 @@ make test-e2e
 See [docs/api.md](docs/api.md) for the full HTTP API reference (auto-generated
 endpoint table, per-route detail, and a dark/light SVG card preview at the top).
 
-The webapi can also serve its OpenAPI 3.1 spec and an interactive Scalar
-viewer at runtime when started with `--enable-docs` (env: `ENABLE_DOCS=true`,
-chart value: `webapi.docsEnabled=true`). Both routes are absent without the
-flag — never enable in production:
+The webapi can also serve its OpenAPI 3.1 spec and a server-rendered HTML
+reference at runtime when started with `--enable-docs` (env:
+`ENABLE_DOCS=true`, chart value: `webapi.docsEnabled=true`). The viewer is a
+single self-contained page (no JavaScript, no CDN) rendered from the embedded
+spec at startup. Both routes are absent without the flag — never enable in
+production:
 
 ```sh
 ./bin/webapi --enable-docs ...

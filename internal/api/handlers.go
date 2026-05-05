@@ -177,7 +177,7 @@ func (h *Handler) Routes() http.Handler {
 	// at /api/v1/docs. Never enable in production.
 	if h.docsEnabled {
 		mux.HandleFunc("/api/v1/docs/openapi.json", h.handleOpenAPISpec)
-		mux.HandleFunc("/api/v1/docs", h.handleScalarViewer)
+		mux.HandleFunc("/api/v1/docs", h.handleDocsViewer)
 	}
 
 	// User pins — requires authentication; 501 when no PinStore is configured

@@ -56,7 +56,7 @@ func TestDocs_OpenAPISpec_ReturnsValidJSON(t *testing.T) {
 	}
 }
 
-func TestDocs_ScalarViewer_ReturnsHTML(t *testing.T) {
+func TestDocs_Viewer_ReturnsHTML(t *testing.T) {
 	h := docsEnabledHandler()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/docs", nil)
 	rr := httptest.NewRecorder()
@@ -69,7 +69,10 @@ func TestDocs_ScalarViewer_ReturnsHTML(t *testing.T) {
 		t.Errorf("expected text/html Content-Type, got %q", rr.Header().Get("Content-Type"))
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "/api/v1/docs/openapi.json") {
+	// The template uses a relative <a href="openapi.json"> so it resolves to
+	// /api/v1/docs/openapi.json when the browser is at /api/v1/docs, regardless
+	// of any future base-path change. Substring match covers both forms.
+	if !strings.Contains(body, "openapi.json") {
 		t.Error("viewer HTML should reference the spec endpoint")
 	}
 }
