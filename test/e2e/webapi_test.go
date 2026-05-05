@@ -441,11 +441,22 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		// the chart must wire it into the deployment, the deployment must restart
 		// with the env var, and the binary must register the routes when set.
 		// BeforeAll above patches the webapi deployment with ENABLE_DOCS=true.
+		//
+		// SKIPPED on the existing-cluster path until #62 lands: ArgoCD's
+		// self-heal reverts the BeforeAll's `kubectl set image` patch back to
+		// the published image, so the binary actually answering on the cluster
+		// has no docs routes and these probes always 404.  Once the gitops-
+		// based image override from #62 is in main, remove the Skip below.
+		// Until then, the gating + content is covered by httptest unit tests
+		// in internal/api/openapi_test.go.
 		var (
 			pfCmd  *exec.Cmd
 			docsBase = "http://localhost:18081"
 		)
 		BeforeAll(func() {
+			if useExistingCluster {
+				Skip("docs e2e disabled on existing-cluster path until ArgoCD image-override fix from #62 lands; httptest unit tests in internal/api/openapi_test.go cover the feature")
+			}
 			By("Port-forwarding to webapi on :18081 for the docs probe")
 			pfCmd = exec.Command("kubectl", "port-forward",
 				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18081:8080")
