@@ -49,6 +49,9 @@ type Handler struct {
 	// in diagnosing auth and proxy-forwarding issues (similar to Keycloak's
 	// KC_HOSTNAME_DEBUG mode). Never enable in production.
 	debugMode bool
+	// docsEnabled exposes the OpenAPI spec at /api/v1/docs/openapi.json and a
+	// Scalar viewer at /api/v1/docs. Off by default — never enable in production.
+	docsEnabled bool
 	// claimsExtractor, when non-nil, replaces the JWT validation step.
 	// Use WithClaimsExtractor in tests to inject synthetic claims without
 	// needing a real Keycloak instance or signed token.
@@ -102,6 +105,13 @@ func WithAllowedOrigins(origins []string) HandlerOption {
 // diagnosing auth and proxy-forwarding issues. Never enable in production.
 func WithDebugMode() HandlerOption {
 	return func(h *Handler) { h.debugMode = true }
+}
+
+// WithDocsEnabled exposes the OpenAPI spec at /api/v1/docs/openapi.json and a
+// Scalar viewer at /api/v1/docs. Routes are not registered when disabled.
+// Never enable in production — the spec leaks endpoint shape and parameter names.
+func WithDocsEnabled() HandlerOption {
+	return func(h *Handler) { h.docsEnabled = true }
 }
 
 // WithClaimsExtractor replaces the JWT validation step with a custom function.
@@ -164,6 +174,14 @@ func (h *Handler) Routes() http.Handler {
 		mux.HandleFunc("/api/v1/debug", h.handleDebug)
 	}
 
+	// OpenAPI docs — only registered when --enable-docs is set.
+	// Serves the raw spec at /api/v1/docs/openapi.json and a Scalar HTML viewer
+	// at /api/v1/docs. Never enable in production.
+	if h.docsEnabled {
+		mux.HandleFunc("/api/v1/docs/openapi.json", h.handleOpenAPISpec)
+		mux.HandleFunc("/api/v1/docs", h.handleScalarViewer)
+	}
+
 	// User pins — requires authentication; 501 when no PinStore is configured
 	mux.HandleFunc("/api/v1/pins", h.handleGetPins)
 	mux.HandleFunc("/api/v1/pins/", h.handlePinByUID)
@@ -186,6 +204,14 @@ func (h *Handler) Routes() http.Handler {
 // handleWS serves GET /api/v1/ws.
 // It uses the same authentication gate as protected API endpoints before
 // allowing the WebSocket protocol upgrade.
+//
+//	@Summary		WebSocket: real-time service + notification events
+//	@Description	Upgrade to WebSocket. Server pushes JSON envelopes for service add/update/delete and new notifications. The same auth gate as protected REST endpoints applies before the upgrade is accepted.
+//	@Tags			websocket
+//	@Success		101	{string}	string	"Switching Protocols"
+//	@Failure		401	{string}	string	"Unauthorized"
+//	@Security		BearerAuth
+//	@Router			/ws [get]
 func (h *Handler) handleWS(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireAuth(w, r); !ok {
 		return
@@ -282,6 +308,17 @@ func (h *Handler) callerPinnedUIDs(claims *auth.Claims, authenticated bool) map[
 	return m
 }
 
+// handleGetServices serves GET /api/v1/services.
+//
+//	@Summary		List discoverable services
+//	@Description	Returns the union of public services plus any private services the caller may access based on their JWT groups.
+//	@Description	Anonymous callers see public services only; bearer-token callers additionally see private services they have access to. The "pinned" flag reflects the caller's own pin list (always false for anonymous).
+//	@Tags			services
+//	@Produce		json
+//	@Success		200	{object}	ServiceResponse
+//	@Failure		405	{string}	string	"Method not allowed"
+//	@Security		BearerAuth
+//	@Router			/services [get]
 func (h *Handler) handleGetServices(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -332,6 +369,19 @@ func (h *Handler) handleServicesSub(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetServiceByUID serves GET /api/v1/services/{id}.
+//
+//	@Summary		Get a service by UID
+//	@Description	Returns the service if the caller may access it. Anonymous callers may only fetch public services; private services require a JWT whose groups intersect the service's required groups.
+//	@Tags			services
+//	@Produce		json
+//	@Param			id	path		string	true	"Service UID"
+//	@Success		200	{object}	ServiceView
+//	@Failure		400	{string}	string	"Service ID is required"
+//	@Failure		403	{string}	string	"Forbidden"
+//	@Failure		404	{string}	string	"Service not found"
+//	@Failure		405	{string}	string	"Method not allowed"
+//	@Security		BearerAuth
+//	@Router			/services/{id} [get]
 func (h *Handler) handleGetServiceByUID(w http.ResponseWriter, r *http.Request, serviceID string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -366,6 +416,23 @@ type RequestAccessBody struct {
 // handleRequestAccess serves POST /api/v1/services/{id}/request_access.
 // Requires authentication. Returns 202 Accepted on success, 409 Conflict when
 // a pending request already exists, 501 when the access-request store is not configured.
+//
+//	@Summary		Request access to a private service
+//	@Description	Requires authentication. Creates a pending access request for the caller against the named service; an admin then approves or denies via /admin/access-requests/{id}/{approve|deny}.
+//	@Tags			services
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string				true	"Service UID"
+//	@Param			body	body		RequestAccessBody	false	"Optional message from the requester"
+//	@Success		202		{object}	accessrequests.AccessRequest
+//	@Failure		400		{string}	string	"Bad request"
+//	@Failure		401		{string}	string	"Unauthorized"
+//	@Failure		404		{string}	string	"Service not found"
+//	@Failure		405		{string}	string	"Method not allowed"
+//	@Failure		409		{string}	string	"Pending request already exists"
+//	@Failure		501		{string}	string	"Access request feature not configured"
+//	@Security		BearerAuth
+//	@Router			/services/{id}/request_access [post]
 func (h *Handler) handleRequestAccess(w http.ResponseWriter, r *http.Request, serviceID string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -429,6 +496,16 @@ func (h *Handler) handleRequestAccess(w http.ResponseWriter, r *http.Request, se
 // handleGetNotifications serves GET /api/v1/notifications.
 // Returns notifications with per-caller read state when a notification store is
 // configured; returns an empty list when the store is not configured.
+//
+//	@Summary		List notifications
+//	@Description	Returns all platform notifications. When the caller is authenticated, each item's "read" flag reflects that user's per-notification read state; for anonymous callers all items are reported as unread.
+//	@Tags			notifications
+//	@Produce		json
+//	@Success		200	{array}		NotificationItem
+//	@Failure		405	{string}	string	"Method not allowed"
+//	@Failure		500	{string}	string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/notifications [get]
 func (h *Handler) handleGetNotifications(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -480,6 +557,19 @@ func (h *Handler) handleGetNotifications(w http.ResponseWriter, r *http.Request)
 
 // handleNotificationSub dispatches sub-routes under /api/v1/notifications/.
 // Currently handles: PUT /api/v1/notifications/{id}/read
+//
+//	@Summary		Mark a notification as read
+//	@Description	Marks the specified notification as read for the calling user. Idempotent — returns 204 even if already read.
+//	@Tags			notifications
+//	@Param			id	path	string	true	"Notification ID"
+//	@Success		204
+//	@Failure		400	{string}	string	"Bad request"
+//	@Failure		401	{string}	string	"Unauthorized"
+//	@Failure		404	{string}	string	"Notification not found"
+//	@Failure		405	{string}	string	"Method not allowed"
+//	@Failure		501	{string}	string	"Notifications feature not configured"
+//	@Security		BearerAuth
+//	@Router			/notifications/{id}/read [put]
 func (h *Handler) handleNotificationSub(w http.ResponseWriter, r *http.Request) {
 	if h.notificationStore == nil {
 		http.Error(w, "Notifications feature not configured", http.StatusNotImplemented)
@@ -550,6 +640,19 @@ func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) (*auth.Cl
 
 // handleAdminListAccessRequests serves GET /api/v1/admin/access-requests.
 // Accepts an optional ?status=pending|approved|denied query parameter.
+//
+//	@Summary		List access requests (admin)
+//	@Description	Returns access requests across the cluster. Admin-only — caller's JWT must include the configured admin group.
+//	@Tags			admin
+//	@Produce		json
+//	@Param			status	query		string	false	"Filter by status: pending, approved, or denied"
+//	@Success		200		{array}		accessrequests.AccessRequest
+//	@Failure		401		{string}	string	"Unauthorized"
+//	@Failure		403		{string}	string	"Forbidden: admin group required"
+//	@Failure		405		{string}	string	"Method not allowed"
+//	@Failure		501		{string}	string	"Access request feature not configured"
+//	@Security		BearerAuth
+//	@Router			/admin/access-requests [get]
 func (h *Handler) handleAdminListAccessRequests(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -586,6 +689,22 @@ func (h *Handler) handleAdminListAccessRequests(w http.ResponseWriter, r *http.R
 }
 
 // handleAdminAccessRequestSub dispatches /api/v1/admin/access-requests/{id}/{action}.
+//
+//	@Summary		Approve or deny an access request (admin)
+//	@Description	Action is encoded in the URL: PUT .../{id}/approve or .../{id}/deny. Approving also adds the user to the service's required Keycloak groups when a Keycloak admin client is configured.
+//	@Tags			admin
+//	@Produce		json
+//	@Param			id		path		string	true	"Access request ID"
+//	@Param			action	path		string	true	"approve | deny"
+//	@Success		200		{object}	accessrequests.AccessRequest
+//	@Failure		400		{string}	string	"Bad request"
+//	@Failure		401		{string}	string	"Unauthorized"
+//	@Failure		403		{string}	string	"Forbidden: admin group required"
+//	@Failure		404		{string}	string	"Request not found"
+//	@Failure		405		{string}	string	"Method not allowed"
+//	@Failure		501		{string}	string	"Access request feature not configured"
+//	@Security		BearerAuth
+//	@Router			/admin/access-requests/{id}/{action} [put]
 func (h *Handler) handleAdminAccessRequestSub(w http.ResponseWriter, r *http.Request) {
 	if h.accessRequestStore == nil {
 		http.Error(w, "Access request feature not configured", http.StatusNotImplemented)
@@ -687,8 +806,8 @@ func (h *Handler) applyKeycloakGroupMembership(ctx context.Context, req *accessr
 	}
 }
 
-// createNotificationBody is the request body for POST /api/v1/admin/notifications.
-type createNotificationBody struct {
+// CreateNotificationBody is the request body for POST /api/v1/admin/notifications.
+type CreateNotificationBody struct {
 	Image   string `json:"image,omitempty"`
 	Title   string `json:"title"`
 	Message string `json:"message"`
@@ -696,6 +815,21 @@ type createNotificationBody struct {
 
 // handleAdminCreateNotification serves POST /api/v1/admin/notifications.
 // Creates a new platform-wide notification. Requires admin group membership.
+//
+//	@Summary		Create a notification (admin)
+//	@Description	Creates a new platform-wide notification visible to all users via GET /notifications. Admin-only.
+//	@Tags			admin
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		CreateNotificationBody	true	"Notification payload"
+//	@Success		201		{object}	notifications.Notification
+//	@Failure		400		{string}	string	"Bad request"
+//	@Failure		401		{string}	string	"Unauthorized"
+//	@Failure		403		{string}	string	"Forbidden: admin group required"
+//	@Failure		405		{string}	string	"Method not allowed"
+//	@Failure		501		{string}	string	"Notifications feature not configured"
+//	@Security		BearerAuth
+//	@Router			/admin/notifications [post]
 func (h *Handler) handleAdminCreateNotification(w http.ResponseWriter, r *http.Request) {
 	if h.notificationStore == nil {
 		http.Error(w, "Notifications feature not configured", http.StatusNotImplemented)
@@ -710,7 +844,7 @@ func (h *Handler) handleAdminCreateNotification(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	var body createNotificationBody
+	var body CreateNotificationBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -738,6 +872,15 @@ func (h *Handler) handleAdminCreateNotification(w http.ResponseWriter, r *http.R
 	}
 }
 
+// handleGetCategories serves GET /api/v1/categories.
+//
+//	@Summary		List service categories
+//	@Description	Returns the distinct set of category labels currently advertised by services in the cache. Public — no auth required.
+//	@Tags			services
+//	@Produce		json
+//	@Success		200	{object}	map[string][]string
+//	@Failure		405	{string}	string	"Method not allowed"
+//	@Router			/categories [get]
 func (h *Handler) handleGetCategories(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -754,6 +897,19 @@ func (h *Handler) handleGetCategories(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// HealthResponse is the response body for GET /api/v1/health.
+type HealthResponse struct {
+	Status string `json:"status" example:"healthy"`
+}
+
+// handleHealth serves GET /api/v1/health.
+//
+//	@Summary		Liveness probe
+//	@Description	Returns {"status":"healthy"} as long as the server is up. Does not check downstream dependencies.
+//	@Tags			health
+//	@Produce		json
+//	@Success		200	{object}	HealthResponse
+//	@Router			/health [get]
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -853,6 +1009,15 @@ func (h *Handler) hasRequiredGroups(userGroups, requiredGroups []string) bool {
 // handleCallerIdentity serves GET /api/v1/caller-identity.
 // Returns the identity of the caller as decoded from the JWT.
 // When no valid token is present, returns {"authenticated": false}.
+//
+//	@Summary		Get the caller's identity
+//	@Description	Echoes the resolved JWT claims for the caller. Returns {"authenticated": false} when no valid token is present.
+//	@Tags			identity
+//	@Produce		json
+//	@Success		200	{object}	CallerIdentityResponse
+//	@Failure		405	{string}	string	"Method not allowed"
+//	@Security		BearerAuth
+//	@Router			/caller-identity [get]
 func (h *Handler) handleCallerIdentity(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -895,6 +1060,18 @@ type PinsResponse struct {
 // Requires a valid JWT. Returns the caller's pinned services as full ServiceInfo
 // objects, resolved from the live cache. Pins whose UIDs are no longer in the
 // cache are included in UIDs but absent from Pins (graceful stale handling).
+//
+//	@Summary		List the caller's pins
+//	@Description	Returns the caller's pinned services. UIDs is the raw stored list; Pins is the subset still resolvable in the live cache (so deleted services are gracefully filtered out).
+//	@Tags			pins
+//	@Produce		json
+//	@Success		200	{object}	PinsResponse
+//	@Failure		401	{string}	string	"Unauthorized"
+//	@Failure		405	{string}	string	"Method not allowed"
+//	@Failure		500	{string}	string	"Internal server error"
+//	@Failure		501	{string}	string	"Pins feature not configured"
+//	@Security		BearerAuth
+//	@Router			/pins [get]
 func (h *Handler) handleGetPins(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -929,6 +1106,20 @@ func (h *Handler) handleGetPins(w http.ResponseWriter, r *http.Request) {
 // handlePinByUID serves PUT and DELETE /api/v1/pins/{uid}.
 // PUT pins the service; DELETE unpins it. Both are idempotent.
 // The {uid} segment is the NebariApp UID (UIDType string from status.serviceDiscovery).
+//
+//	@Summary		Pin or unpin a service
+//	@Description	PUT pins the service; DELETE unpins. Both operations are idempotent. The UID is the NebariApp UID exposed at status.serviceDiscovery.
+//	@Tags			pins
+//	@Param			uid	path	string	true	"NebariApp UID"
+//	@Success		204
+//	@Failure		400	{string}	string	"UID is required"
+//	@Failure		401	{string}	string	"Unauthorized"
+//	@Failure		405	{string}	string	"Method not allowed"
+//	@Failure		500	{string}	string	"Internal server error"
+//	@Failure		501	{string}	string	"Pins feature not configured"
+//	@Security		BearerAuth
+//	@Router			/pins/{uid} [put]
+//	@Router			/pins/{uid} [delete]
 func (h *Handler) handlePinByUID(w http.ResponseWriter, r *http.Request) {
 	if h.pinStore == nil {
 		http.Error(w, "Pins feature not configured", http.StatusNotImplemented)

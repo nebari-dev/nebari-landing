@@ -1,3 +1,17 @@
+// Package main is the nebari-landing webapi server.
+//
+//	@title			Nebari Landing Page API
+//	@version		v1
+//	@description	Service-discovery and notifications API consumed by the nebari-landing SPA.
+//	@description	Spec is published only when the server is started with --enable-docs (off in production).
+//	@license.name	Apache 2.0
+//	@license.url	https://www.apache.org/licenses/LICENSE-2.0.html
+//	@BasePath		/api/v1
+//
+//	@securityDefinitions.apikey	BearerAuth
+//	@in							header
+//	@name						Authorization
+//	@description				Keycloak-issued JWT, sent as "Bearer <token>".
 package main
 
 import (
@@ -73,6 +87,7 @@ func main() {
 		allowedOrigins string
 		notifStartup   bool
 		notifLifecycle bool
+		enableDocs     bool
 	)
 
 	// Flags fall back to environment variables so the binary works naturally when
@@ -107,6 +122,8 @@ func main() {
 		"Post a welcome/feedback notification on every startup (env: NOTIFICATIONS_STARTUP)")
 	flag.BoolVar(&notifLifecycle, "notifications-lifecycle", envBool("NOTIFICATIONS_LIFECYCLE", true),
 		"Auto-post notifications for service lifecycle events: added, removed, back online (env: NOTIFICATIONS_LIFECYCLE)")
+	flag.BoolVar(&enableDocs, "enable-docs", envBool("ENABLE_DOCS", false),
+		"Expose the OpenAPI spec at /api/v1/docs/openapi.json and a Scalar viewer at /api/v1/docs. Never enable in production (env: ENABLE_DOCS)")
 
 	opts := zap.Options{
 		Development: true,
@@ -275,6 +292,10 @@ func main() {
 	if debugMode {
 		setupLog.Info("Debug mode enabled — GET /api/v1/debug is active; do not use in production")
 		handlerOpts = append(handlerOpts, api.WithDebugMode())
+	}
+	if enableDocs {
+		setupLog.Info("OpenAPI docs enabled — GET /api/v1/docs and /api/v1/docs/openapi.json are active; do not use in production")
+		handlerOpts = append(handlerOpts, api.WithDocsEnabled())
 	}
 
 	handler := api.NewHandler(serviceCache, jwtValidator, enableAuth, hub, pinStore, handlerOpts...)

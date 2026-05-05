@@ -42,6 +42,13 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+# Regenerate the OpenAPI 3.1 spec from swag annotations in cmd/main.go and
+# internal/api/handlers.go. Output goes to internal/api/docs/, which is embedded
+# at build time and served by the --enable-docs handler.
+.PHONY: generate-docs
+generate-docs: ## Regenerate the OpenAPI 3.1 spec from swag annotations.
+	go tool swag init -g cmd/main.go -d ./,./internal -o internal/api/docs --v3.1 --parseInternal --quiet
+
 ##@ Testing
 
 .PHONY: test
