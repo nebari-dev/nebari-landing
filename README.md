@@ -284,7 +284,8 @@ docs/
   ├── maintainers/    Release checklist and maintainer guides
   └── static/imgs/    Screenshots and static assets
 test/e2e/             End-to-end tests (Ginkgo)
-tools/apidoc/         API documentation generator (go generate)
+cmd/gendocs/          Injects auto-generated sections into docs/api.md
+cmd/genapicard/       Renders docs/assets/api-{dark,light}.svg endpoint cards
 ```
 
 ### Running tests
@@ -302,12 +303,25 @@ make test-e2e
 
 ### API Reference
 
-See [docs/api.md](docs/api.md) for the full HTTP API reference.
+See [docs/api.md](docs/api.md) for the full HTTP API reference (auto-generated
+endpoint table, per-route detail, and a dark/light SVG card preview at the top).
 
-To regenerate after editing route definitions:
+The webapi can also serve its OpenAPI 3.1 spec and an interactive Scalar
+viewer at runtime when started with `--enable-docs` (env: `ENABLE_DOCS=true`,
+chart value: `webapi.docsEnabled=true`). Both routes are absent without the
+flag — never enable in production:
 
 ```sh
-go generate ./internal/api/...
+./bin/webapi --enable-docs ...
+# Spec:   curl http://localhost:8080/api/v1/docs/openapi.json
+# Viewer: open http://localhost:8080/api/v1/docs
+```
+
+To regenerate the spec, the SVG cards, and `docs/api.md` after editing
+handler annotations:
+
+```sh
+make docs
 ```
 
 ### Code quality
