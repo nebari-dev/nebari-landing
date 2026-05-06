@@ -192,6 +192,17 @@ jobs:
           echo "::add-mask::${PASS}"
           echo "NEBARI_REALM_ADMIN_PASSWORD=${PASS}" >> "$GITHUB_ENV"
 
+      # ── Wait for webapi deployment ───────────────────────────────────────────
+      # After importing the image, the webapi deployment may restart. Wait for
+      # it to be stable before running tests to avoid connecting to a pod that's
+      # still syncing its watcher cache.
+      - name: Wait for webapi to be ready
+        run: |
+          echo "Waiting for webapi deployment to be ready..."
+          kubectl rollout status deployment/nebari-landing-webapi \
+            -n nebari-system --timeout=180s
+          echo "✓ Webapi ready"
+
       # ── E2E suite ─────────────────────────────────────────────────────────────
       - name: Run e2e tests
         env:
