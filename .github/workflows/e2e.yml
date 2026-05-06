@@ -222,16 +222,46 @@ jobs:
           echo "=== Pods (all namespaces) ==="
           kubectl get pods -A || true
           echo ""
+          echo "=== Webapi deployment status ==="
+          kubectl get deployment -n nebari-system nebari-landing-webapi -o wide || true
+          kubectl describe deployment -n nebari-system nebari-landing-webapi || true
+          echo ""
+          echo "=== Webapi pods ==="
+          kubectl get pods -n nebari-system -l app.kubernetes.io/component=webapi -o wide || true
+          echo ""
+          echo "=== NebariApp resources ==="
+          kubectl get nebariapps -n nebari-system -o wide || true
+          echo ""
+          echo "=== NebariApp details ==="
+          for app in $(kubectl get nebariapps -n nebari-system -o name 2>/dev/null); do
+            echo "--- $app ---"
+            kubectl get "$app" -n nebari-system -o yaml || true
+          done
+          echo ""
+          echo "=== Test Service (backing service for NebariApps) ==="
+          kubectl get service test-service -n nebari-system -o yaml 2>/dev/null || echo "test-service not found"
+          echo ""
           echo "=== Recent warning events ==="
           kubectl get events -A --field-selector type=Warning \
-            --sort-by='.lastTimestamp' 2>/dev/null | tail -30 || true
+            --sort-by='.lastTimestamp' 2>/dev/null | tail -50 || true
           echo ""
-          echo "=== webapi logs ==="
+          echo "=== Webapi logs (last 200 lines) ==="
           kubectl logs -n nebari-system \
-            -l app.kubernetes.io/component=webapi --tail=100 || true
+            -l app.kubernetes.io/component=webapi --tail=200 || true
+          echo ""
+          echo "=== Webapi logs showing cache operations ==="
+          kubectl logs -n nebari-system \
+            -l app.kubernetes.io/component=webapi --tail=500 | grep -E "(Service added|Service updated|Service deleted|Service removed|total:|Reconcile)" || true
           echo ""
           echo "=== ArgoCD applications ==="
           kubectl get applications -n argocd -o wide || true
+          echo ""
+          echo "=== Test /api/v1/services endpoint directly ==="
+          POD=$(kubectl get pods -n nebari-system -l app.kubernetes.io/component=webapi -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+          if [ -n "$POD" ]; then
+            echo "Testing API from pod: $POD"
+            kubectl exec -n nebari-system "$POD" -- curl -s http://localhost:8080/api/v1/services | jq '.' || true
+          fi
 
       # ── Cleanup ───────────────────────────────────────────────────────────────
       - name: Cleanup
