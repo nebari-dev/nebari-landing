@@ -256,7 +256,7 @@ func newTestService(name, namespace string, port int) *unstructured.Unstructured
 	return u
 }
 
-var _ = Describe("Webapi – Service Discovery", func() {
+var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 	var (
 		ctx           = context.Background()
 		namespace     = e2eNamespace
@@ -593,7 +593,7 @@ var _ = Describe("Webapi – Service Discovery", func() {
 	})
 
 	// Pins — e2e coverage for GET/PUT/DELETE /api/v1/pins against a live cluster.
-	Context("Pins", Ordered, func() {
+	Context("Pins", func() {
 		var (
 			webapiBase  string
 			pfCmd       *exec.Cmd
@@ -759,7 +759,7 @@ var _ = Describe("Webapi – Service Discovery", func() {
 	})
 
 	// Notifications — e2e coverage for create / list / mark-read against a live cluster.
-	Context("Notifications", Ordered, func() {
+	Context("Notifications", func() {
 		var (
 			webapiBase     string
 			pfCmd          *exec.Cmd
@@ -898,7 +898,7 @@ var _ = Describe("Webapi – Service Discovery", func() {
 	// Access Requests — e2e coverage for request / admin-list / approve flow.
 	// Requires the Keycloak admin user to be a member of the "admin" group in the
 	// Nebari realm for the admin-list and approve steps to succeed.
-	Context("Access Requests", Ordered, func() {
+	Context("Access Requests", func() {
 		var (
 			webapiBase  string
 			pfCmd       *exec.Cmd
