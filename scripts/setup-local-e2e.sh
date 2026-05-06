@@ -100,18 +100,6 @@ done
 kill "${PF_PID}" 2>/dev/null || true
 trap - EXIT
 
-# Install NebariApp CRD
-echo ""
-echo "→ Installing NebariApp CRD..."
-kubectl apply -f \
-    https://raw.githubusercontent.com/nebari-dev/nebari-operator/main/config/crd/bases/reconcilers.nebari.dev_nebariapps.yaml
-
-kubectl wait --for=condition=Established \
-    crd/nebariapps.reconcilers.nebari.dev \
-    --timeout=60s
-
-echo "✓ NebariApp CRD installed"
-
 # Build and load webapi image
 echo ""
 echo "→ Building webapi Docker image..."
