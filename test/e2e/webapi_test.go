@@ -224,6 +224,38 @@ func newNebariApp(name, namespace, hostname, visibility string, priority int) *u
 	return u
 }
 
+// newTestService creates a minimal Kubernetes Service for testing NebariApp discovery.
+// The NebariApp CRDs created by tests point to spec.service.name="test-service",
+// so we need an actual K8s Service to exist for the webapi watcher to report them.
+func newTestService(name, namespace string, port int) *unstructured.Unstructured {
+	u := &unstructured.Unstructured{}
+	u.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "",
+		Version: "v1",
+		Kind:    "Service",
+	})
+	u.SetName(name)
+	u.SetNamespace(namespace)
+
+	spec := map[string]interface{}{
+		"type": "ClusterIP",
+		"ports": []interface{}{
+			map[string]interface{}{
+				"name":       "http",
+				"port":       int64(port),
+				"targetPort": int64(port),
+				"protocol":   "TCP",
+			},
+		},
+		"selector": map[string]interface{}{
+			"app": "test-dummy",
+		},
+	}
+
+	_ = unstructured.SetNestedMap(u.Object, spec, "spec")
+	return u
+}
+
 var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 	var (
 		ctx           = context.Background()
@@ -596,6 +628,11 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(td.AccessToken).NotTo(BeEmpty())
 			bearerToken = td.AccessToken
 
+			By("Creating backing Service for NebariApp")
+			testSvc := newTestService("test-service", e2eNamespace, 8080)
+			Expect(k8sClient.Create(context.Background(), testSvc)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(context.Background(), testSvc) })
+
 			By("Creating a public NebariApp for pinning")
 			pinApp := newNebariApp(pinAppName, e2eNamespace,
 				fmt.Sprintf("%s.nebari.test", pinAppName), "public", 88)
@@ -896,6 +933,11 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(json.NewDecoder(tokenResp.Body).Decode(&td)).To(Succeed())
 			Expect(td.AccessToken).NotTo(BeEmpty())
 			bearerToken = td.AccessToken
+
+			By("Creating backing Service for NebariApp")
+			testSvc := newTestService("test-service", e2eNamespace, 8080)
+			Expect(k8sClient.Create(context.Background(), testSvc)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(context.Background(), testSvc) })
 
 			By("Creating a NebariApp to request access to")
 			arApp := newNebariApp(arAppName, e2eNamespace,
