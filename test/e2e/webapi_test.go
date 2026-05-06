@@ -119,6 +119,11 @@ func startPortForwardAndWait(namespace, target, ports string) *exec.Cmd {
 			ports,
 			"--pod-running-timeout=30s")
 
+		// Capture both stdout and stderr - kubectl port-forward outputs to stdout
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
 			return fmt.Errorf("failed to create stderr pipe: %w", err)
@@ -128,8 +133,22 @@ func startPortForwardAndWait(namespace, target, ports string) *exec.Cmd {
 			return fmt.Errorf("failed to start port-forward: %w", err)
 		}
 
-		// Wait for "Forwarding from..." in stderr, which signals the tunnel is ready
+		// Wait for "Forwarding from..." in stdout or stderr, which signals the tunnel is ready
 		ready := make(chan error, 1)
+		
+		// Monitor stdout
+		go func() {
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.Contains(line, "Forwarding from") {
+					ready <- nil
+					return
+				}
+			}
+		}()
+		
+		// Monitor stderr for errors
 		go func() {
 			scanner := bufio.NewScanner(stderr)
 			for scanner.Scan() {
@@ -146,19 +165,17 @@ func startPortForwardAndWait(namespace, target, ports string) *exec.Cmd {
 			}
 			if err := scanner.Err(); err != nil {
 				ready <- fmt.Errorf("stderr scan error: %w", err)
-			} else {
-				ready <- fmt.Errorf("port-forward exited without 'Forwarding from' message")
 			}
 		}()
 
-		// Wait for ready signal or timeout
+		// Wait for ready signal or timeout (increased to handle slow pod startup)
 		select {
 		case err := <-ready:
 			return err
-		case <-time.After(15 * time.Second):
-			return fmt.Errorf("port-forward did not become ready within 15s")
+		case <-time.After(30 * time.Second):
+			return fmt.Errorf("port-forward did not become ready within 30s")
 		}
-	}, 60*time.Second, 5*time.Second).Should(Succeed(), "port-forward should become ready")
+	}, 120*time.Second, 5*time.Second).Should(Succeed(), "port-forward should become ready")
 
 	return cmd
 }
