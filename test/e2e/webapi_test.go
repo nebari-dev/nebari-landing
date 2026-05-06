@@ -7,6 +7,7 @@
 package e2e
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -95,6 +96,93 @@ var (
 // VeryLongTimeout is used for slow cluster operations.
 const VeryLongTimeout = 5 * time.Minute
 
+// startPortForwardAndWait establishes a kubectl port-forward and waits for it to be ready.
+// It retries the entire port-forward setup if the tunnel fails to establish within the timeout.
+//
+// The retry logic is at the port-forward level (not HTTP client level) to properly handle
+// the case where kubectl port-forward is slow to establish the tunnel. When the tunnel is
+// mid-handshake, TCP connections succeed but hang forever waiting for the upstream proxy.
+//
+// Returns the running command which the caller should clean up with DeferCleanup or Process.Kill.
+func startPortForwardAndWait(namespace, target, ports string) *exec.Cmd {
+	var cmd *exec.Cmd
+	Eventually(func() error {
+		// Kill any previous attempt
+		if cmd != nil && cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+
+		// Start a new port-forward with pod-running-timeout for fast failure
+		cmd = exec.Command("kubectl", "port-forward",
+			"-n", namespace,
+			target,
+			ports,
+			"--pod-running-timeout=30s")
+
+		// Capture both stdout and stderr - kubectl port-forward outputs to stdout
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start port-forward: %w", err)
+		}
+
+		// Wait for "Forwarding from..." in stdout or stderr, which signals the tunnel is ready
+		ready := make(chan error, 1)
+		
+		// Monitor stdout
+		go func() {
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.Contains(line, "Forwarding from") {
+					ready <- nil
+					return
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				ready <- fmt.Errorf("stdout scan error: %w", err)
+			}
+		}()
+		
+		// Monitor stderr for errors
+		go func() {
+			scanner := bufio.NewScanner(stderr)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.Contains(line, "Forwarding from") {
+					ready <- nil
+					return
+				}
+				// Check for error messages
+				if strings.Contains(line, "error") || strings.Contains(line, "Error") {
+					ready <- fmt.Errorf("port-forward error: %s", line)
+					return
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				ready <- fmt.Errorf("stderr scan error: %w", err)
+			}
+		}()
+
+		// Wait for ready signal or timeout (increased to handle slow pod startup)
+		select {
+		case err := <-ready:
+			return err
+		case <-time.After(30 * time.Second):
+			return fmt.Errorf("port-forward did not become ready within 30s")
+		}
+	}, 120*time.Second, 5*time.Second).Should(Succeed(), "port-forward should become ready")
+
+	return cmd
+}
+
 // newNebariApp creates an unstructured NebariApp with a landing-page config.
 // No api/v1 import is needed — the resource is built from raw field maps.
 //
@@ -156,35 +244,22 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to apply namespace %s", namespace)
 
 		By("Starting Keycloak port-forward to discover issuer URL")
-		keycloakPFCmd = exec.Command("kubectl", "port-forward",
-			"-n", kcNamespace, fmt.Sprintf("svc/%s", kcService),
-			fmt.Sprintf("18090:%s", kcPort))
-		Expect(keycloakPFCmd.Start()).NotTo(HaveOccurred(), "keycloak port-forward should start")
+		keycloakPFCmd = startPortForwardAndWait(kcNamespace, fmt.Sprintf("svc/%s", kcService), fmt.Sprintf("18090:%s", kcPort))
+
+		By("Discovering Keycloak issuer URL")
 		var keycloakIssuer string
-		Eventually(func() error {
-			resp, err := http.Get(fmt.Sprintf("http://localhost:18090/realms/%s/.well-known/openid-configuration", kcRealm))
-			if err != nil {
-				return err
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("keycloak not ready: status %d", resp.StatusCode)
-			}
-			var disc struct {
-				Issuer string `json:"issuer"`
-			}
-			if err := json.NewDecoder(resp.Body).Decode(&disc); err != nil {
-				return fmt.Errorf("failed to decode OIDC discovery: %w", err)
-			}
-			if disc.Issuer == "" {
-				return fmt.Errorf("OIDC discovery returned empty issuer")
-			}
-			// issuer looks like "http://<host>/realms/<realm>";
-			// strip the realm suffix to get the base URL for KEYCLOAK_ISSUER_URL.
-			keycloakIssuer = strings.TrimSuffix(disc.Issuer, fmt.Sprintf("/realms/%s", kcRealm))
-			return nil
-		}, 30*time.Second, time.Second).Should(Succeed(),
-			"keycloak should be reachable via port-forward")
+		resp, err := http.Get(fmt.Sprintf("http://localhost:18090/realms/%s/.well-known/openid-configuration", kcRealm))
+		Expect(err).NotTo(HaveOccurred(), "should fetch OIDC discovery document")
+		defer resp.Body.Close()
+		Expect(resp.StatusCode).To(Equal(http.StatusOK), "OIDC discovery should return 200")
+		var disc struct {
+			Issuer string `json:"issuer"`
+		}
+		Expect(json.NewDecoder(resp.Body).Decode(&disc)).To(Succeed(), "should decode OIDC discovery")
+		Expect(disc.Issuer).NotTo(BeEmpty(), "OIDC discovery issuer should not be empty")
+		// issuer looks like "http://<host>/realms/<realm>";
+		// strip the realm suffix to get the base URL for KEYCLOAK_ISSUER_URL.
+		keycloakIssuer = strings.TrimSuffix(disc.Issuer, fmt.Sprintf("/realms/%s", kcRealm))
 
 		if !useExistingCluster {
 			By("Installing nebari-landing Helm chart (webapi + Redis, no frontend)")
@@ -295,20 +370,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			})
 
 			By("Port-forwarding to webapi")
-			pfCmd := exec.Command("kubectl", "port-forward",
-				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18082:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred())
+			pfCmd := startPortForwardAndWait(namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18082:8080")
 			DeferCleanup(func() { _ = pfCmd.Process.Kill() })
-
-			By("Waiting for webapi port-forward to be ready")
-			Eventually(func() error {
-				resp, err := http.Get("http://localhost:18082/api/v1/health")
-				if err != nil {
-					return err
-				}
-				resp.Body.Close()
-				return nil
-			}, 30*time.Second, time.Second).Should(Succeed())
 
 			By("Waiting for watcher to process the NebariApp")
 			time.Sleep(5 * time.Second)
@@ -361,20 +424,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, authApp) })
 
 			By("Port-forwarding to webapi (port 18081)")
-			pfCmd := exec.Command("kubectl", "port-forward",
-				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18081:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred())
+			pfCmd := startPortForwardAndWait(namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18081:8080")
 			DeferCleanup(func() { _ = pfCmd.Process.Kill() })
-
-			By("Waiting for port-forward to be ready")
-			Eventually(func() error {
-				resp, err := http.Get("http://localhost:18081/api/v1/health")
-				if err != nil {
-					return err
-				}
-				resp.Body.Close()
-				return nil
-			}, 30*time.Second, time.Second).Should(Succeed())
 
 			By("Waiting for watcher to process the NebariApp")
 			time.Sleep(5 * time.Second)
@@ -407,23 +458,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 	Context("Health Checks", func() {
 		It("should report healthy status", func() {
 			By("Port-forwarding to webapi (port 18080)")
-			pfCmd := exec.Command("kubectl", "port-forward",
-				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18080:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred(), "port-forward should start")
+			pfCmd := startPortForwardAndWait(namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18080:8080")
 			DeferCleanup(func() { _ = pfCmd.Process.Kill() })
-
-			By("Waiting for health endpoint to respond")
-			Eventually(func() error {
-				resp, err := http.Get("http://localhost:18080/api/v1/health")
-				if err != nil {
-					return err
-				}
-				defer resp.Body.Close()
-				if resp.StatusCode != http.StatusOK {
-					return fmt.Errorf("unexpected status %d", resp.StatusCode)
-				}
-				return nil
-			}, 30*time.Second, time.Second).Should(Succeed(), "health endpoint should return 200")
 
 			By("Verifying response body contains status field")
 			resp, err := http.Get("http://localhost:18080/api/v1/health")
