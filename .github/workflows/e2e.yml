@@ -87,14 +87,27 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             IMAGE="quay.io/nebari/nebari-webapi:${{ steps.branch.outputs.tag }}"
             echo "Attempting to pull ${IMAGE}..."
-            if docker pull "${IMAGE}"; then
-              docker tag "${IMAGE}" nebari-landing/webapi:dev
-              echo "pulled=true" >> "$GITHUB_OUTPUT"
-              echo "✓ Pulled ${IMAGE}"
-            else
-              echo "pulled=false" >> "$GITHUB_OUTPUT"
-              echo "✗ Pull failed, will build locally"
-            fi
+            
+            # Retry up to 5 minutes (webapi workflow takes ~4min to publish)
+            MAX_ATTEMPTS=30
+            SLEEP=10
+            
+            for i in $(seq 1 $MAX_ATTEMPTS); do
+              if docker pull "${IMAGE}" 2>&1; then
+                docker tag "${IMAGE}" nebari-landing/webapi:dev
+                echo "pulled=true" >> "$GITHUB_OUTPUT"
+                echo "✓ Pulled ${IMAGE} (attempt $i)"
+                exit 0
+              fi
+              
+              if [ $i -lt $MAX_ATTEMPTS ]; then
+                echo "⏳ Image not yet available, waiting ${SLEEP}s... (attempt $i/$MAX_ATTEMPTS)"
+                sleep $SLEEP
+              fi
+            done
+            
+            echo "pulled=false" >> "$GITHUB_OUTPUT"
+            echo "✗ Pull failed after $MAX_ATTEMPTS attempts, will build locally"
           else
             echo "pulled=false" >> "$GITHUB_OUTPUT"
             echo "Not a PR, will build locally"
