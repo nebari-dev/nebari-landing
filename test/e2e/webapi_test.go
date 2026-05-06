@@ -256,7 +256,7 @@ func newTestService(name, namespace string, port int) *unstructured.Unstructured
 	return u
 }
 
-var _ = Describe("Webapi – Service Discovery", Ordered, func() {
+var _ = Describe("Webapi – Service Discovery", func() {
 	var (
 		ctx           = context.Background()
 		namespace     = e2eNamespace
