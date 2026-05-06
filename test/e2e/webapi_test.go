@@ -275,6 +275,11 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		_, err = utils.Run(applyNs)
 		Expect(err).NotTo(HaveOccurred(), "Failed to apply namespace %s", namespace)
 
+		By("Creating shared backing Service for all test NebariApps")
+		sharedTestSvc := newTestService("test-service", e2eNamespace, 8080)
+		Expect(k8sClient.Create(ctx, sharedTestSvc)).To(Succeed(), "should create shared test-service")
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, sharedTestSvc) })
+
 		By("Starting Keycloak port-forward to discover issuer URL")
 		keycloakPFCmd = startPortForwardAndWait(kcNamespace, fmt.Sprintf("svc/%s", kcService), fmt.Sprintf("18090:%s", kcPort))
 
@@ -628,11 +633,6 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(td.AccessToken).NotTo(BeEmpty())
 			bearerToken = td.AccessToken
 
-			By("Creating backing Service for NebariApp")
-			testSvc := newTestService("test-service", e2eNamespace, 8080)
-			Expect(k8sClient.Create(context.Background(), testSvc)).To(Succeed())
-			DeferCleanup(func() { _ = k8sClient.Delete(context.Background(), testSvc) })
-
 			By("Creating a public NebariApp for pinning")
 			pinApp := newNebariApp(pinAppName, e2eNamespace,
 				fmt.Sprintf("%s.nebari.test", pinAppName), "public", 88)
@@ -933,11 +933,6 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(json.NewDecoder(tokenResp.Body).Decode(&td)).To(Succeed())
 			Expect(td.AccessToken).NotTo(BeEmpty())
 			bearerToken = td.AccessToken
-
-			By("Creating backing Service for NebariApp")
-			testSvc := newTestService("test-service", e2eNamespace, 8080)
-			Expect(k8sClient.Create(context.Background(), testSvc)).To(Succeed())
-			DeferCleanup(func() { _ = k8sClient.Delete(context.Background(), testSvc) })
 
 			By("Creating a NebariApp to request access to")
 			arApp := newNebariApp(arAppName, e2eNamespace,
