@@ -146,6 +146,9 @@ func startPortForwardAndWait(namespace, target, ports string) *exec.Cmd {
 					return
 				}
 			}
+			if err := scanner.Err(); err != nil {
+				ready <- fmt.Errorf("stdout scan error: %w", err)
+			}
 		}()
 		
 		// Monitor stderr for errors
