@@ -97,12 +97,22 @@ jobs:
       - name: Load webapi image into k3d
         run: k3d image import nebari-landing/webapi:dev -c ${{ steps.sandbox.outputs.cluster-name }}
 
-      # Patch the webapi deployment to use the debug build
+      # Patch the ArgoCD Application to use the debug build.
+      # ArgoCD's selfHeal will revert direct kubectl patches to the deployment,
+      # so we must patch the Application's Helm parameters instead.
       - name: Patch webapi to use debug image
         run: |
-          kubectl set image deployment/nebari-landing-webapi \
-            -n nebari-system \
-            webapi=docker.io/nebari-landing/webapi:dev
+          kubectl patch application nebari-landingpage \
+            -n argocd \
+            --type merge \
+            -p '{"spec":{"source":{"helm":{"parameters":[
+              {"name":"webapi.image.repository","value":"docker.io/nebari-landing/webapi"},
+              {"name":"webapi.image.tag","value":"dev"},
+              {"name":"webapi.image.pullPolicy","value":"Never"}
+            ]}}}}'
+          
+          # Wait for ArgoCD to sync and the deployment to roll out
+          sleep 10
           kubectl rollout status deployment/nebari-landing-webapi \
             -n nebari-system \
             --timeout=2m
