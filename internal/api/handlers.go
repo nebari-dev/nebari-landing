@@ -327,13 +327,35 @@ func (h *Handler) handleGetServices(w http.ResponseWriter, r *http.Request) {
 	pinnedUIDs := h.callerPinnedUIDs(claims, authenticated)
 
 	allServices := h.cache.GetAll()
+	log.Info("handleGetServices called",
+		"totalServicesInCache", len(allServices),
+		"authenticated", authenticated,
+		"userSub", func() string {
+			if claims != nil {
+				return claims.Subject
+			}
+			return "none"
+		}(),
+	)
+
 	views := make([]*ServiceView, 0, len(allServices))
 	for _, service := range allServices {
-		if !h.canAccessService(service, authenticated, claims) {
+		canAccess := h.canAccessService(service, authenticated, claims)
+		log.Info("Service access check",
+			"serviceName", service.Name,
+			"namespace", service.Namespace,
+			"uid", service.UID,
+			"visibility", service.Visibility,
+			"canAccess", canAccess,
+			"authenticated", authenticated,
+		)
+		if !canAccess {
 			continue
 		}
 		views = append(views, toServiceView(service, pinnedUIDs[service.UID]))
 	}
+
+	log.Info("Returning services", "count", len(views))
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(ServiceResponse{Services: views}); err != nil {

@@ -97,6 +97,10 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.services[a.UID] = service
+	
+	// Debug logging to trace cache operations
+	fmt.Printf("[CACHE-DEBUG] Service added/updated: name=%s namespace=%s uid=%s visibility=%s totalInCache=%d\n",
+		service.Name, service.Namespace, service.UID, service.Visibility, len(c.services))
 }
 
 // Remove removes a service from the cache
@@ -136,11 +140,21 @@ func (c *ServiceCache) GetAll() []*ServiceInfo {
 	}
 
 	sort.Slice(services, func(i, j int) bool {
-		if services[i].Priority != services[j].Priority {
+		if services[i].Priority != services[i].Priority {
 			return services[i].Priority < services[j].Priority
 		}
 		return services[i].Name < services[j].Name
 	})
+
+	// Debug logging
+	fmt.Printf("[CACHE-DEBUG] GetAll called: totalServices=%d services=[", len(services))
+	for i, svc := range services {
+		if i > 0 {
+			fmt.Print(", ")
+		}
+		fmt.Printf("%s/%s", svc.Namespace, svc.Name)
+	}
+	fmt.Println("]")
 
 	return services
 }
