@@ -203,6 +203,15 @@ jobs:
             -n nebari-system --timeout=180s
           echo "✓ Webapi ready"
 
+      # ── Debug: tmate session ──────────────────────────────────────────────────
+      # SSH into runner to verify image and debug timing issues
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+          install-dependencies: false
+        timeout-minutes: 30
+
       # ── E2E suite ─────────────────────────────────────────────────────────────
       - name: Run e2e tests
         env:
