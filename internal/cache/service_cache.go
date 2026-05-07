@@ -140,7 +140,7 @@ func (c *ServiceCache) GetAll() []*ServiceInfo {
 	}
 
 	sort.Slice(services, func(i, j int) bool {
-		if services[i].Priority != services[i].Priority {
+		if services[i].Priority != services[j].Priority {
 			return services[i].Priority < services[j].Priority
 		}
 		return services[i].Name < services[j].Name
