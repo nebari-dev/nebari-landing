@@ -97,7 +97,7 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.services[a.UID] = service
-	
+
 	// Debug logging to trace cache operations
 	fmt.Printf("[CACHE-DEBUG] Service added/updated: name=%s namespace=%s uid=%s visibility=%s totalInCache=%d\n",
 		service.Name, service.Namespace, service.UID, service.Visibility, len(c.services))
