@@ -671,8 +671,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 					return err
 				}
 				for _, svc := range result.Services {
-					if name, _ := svc["displayName"].(string); name == "Test Service "+pinAppName {
-						if uid, _ := svc["uid"].(string); uid != "" {
+					if name, _ := svc["name"].(string); name == "Test Service "+pinAppName {
+						if uid, _ := svc["id"].(string); uid != "" {
 							serviceUID = uid
 							return nil
 						}
