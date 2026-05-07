@@ -203,14 +203,62 @@ jobs:
             -n nebari-system --timeout=180s
           echo "✓ Webapi ready"
 
-      # ── Debug: tmate session ──────────────────────────────────────────────────
-      # SSH into runner to verify image and debug timing issues
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
-        with:
-          limit-access-to-actor: true
-          install-dependencies: false
-        timeout-minutes: 30
+      # ── Debug: Verify webapi image and debug logging ──────────────────────────
+      - name: Verify webapi image contains debug logging
+        run: |
+          echo "=== Checking webapi image for debug logging ==="
+          
+          # Get current image
+          IMAGE=$(kubectl get deployment/nebari-landing-webapi -n nebari-system \
+            -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "Current image: $IMAGE"
+          
+          # Get pod info
+          POD=$(kubectl get pod -n nebari-system \
+            -l app.kubernetes.io/name=nebari-landing-webapi \
+            -o jsonpath='{.items[0].metadata.name}')
+          echo "Pod: $POD"
+          
+          # Check image ID
+          IMAGE_ID=$(kubectl get pod -n nebari-system $POD \
+            -o jsonpath='{.status.containerStatuses[0].imageID}')
+          echo "Image ID: $IMAGE_ID"
+          
+          # Extract binary and check for debug strings
+          echo ""
+          echo "=== Checking binary for debug strings ==="
+          kubectl cp nebari-system/$POD:/app/webapi /tmp/webapi-binary
+          
+          if strings /tmp/webapi-binary | grep -q "CACHE-DEBUG"; then
+            echo "✅ Found [CACHE-DEBUG] strings in binary"
+            strings /tmp/webapi-binary | grep "CACHE-DEBUG" | head -3
+          else
+            echo "❌ NO [CACHE-DEBUG] strings found in binary"
+          fi
+          
+          if strings /tmp/webapi-binary | grep -q "handleGetServices called"; then
+            echo "✅ Found [API] debug strings in binary"
+            strings /tmp/webapi-binary | grep "handleGetServices" | head -3
+          else
+            echo "❌ NO [API] debug strings found in binary"
+          fi
+          
+          # Check current logs
+          echo ""
+          echo "=== Checking webapi logs for debug output ==="
+          kubectl logs -n nebari-system -l app.kubernetes.io/name=nebari-landing-webapi \
+            --tail=50 | grep -E "INFO|ERROR" | tail -20
+          
+          echo ""
+          echo "=== Checking for [CACHE-DEBUG] in logs ==="
+          if kubectl logs -n nebari-system -l app.kubernetes.io/name=nebari-landing-webapi \
+            | grep -q "\[CACHE-DEBUG\]"; then
+            echo "✅ Found [CACHE-DEBUG] in logs"
+            kubectl logs -n nebari-system -l app.kubernetes.io/name=nebari-landing-webapi \
+              | grep "\[CACHE-DEBUG\]" | head -5
+          else
+            echo "❌ NO [CACHE-DEBUG] found in logs"
+          fi
 
       # ── E2E suite ─────────────────────────────────────────────────────────────
       - name: Run e2e tests
