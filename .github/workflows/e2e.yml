@@ -139,6 +139,16 @@ jobs:
       - name: Load webapi image into k3d
         run: k3d image import nebari-landing/webapi:dev -c ${{ steps.sandbox.outputs.cluster-name }}
 
+      # Patch the webapi deployment to use the debug build
+      - name: Patch webapi to use debug image
+        run: |
+          kubectl set image deployment/nebari-landing-webapi \
+            -n nebari-system \
+            webapi=docker.io/nebari-landing/webapi:dev
+          kubectl rollout status deployment/nebari-landing-webapi \
+            -n nebari-system \
+            --timeout=2m
+
       # ── NebariApp CRD ─────────────────────────────────────────────────────────
       # Apply directly so the tests don't depend on ArgoCD sync timing.
       - name: Install NebariApp CRD
@@ -218,7 +228,8 @@ jobs:
           USE_EXISTING_CLUSTER: "true"
           CLUSTER_TYPE: k3d
           K3D_CLUSTER_NAME: ${{ steps.sandbox.outputs.cluster-name }}
-          WEBAPI_IMG: nebari-landing/webapi:dev
+          WEBAPI_IMG: docker.io/nebari-landing/webapi:dev
+          E2E_WEBAPI_DEPLOYMENT: nebari-landing-webapi
           # Password for the 'admin' user in the nebari realm (not the master realm).
           E2E_KEYCLOAK_ADMIN_PASSWORD: ${{ env.NEBARI_REALM_ADMIN_PASSWORD }}
         run: go test ./test/e2e/... -tags=e2e -v -timeout 10m
