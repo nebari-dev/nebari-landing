@@ -7,6 +7,7 @@
 package e2e
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -98,11 +99,89 @@ const VeryLongTimeout = 5 * time.Minute
 // startPortForwardAndWait establishes a kubectl port-forward and waits for it to be ready.
 // It retries the entire port-forward setup if the tunnel fails to establish within the timeout.
 //
-// The retry logic is at the port-forward level (not HTTP client level) to properly handle
-// the case where kubectl port-forward is slow to establish the tunnel. When the tunnel is
-// mid-handshake, TCP connections succeed but hang forever waiting for the upstream proxy.
+// NOTE: This is only used for Keycloak in the outer BeforeAll. All webapi connections
+// use direct service DNS (serviceURL) instead of port-forwarding for better reliability.
 //
 // Returns the running command which the caller should clean up with DeferCleanup or Process.Kill.
+func startPortForwardAndWait(namespace, target, ports string) *exec.Cmd {
+	var cmd *exec.Cmd
+	Eventually(func() error {
+		// Kill any previous attempt
+		if cmd != nil && cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+
+		// Start a new port-forward with pod-running-timeout for fast failure
+		cmd = exec.Command("kubectl", "port-forward",
+			"-n", namespace,
+			target,
+			ports,
+			"--pod-running-timeout=30s")
+
+		// Capture both stdout and stderr - kubectl port-forward outputs to stdout
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start port-forward: %w", err)
+		}
+
+		// Wait for "Forwarding from..." in stdout or stderr, which signals the tunnel is ready
+		ready := make(chan error, 1)
+		
+		// Monitor stdout
+		go func() {
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.Contains(line, "Forwarding from") {
+					ready <- nil
+					return
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				ready <- fmt.Errorf("stdout scan error: %w", err)
+			}
+		}()
+		
+		// Monitor stderr for errors
+		go func() {
+			scanner := bufio.NewScanner(stderr)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.Contains(line, "Forwarding from") {
+					ready <- nil
+					return
+				}
+				// Check for error messages
+				if strings.Contains(line, "error") || strings.Contains(line, "Error") {
+					ready <- fmt.Errorf("port-forward error: %s", line)
+					return
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				ready <- fmt.Errorf("stderr scan error: %w", err)
+			}
+		}()
+
+		// Wait for ready signal or timeout (increased to handle slow pod startup)
+		select {
+		case err := <-ready:
+			return err
+		case <-time.After(30 * time.Second):
+			return fmt.Errorf("port-forward did not become ready within 30s")
+		}
+	}, 120*time.Second, 5*time.Second).Should(Succeed(), "port-forward should become ready")
+
+	return cmd
+}
+
 // serviceURL returns the in-cluster DNS name for a service.
 // This allows tests to connect directly without port-forwarding,
 // which is more reliable and faster in CI environments.
@@ -879,12 +958,6 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				}
 				return fmt.Errorf("service %q not yet visible", arAppName)
 			}, VeryLongTimeout, 2*time.Second).Should(Succeed())
-		})
-
-		AfterAll(func() {
-			if pfCmd != nil && pfCmd.Process != nil {
-				_ = pfCmd.Process.Kill()
-			}
 		})
 
 		It("should reject unauthenticated access requests with 401", func() {
