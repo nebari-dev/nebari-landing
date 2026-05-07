@@ -70,55 +70,13 @@ jobs:
           restore-keys: |
             go-${{ runner.os }}-
 
-      # ── Webapi image (pull from Quay if available, fallback to build) ─────────
-      # For PRs, the webapi workflow publishes to quay.io/nebari/nebari-webapi:<branch>
-      # Pulling saves ~2min vs building. Falls back to local build for fork PRs.
-      - name: Extract branch / tag name
-        id: branch
-        run: |
-          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-          TAG=$(echo "$BRANCH" | sed 's/\//-/g' | sed 's/[^a-zA-Z0-9._-]//g')
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Pull webapi image from Quay
-        id: pull
-        continue-on-error: true
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            IMAGE="quay.io/nebari/nebari-webapi:${{ steps.branch.outputs.tag }}"
-            echo "Attempting to pull ${IMAGE}..."
-            
-            # Retry up to 5 minutes (webapi workflow takes ~4min to publish)
-            MAX_ATTEMPTS=30
-            SLEEP=10
-            
-            for i in $(seq 1 $MAX_ATTEMPTS); do
-              if docker pull "${IMAGE}" 2>&1; then
-                docker tag "${IMAGE}" nebari-landing/webapi:dev
-                echo "pulled=true" >> "$GITHUB_OUTPUT"
-                echo "✓ Pulled ${IMAGE} (attempt $i)"
-                exit 0
-              fi
-              
-              if [ $i -lt $MAX_ATTEMPTS ]; then
-                echo "⏳ Image not yet available, waiting ${SLEEP}s... (attempt $i/$MAX_ATTEMPTS)"
-                sleep $SLEEP
-              fi
-            done
-            
-            echo "pulled=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Pull failed after $MAX_ATTEMPTS attempts, will build locally"
-          else
-            echo "pulled=false" >> "$GITHUB_OUTPUT"
-            echo "Not a PR, will build locally"
-          fi
-
+      # ── Webapi image (always build locally for now) ───────────────────────────
+      # TEMPORARY: Always build locally to ensure we have latest code with debug logging
+      # TODO: Re-enable Quay pulling once webapi workflow is stable
       - name: Set up Docker Buildx
-        if: steps.pull.outputs.pulled != 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Build webapi image
-        if: steps.pull.outputs.pulled != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
