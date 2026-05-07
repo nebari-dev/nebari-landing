@@ -16,7 +16,11 @@
 </p>
 
 <p align="center">
-  <img src="docs/static/imgs/landingpage-overview.png" alt="Nebari Landing page overview" width="800">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/static/screenshots/homepage-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/static/screenshots/homepage-light.png">
+    <img src="docs/static/screenshots/homepage-light.png" alt="Nebari Landing page overview" width="800">
+  </picture>
 </p>
 
 <p align="center">
