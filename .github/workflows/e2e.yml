@@ -209,7 +209,6 @@ jobs:
         uses: mxschmitt/action-tmate@v3
         with:
           limit-access-to-actor: true
-          install-dependencies: false
         timeout-minutes: 30
 
       # ── E2E suite ─────────────────────────────────────────────────────────────
