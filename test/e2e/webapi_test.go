@@ -7,7 +7,6 @@
 package e2e
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -104,83 +103,11 @@ const VeryLongTimeout = 5 * time.Minute
 // mid-handshake, TCP connections succeed but hang forever waiting for the upstream proxy.
 //
 // Returns the running command which the caller should clean up with DeferCleanup or Process.Kill.
-func startPortForwardAndWait(namespace, target, ports string) *exec.Cmd {
-	var cmd *exec.Cmd
-	Eventually(func() error {
-		// Kill any previous attempt
-		if cmd != nil && cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-
-		// Start a new port-forward with pod-running-timeout for fast failure
-		cmd = exec.Command("kubectl", "port-forward",
-			"-n", namespace,
-			target,
-			ports,
-			"--pod-running-timeout=30s")
-
-		// Capture both stdout and stderr - kubectl port-forward outputs to stdout
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			return fmt.Errorf("failed to create stdout pipe: %w", err)
-		}
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			return fmt.Errorf("failed to create stderr pipe: %w", err)
-		}
-
-		if err := cmd.Start(); err != nil {
-			return fmt.Errorf("failed to start port-forward: %w", err)
-		}
-
-		// Wait for "Forwarding from..." in stdout or stderr, which signals the tunnel is ready
-		ready := make(chan error, 1)
-		
-		// Monitor stdout
-		go func() {
-			scanner := bufio.NewScanner(stdout)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if strings.Contains(line, "Forwarding from") {
-					ready <- nil
-					return
-				}
-			}
-			if err := scanner.Err(); err != nil {
-				ready <- fmt.Errorf("stdout scan error: %w", err)
-			}
-		}()
-		
-		// Monitor stderr for errors
-		go func() {
-			scanner := bufio.NewScanner(stderr)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if strings.Contains(line, "Forwarding from") {
-					ready <- nil
-					return
-				}
-				// Check for error messages
-				if strings.Contains(line, "error") || strings.Contains(line, "Error") {
-					ready <- fmt.Errorf("port-forward error: %s", line)
-					return
-				}
-			}
-			if err := scanner.Err(); err != nil {
-				ready <- fmt.Errorf("stderr scan error: %w", err)
-			}
-		}()
-
-		// Wait for ready signal or timeout (increased to handle slow pod startup)
-		select {
-		case err := <-ready:
-			return err
-		case <-time.After(30 * time.Second):
-			return fmt.Errorf("port-forward did not become ready within 30s")
-		}
-	}, 120*time.Second, 5*time.Second).Should(Succeed(), "port-forward should become ready")
-
-	return cmd
+// serviceURL returns the in-cluster DNS name for a service.
+// This allows tests to connect directly without port-forwarding,
+// which is more reliable and faster in CI environments.
+func serviceURL(serviceName, namespace string, port int) string {
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, namespace, port)
 }
 
 // newNebariApp creates an unstructured NebariApp with a landing-page config.
@@ -406,15 +333,14 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				_ = k8sClient.Delete(ctx, testApp)
 			})
 
-			By("Port-forwarding to webapi")
-			pfCmd := startPortForwardAndWait(namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18082:8080")
-			DeferCleanup(func() { _ = pfCmd.Process.Kill() })
+			By("Connecting directly to webapi service")
+			webapiBase := serviceURL(e2eWebapiService, namespace, 8080)
 
 			By("Waiting for watcher to process the NebariApp")
 			time.Sleep(5 * time.Second)
 
 			By("Calling GET /api/v1/services without credentials")
-			resp, err := http.Get("http://localhost:18082/api/v1/services")
+			resp, err := http.Get(webapiBase + "/api/v1/services")
 			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -460,15 +386,14 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(k8sClient.Create(ctx, authApp)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, authApp) })
 
-			By("Port-forwarding to webapi (port 18081)")
-			pfCmd := startPortForwardAndWait(namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18081:8080")
-			DeferCleanup(func() { _ = pfCmd.Process.Kill() })
+			By("Connecting directly to webapi service")
+			webapiBase := serviceURL(e2eWebapiService, namespace, 8080)
 
 			By("Waiting for watcher to process the NebariApp")
 			time.Sleep(5 * time.Second)
 
 			By("Calling /api/v1/services without a token — auth services must be hidden")
-			resp, err := http.Get("http://localhost:18081/api/v1/services")
+			resp, err := http.Get(webapiBase + "/api/v1/services")
 			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -494,12 +419,11 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 
 	Context("Health Checks", func() {
 		It("should report healthy status", func() {
-			By("Port-forwarding to webapi (port 18080)")
-			pfCmd := startPortForwardAndWait(namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18080:8080")
-			DeferCleanup(func() { _ = pfCmd.Process.Kill() })
+			By("Connecting directly to webapi service")
+			webapiBase := serviceURL(e2eWebapiService, namespace, 8080)
 
 			By("Verifying response body contains status field")
-			resp, err := http.Get("http://localhost:18080/api/v1/health")
+			resp, err := http.Get(webapiBase + "/api/v1/health")
 			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			body, err := io.ReadAll(resp.Body)
@@ -522,23 +446,13 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		// based image override from #62 is in main, remove the Skip below.
 		// Until then, the gating + content is covered by httptest unit tests
 		// in internal/api/openapi_test.go.
-		var (
-			pfCmd  *exec.Cmd
-			docsBase = "http://localhost:18081"
-		)
+		var docsBase string
 		BeforeAll(func() {
 			if useExistingCluster {
 				Skip("docs e2e disabled on existing-cluster path until ArgoCD image-override fix from #62 lands; httptest unit tests in internal/api/openapi_test.go cover the feature")
 			}
-			By("Port-forwarding to webapi on :18081 for the docs probe")
-			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18081:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred(), "port-forward should start")
-			DeferCleanup(func() {
-				if pfCmd != nil && pfCmd.Process != nil {
-					_ = pfCmd.Process.Kill()
-				}
-			})
+			By("Connecting directly to webapi service (no port-forward needed)")
+			docsBase = serviceURL(e2eWebapiService, namespace, 8080)
 
 			// The set-env patch above triggers a rollout; wait until /api/v1/health
 			// answers on the new pod before probing the docs routes.
@@ -601,7 +515,6 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 	Context("Pins", func() {
 		var (
 			webapiBase  string
-			pfCmd       *exec.Cmd
 			bearerToken string
 			serviceUID  string
 			pinAppName  = "test-pin-app"
@@ -639,11 +552,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(k8sClient.Create(context.Background(), pinApp)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(context.Background(), pinApp) })
 
-			By("Port-forwarding to webapi on :18084")
-			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", e2eNamespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18084:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred())
-			webapiBase = "http://localhost:18084"
+			By("Connecting directly to webapi service (no port-forward needed)")
+			webapiBase = serviceURL(e2eWebapiService, e2eNamespace, 8080)
 
 			Eventually(func() error {
 				resp, err := http.Get(webapiBase + "/api/v1/health")
@@ -684,9 +594,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			if pfCmd != nil && pfCmd.Process != nil {
-				_ = pfCmd.Process.Kill()
-			}
+			// No cleanup needed - no port-forward subprocess
 		})
 
 		It("should return an empty pin list for a new user", func() {
@@ -762,7 +670,6 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 	Context("Notifications", func() {
 		var (
 			webapiBase     string
-			pfCmd          *exec.Cmd
 			bearerToken    string
 			notificationID string
 		)
@@ -793,11 +700,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(td.AccessToken).NotTo(BeEmpty())
 			bearerToken = td.AccessToken
 
-			By("Port-forwarding to webapi on :18085")
-			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", e2eNamespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18085:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred())
-			webapiBase = "http://localhost:18085"
+			By("Connecting directly to webapi service (no port-forward needed)")
+			webapiBase = serviceURL(e2eWebapiService, e2eNamespace, 8080)
 
 			Eventually(func() error {
 				resp, err := http.Get(webapiBase + "/api/v1/health")
@@ -810,9 +714,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			if pfCmd != nil && pfCmd.Process != nil {
-				_ = pfCmd.Process.Kill()
-			}
+			// No cleanup needed - no port-forward subprocess
 		})
 
 		It("should create a notification as admin", func() {
@@ -901,7 +803,6 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 	Context("Access Requests", func() {
 		var (
 			webapiBase  string
-			pfCmd       *exec.Cmd
 			bearerToken string
 			serviceUID  string
 			requestID   string
@@ -940,11 +841,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(k8sClient.Create(context.Background(), arApp)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(context.Background(), arApp) })
 
-			By("Port-forwarding to webapi on :18086")
-			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", e2eNamespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18086:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred())
-			webapiBase = "http://localhost:18086"
+			By("Connecting directly to webapi service (no port-forward needed)")
+			webapiBase = serviceURL(e2eWebapiService, e2eNamespace, 8080)
 
 			Eventually(func() error {
 				resp, err := http.Get(webapiBase + "/api/v1/health")
