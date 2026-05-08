@@ -107,36 +107,26 @@ jobs:
             crd/nebariapps.reconcilers.nebari.dev \
             --timeout=60s
 
-      # ── Preflight: wait for Keycloak + nebari realm ──────────────────────────
-      # The sandbox waits for the keycloak pod to be Ready, but the realm
-      # provisioning PostSync hook runs asynchronously and may need a bit
-      # more time.  Poll the OIDC discovery endpoint via port-forward (port 8080,
-      # which is what keycloakx v7+ exposes on the service) until the realm
-      # responds, so the 30 s test timeout doesn't race with realm setup.
-      - name: Wait for Keycloak nebari realm
+      # ── Preflight: wait for the realm-setup Job to complete ──────────────────
+      # The sandbox waits for the keycloak pod to be Ready, which only covers
+      # "the chart deployed".  The nebari realm itself comes from a separate
+      # post-sync Job (NIC: pkg/argocd/templates/manifests/keycloak/realm-setup-job.yaml)
+      # that ArgoCD doesn't gate the keycloak app's Healthy status on, so we
+      # have to wait on the Job directly. On failure we dump pod logs so the
+      # CI run shows why provisioning didn't finish instead of just timing out.
+      #
+      # Drop this step once nebari-dev/action-nebari-sandbox#27 lands and the
+      # sandbox itself can wait for realm-readiness.
+      - name: Wait for Keycloak realm-setup Job
         run: |
-          kubectl port-forward -n keycloak svc/keycloak-keycloakx-http 19090:8080 &
-          PF_PID=$!
-          trap "kill ${PF_PID} 2>/dev/null || true" EXIT
-          echo "Polling http://localhost:19090/realms/nebari/.well-known/openid-configuration …"
-          for i in $(seq 1 60); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
-              http://localhost:19090/realms/nebari/.well-known/openid-configuration 2>/dev/null || echo 000)
-            if [ "$STATUS" = "200" ]; then
-              echo "✔  nebari realm ready (HTTP $STATUS)"
-              break
-            fi
-            echo "  attempt $i/60 — HTTP $STATUS, retrying in 5 s …"
-            sleep 5
-          done
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
-            http://localhost:19090/realms/nebari/.well-known/openid-configuration 2>/dev/null || echo 000)
-          if [ "$STATUS" != "200" ]; then
-            echo "✗  nebari realm did not become ready (last HTTP $STATUS)"
-            kill "${PF_PID}" 2>/dev/null || true
+          if ! kubectl wait --for=condition=complete \
+                 job/keycloak-realm-setup -n keycloak --timeout=10m; then
+            echo "✗  keycloak-realm-setup did not complete; dumping diagnostics:"
+            kubectl describe job/keycloak-realm-setup -n keycloak || true
+            kubectl logs -n keycloak job/keycloak-realm-setup --tail=200 || true
             exit 1
           fi
-          kill "${PF_PID}" 2>/dev/null || true
+          echo "✔  keycloak-realm-setup Job complete — nebari realm is provisioned"
 
       # ── Read nebari realm admin password ─────────────────────────────────────
       # NIC creates nebari-realm-admin-credentials in the keycloak namespace
