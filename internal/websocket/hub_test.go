@@ -186,6 +186,113 @@ func TestHub_BroadcastNoClients_NoError(t *testing.T) {
 	h.Publish("deleted", &landingcache.ServiceInfo{Name: "gone"})
 }
 
+func TestHub_BroadcastPayload_ServiceEvent_HasCorrectSchema(t *testing.T) {
+	h := newTestHub(t)
+	srv := newServer(t, h)
+
+	conn := dialWS(t, srv)
+	defer func() { _ = conn.Close() }()
+	time.Sleep(20 * time.Millisecond)
+
+	svc := &landingcache.ServiceInfo{Name: "jupyter", Namespace: "default", UID: "abc-123"}
+	h.Publish("added", svc)
+
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, raw, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("broadcast is not valid JSON: %v", err)
+	}
+	for _, key := range []string{"type", "service"} {
+		if _, ok := payload[key]; !ok {
+			t.Errorf("broadcast payload missing required field %q; full payload: %s", key, raw)
+		}
+	}
+	var evtType string
+	if err := json.Unmarshal(payload["type"], &evtType); err != nil || evtType == "" {
+		t.Errorf("payload[type] is not a non-empty string: %s", payload["type"])
+	}
+	var svcObj map[string]json.RawMessage
+	if err := json.Unmarshal(payload["service"], &svcObj); err != nil {
+		t.Fatalf("payload[service] is not a JSON object: %v", err)
+	}
+	for _, key := range []string{"name", "uid"} {
+		if _, ok := svcObj[key]; !ok {
+			t.Errorf("service object missing required field %q", key)
+		}
+	}
+}
+
+func TestHub_BroadcastPayload_NotificationEvent_HasCorrectSchema(t *testing.T) {
+	h := newTestHub(t)
+	srv := newServer(t, h)
+
+	conn := dialWS(t, srv)
+	defer func() { _ = conn.Close() }()
+	time.Sleep(20 * time.Millisecond)
+
+	n := &notifications.Notification{ID: "notif-42", Title: "Test", Message: "Body"}
+	h.PublishNotification(n)
+
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, raw, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("broadcast is not valid JSON: %v", err)
+	}
+	for _, key := range []string{"type", "notification"} {
+		if _, ok := payload[key]; !ok {
+			t.Errorf("broadcast payload missing required field %q; full payload: %s", key, raw)
+		}
+	}
+	var notifObj map[string]json.RawMessage
+	if err := json.Unmarshal(payload["notification"], &notifObj); err != nil {
+		t.Fatalf("payload[notification] is not a JSON object: %v", err)
+	}
+	for _, key := range []string{"id", "title", "message"} {
+		if _, ok := notifObj[key]; !ok {
+			t.Errorf("notification object missing required field %q", key)
+		}
+	}
+}
+
+func TestHub_ClientDisconnectMidBroadcast_NoDeadlock(t *testing.T) {
+	h := newTestHub(t)
+	srv := newServer(t, h)
+
+	conn := dialWS(t, srv)
+	time.Sleep(20 * time.Millisecond)
+
+	// Close the client before the broadcast fires. The hub should handle the dead
+	// connection without panicking or deadlocking.
+	_ = conn.Close()
+	time.Sleep(10 * time.Millisecond)
+
+	done := make(chan struct{})
+	go func() {
+		h.Publish("added", &landingcache.ServiceInfo{Name: "svc"})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Publish blocked or deadlocked after client disconnect")
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	if h.ClientCount() != 0 {
+		t.Errorf("expected 0 clients after disconnect, got %d", h.ClientCount())
+	}
+}
+
 func TestHub_PublishNotification_DeliveredToClient(t *testing.T) {
 	h := newTestHub(t)
 	srv := newServer(t, h)
