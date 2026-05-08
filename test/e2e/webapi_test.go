@@ -425,7 +425,10 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 
 	AfterAll(func() {
 		By("Deleting test NebariApp resources")
-		for _, name := range []string{testAppName, "test-auth-visibility"} {
+		// Sub-context NebariApps (test-pin-app, test-ar-app) also live under the
+		// outer Describe — strip finalizers here too so a partial run leaves no
+		// Terminating-but-stuck CRs behind for the next run to trip on.
+		for _, name := range []string{testAppName, "test-auth-visibility", "test-pin-app", "test-ar-app"} {
 			u := &unstructured.Unstructured{}
 			u.SetGroupVersionKind(nebariAppGVK)
 			u.SetName(name)
@@ -818,6 +821,21 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			}
 		})
 
+		It("should reject non-admin notification creation with 403", func() {
+			body := `{"title":"E2E Negative","message":"should not persist"}`
+			req, err := http.NewRequest(http.MethodPost,
+				webapiBase+"/api/v1/admin/notifications",
+				strings.NewReader(body))
+			Expect(err).NotTo(HaveOccurred())
+			req.Header.Set("Authorization", "Bearer "+userToken)
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusForbidden),
+				"non-admin POST /api/v1/admin/notifications must be 403 (requireAdmin)")
+		})
+
 		It("should create a notification as admin", func() {
 			body := `{"title":"E2E Test Notification","message":"Created during e2e test"}`
 			req, err := http.NewRequest(http.MethodPost,
@@ -908,10 +926,11 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			// userToken is for the requester side (any authenticated user).
 			userToken   string
 			// adminToken is for admin-gated endpoints (requires "admin" group).
-			adminToken  string
-			serviceUID  string
-			requestID   string
-			arAppName   = "test-ar-app"
+			adminToken    string
+			serviceUID    string
+			requestID     string
+			denyRequestID string
+			arAppName     = "test-ar-app"
 		)
 
 		BeforeAll(func() {
@@ -984,7 +1003,11 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		})
 
 		It("should create an access request for an authenticated user", func() {
-			body := `{"reason":"need access for e2e test"}`
+			// Body field must match RequestAccessBody.Message (json:"message")
+			// declared in internal/api/handlers.go. The decoder doesn't reject
+			// unknown fields, so a wrong key (e.g. "reason") would silently
+			// persist an empty message and the test would still see 202.
+			body := `{"message":"need access for e2e test"}`
 			req, err := http.NewRequest(http.MethodPost,
 				webapiBase+"/api/v1/services/"+serviceUID+"/request_access",
 				strings.NewReader(body))
@@ -1006,6 +1029,18 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			requestID = ar.ID
 		})
 
+		It("should reject non-admin GET /admin/access-requests with 403", func() {
+			req, err := http.NewRequest(http.MethodGet,
+				webapiBase+"/api/v1/admin/access-requests", nil)
+			Expect(err).NotTo(HaveOccurred())
+			req.Header.Set("Authorization", "Bearer "+userToken)
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusForbidden),
+				"non-admin GET /api/v1/admin/access-requests must be 403 (requireAdmin)")
+		})
+
 		It("should list the access request as admin", func() {
 			req, err := http.NewRequest(http.MethodGet,
 				webapiBase+"/api/v1/admin/access-requests", nil)
@@ -1020,13 +1055,33 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				AccessRequests []map[string]interface{} `json:"accessRequests"`
 			}
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			ids := make([]string, 0, len(body.AccessRequests))
+			// Find the request we just created and deep-assert the persisted
+			// message field. This is the gate against the schema-mismatch class
+			// of bug: the handler's JSON decoder doesn't DisallowUnknownFields,
+			// so a wrong body key (e.g. "reason" vs "message") would still
+			// return 202 with an empty message — only this assertion catches it.
+			var found map[string]interface{}
 			for _, r := range body.AccessRequests {
-				if id, ok := r["id"].(string); ok {
-					ids = append(ids, id)
+				if id, _ := r["id"].(string); id == requestID {
+					found = r
+					break
 				}
 			}
-			Expect(ids).To(ContainElement(requestID))
+			Expect(found).NotTo(BeNil(), "created access request %s not in admin list", requestID)
+			Expect(found["message"]).To(Equal("need access for e2e test"),
+				"persisted message must match request body — empty value indicates the body key didn't match RequestAccessBody.Message")
+		})
+
+		It("should reject non-admin PUT .../approve with 403", func() {
+			req, err := http.NewRequest(http.MethodPut,
+				webapiBase+"/api/v1/admin/access-requests/"+requestID+"/approve", nil)
+			Expect(err).NotTo(HaveOccurred())
+			req.Header.Set("Authorization", "Bearer "+userToken)
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusForbidden),
+				"non-admin PUT /api/v1/admin/access-requests/{id}/approve must be 403 (requireAdmin)")
 		})
 
 		It("should approve the access request as admin", func() {
@@ -1044,6 +1099,48 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			}
 			Expect(json.NewDecoder(resp.Body).Decode(&ar)).To(Succeed())
 			Expect(ar.Status).To(Equal("approved"))
+		})
+
+		It("should create a second access request for the deny path", func() {
+			// A second AR is needed because the first was just approved; once
+			// resolved, an AR can't be denied. Same user/service is fine since
+			// ErrDuplicatePending only triggers while a request is still pending.
+			body := `{"message":"second request to be denied"}`
+			req, err := http.NewRequest(http.MethodPost,
+				webapiBase+"/api/v1/services/"+serviceUID+"/request_access",
+				strings.NewReader(body))
+			Expect(err).NotTo(HaveOccurred())
+			req.Header.Set("Authorization", "Bearer "+userToken)
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusAccepted))
+			var ar struct {
+				ID     string `json:"id"`
+				Status string `json:"status"`
+			}
+			Expect(json.NewDecoder(resp.Body).Decode(&ar)).To(Succeed())
+			Expect(ar.ID).NotTo(BeEmpty())
+			Expect(ar.Status).To(Equal("pending"))
+			denyRequestID = ar.ID
+		})
+
+		It("should deny the access request as admin", func() {
+			req, err := http.NewRequest(http.MethodPut,
+				webapiBase+"/api/v1/admin/access-requests/"+denyRequestID+"/deny", nil)
+			Expect(err).NotTo(HaveOccurred())
+			req.Header.Set("Authorization", "Bearer "+adminToken)
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusOK),
+				"PUT /api/v1/admin/access-requests/{id}/deny must return 200")
+			var ar struct {
+				Status string `json:"status"`
+			}
+			Expect(json.NewDecoder(resp.Body).Decode(&ar)).To(Succeed())
+			Expect(ar.Status).To(Equal("denied"))
 		})
 	})
 })
