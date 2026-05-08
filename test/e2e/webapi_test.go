@@ -58,8 +58,25 @@ func envOrDefault(key, def string) string {
 //	E2E_KEYCLOAK_NAMESPACE      namespace where Keycloak runs (default: keycloak)
 //	E2E_KEYCLOAK_SERVICE        Keycloak Service name (default: keycloak-keycloakx-http)
 //	E2E_KEYCLOAK_REALM          Keycloak realm (default: nebari)
-//	E2E_KEYCLOAK_ADMIN_USER     realm admin username (default: admin)
+//	E2E_KEYCLOAK_ADMIN_USER     realm admin username — must be in the "admin" group (default: admin)
 //	E2E_KEYCLOAK_ADMIN_PASSWORD realm admin password (default: nebari-realm-admin)
+//	E2E_TEST_USER               unprivileged test-user for regular-user flows (default: test-user)
+//	E2E_TEST_USER_PASSWORD      password for E2E_TEST_USER (default: test-user)
+//	E2E_OIDC_CLIENT_ID          OIDC client ID for token acquisition (default: nebari-system-nebari-landing)
+//	E2E_OIDC_CLIENT_SECRET      OIDC client secret written by the operator to nebari-landing-oidc-client
+//
+// Token acquisition uses the operator-provisioned confidential client
+// (nebari-system-nebari-landing) rather than admin-cli.  Keycloak 26+ sets
+// client.use.lightweight.access.token.enabled=true on admin-cli by default,
+// stripping all identity claims (sub, preferred_username) from its access
+// tokens — which causes 401s on identity-keyed endpoints like /api/v1/pins.
+// The confidential client carries no such flag and issues full-claims tokens.
+//
+// directAccessGrantsEnabled is patched on by the e2e CI workflow (not set by
+// the operator, which correctly leaves it false in production).
+// TODO: remove the CI kcadm patch once nebari-operator supports
+//   spec.auth.keycloakConfig.directAccessGrantsEnabled.
+//   Tracking: https://github.com/nebari-dev/nebari-operator/issues/TBD
 var (
 	e2eNamespace = envOrDefault("E2E_NAMESPACE", "nebari-system")
 
@@ -89,8 +106,22 @@ var (
 	// not the HTTP default 80.  Override to 80 only for older local deployments.
 	kcPort          = envOrDefault("E2E_KEYCLOAK_PORT", "8080")
 	kcRealm         = envOrDefault("E2E_KEYCLOAK_REALM", "nebari")
+	// kcAdminUser is the realm admin — must be in the "admin" Keycloak group.
+	// Used only for tests that exercise admin-gated endpoints.
 	kcAdminUser     = envOrDefault("E2E_KEYCLOAK_ADMIN_USER", "admin")
 	kcAdminPassword = envOrDefault("E2E_KEYCLOAK_ADMIN_PASSWORD", "nebari-realm-admin")
+	// kcTestUser is an unprivileged user for regular-user flows (pins, access
+	// requests from the requester side, notification reads, etc.).
+	kcTestUser     = envOrDefault("E2E_TEST_USER", "test-user")
+	kcTestPassword = envOrDefault("E2E_TEST_USER_PASSWORD", "test-user")
+
+	// oidcClientID / oidcClientSecret are used for password-grant token
+	// acquisition in the e2e tests.  We use the operator-provisioned confidential
+	// client rather than admin-cli because Keycloak 26+ enables
+	// client.use.lightweight.access.token.enabled on admin-cli by default,
+	// which strips sub and preferred_username from access tokens.
+	oidcClientID     = envOrDefault("E2E_OIDC_CLIENT_ID", "nebari-system-nebari-landing")
+	oidcClientSecret = os.Getenv("E2E_OIDC_CLIENT_SECRET")
 )
 
 // VeryLongTimeout is used for slow cluster operations.
@@ -181,6 +212,42 @@ func startPortForwardAndWait(namespace, target, ports string) *exec.Cmd {
 	}, 120*time.Second, 5*time.Second).Should(Succeed(), "port-forward should become ready")
 
 	return cmd
+}
+
+// acquireToken obtains an access token from Keycloak via the resource-owner
+// password grant using the operator-provisioned confidential client.
+//
+// The Keycloak port-forward to localhost:18090 must already be running when
+// this is called (the parent BeforeAll starts it via startPortForwardAndWait).
+// The Host header is set to the in-cluster service name so the token issuer
+// matches KEYCLOAK_ISSUER_URL that the webapi was patched with.
+func acquireToken(username, password string) string {
+	GinkgoHelper()
+	tokenForm := url.Values{
+		"client_id":     {oidcClientID},
+		"client_secret": {oidcClientSecret},
+		"username":      {username},
+		"password":      {password},
+		"grant_type":    {"password"},
+		"scope":         {"openid profile"},
+	}
+	tokenReq, err := http.NewRequest(http.MethodPost,
+		fmt.Sprintf("http://localhost:18090/realms/%s/protocol/openid-connect/token", kcRealm),
+		strings.NewReader(tokenForm.Encode()))
+	Expect(err).NotTo(HaveOccurred())
+	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	tokenReq.Host = fmt.Sprintf("%s.%s.svc.cluster.local", kcService, kcNamespace)
+	tokenResp, err := http.DefaultClient.Do(tokenReq)
+	Expect(err).NotTo(HaveOccurred())
+	defer tokenResp.Body.Close()
+	Expect(tokenResp.StatusCode).To(Equal(http.StatusOK),
+		fmt.Sprintf("Keycloak token request must succeed (realm=%s, user=%s)", kcRealm, username))
+	var td struct {
+		AccessToken string `json:"access_token"`
+	}
+	Expect(json.NewDecoder(tokenResp.Body).Decode(&td)).To(Succeed())
+	Expect(td.AccessToken).NotTo(BeEmpty())
+	return td.AccessToken
 }
 
 // newNebariApp creates an unstructured NebariApp with a landing-page config.
@@ -427,32 +494,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 
 		It("should filter services based on visibility", func() {
 			By("Acquiring a JWT from Keycloak (host-header override for issuer match)")
-			// The port-forward reaches Keycloak at localhost:18090, but the Host header
-			// must match the in-cluster hostname so the token issuer ("iss") equals
-			// KEYCLOAK_URL/realms/<realm>, which is what the webapi validates.
-			tokenForm := url.Values{
-				"client_id":  {"admin-cli"},
-				"username":   {kcAdminUser},
-				"password":   {kcAdminPassword},
-				"grant_type": {"password"},
-				"scope":      {"openid profile"},
-			}
-			tokenReq, err := http.NewRequest(http.MethodPost,
-				fmt.Sprintf("http://localhost:18090/realms/%s/protocol/openid-connect/token", kcRealm),
-				strings.NewReader(tokenForm.Encode()))
-			Expect(err).NotTo(HaveOccurred())
-			tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			tokenReq.Host = fmt.Sprintf("%s.%s.svc.cluster.local", kcService, kcNamespace)
-			tokenResp, err := http.DefaultClient.Do(tokenReq)
-			Expect(err).NotTo(HaveOccurred(), "Should be able to request token from Keycloak")
-			defer tokenResp.Body.Close()
-			Expect(tokenResp.StatusCode).To(Equal(http.StatusOK),
-				fmt.Sprintf("Keycloak token request must succeed (realm=%s, user=%s)", kcRealm, kcAdminUser))
-			var tokenData struct {
-				AccessToken string `json:"access_token"`
-			}
-			Expect(json.NewDecoder(tokenResp.Body).Decode(&tokenData)).To(Succeed())
-			Expect(tokenData.AccessToken).NotTo(BeEmpty(), "JWT must be non-empty")
+			tokenData := struct{ AccessToken string }{}
+			tokenData.AccessToken = acquireToken(kcTestUser, kcTestPassword)
 
 			By("Creating a NebariApp with authenticated visibility")
 			authApp := newNebariApp("test-auth-visibility", namespace,
@@ -608,30 +651,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		)
 
 		BeforeAll(func() {
-			By("Acquiring a JWT from Keycloak")
-			tokenForm := url.Values{
-				"client_id":  {"admin-cli"},
-				"username":   {kcAdminUser},
-				"password":   {kcAdminPassword},
-				"grant_type": {"password"},
-				"scope":      {"openid profile"},
-			}
-			tokenReq, err := http.NewRequest(http.MethodPost,
-				fmt.Sprintf("http://localhost:18090/realms/%s/protocol/openid-connect/token", kcRealm),
-				strings.NewReader(tokenForm.Encode()))
-			Expect(err).NotTo(HaveOccurred())
-			tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			tokenReq.Host = fmt.Sprintf("%s.%s.svc.cluster.local", kcService, kcNamespace)
-			tokenResp, err := http.DefaultClient.Do(tokenReq)
-			Expect(err).NotTo(HaveOccurred())
-			defer tokenResp.Body.Close()
-			Expect(tokenResp.StatusCode).To(Equal(http.StatusOK))
-			var td struct {
-				AccessToken string `json:"access_token"`
-			}
-			Expect(json.NewDecoder(tokenResp.Body).Decode(&td)).To(Succeed())
-			Expect(td.AccessToken).NotTo(BeEmpty())
-			bearerToken = td.AccessToken
+			By("Acquiring a JWT from Keycloak (test-user — unprivileged)")
+			bearerToken = acquireToken(kcTestUser, kcTestPassword)
 
 			By("Creating a public NebariApp for pinning")
 			pinApp := newNebariApp(pinAppName, e2eNamespace,
@@ -712,8 +733,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			resp, err := http.DefaultClient.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
-			Expect(resp.StatusCode).To(Equal(http.StatusOK),
-				"PUT /api/v1/pins/{uid} must return 200")
+			Expect(resp.StatusCode).To(Equal(http.StatusNoContent),
+				"PUT /api/v1/pins/{uid} must return 204")
 		})
 
 		It("should return the pinned service in GET /api/v1/pins", func() {
@@ -740,8 +761,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			resp, err := http.DefaultClient.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
-			Expect(resp.StatusCode).To(Equal(http.StatusOK),
-				"DELETE /api/v1/pins/{uid} must return 200")
+			Expect(resp.StatusCode).To(Equal(http.StatusNoContent),
+				"DELETE /api/v1/pins/{uid} must return 204")
 
 			By("Verifying the pin list is empty again")
 			req2, err := http.NewRequest(http.MethodGet, webapiBase+"/api/v1/pins", nil)
@@ -763,35 +784,17 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		var (
 			webapiBase     string
 			pfCmd          *exec.Cmd
-			bearerToken    string
+			// userToken is for list/mark-read — regular authenticated user.
+			userToken      string
+			// adminToken is for POST /api/v1/admin/notifications — requires admin group.
+			adminToken     string
 			notificationID string
 		)
 
 		BeforeAll(func() {
-			By("Acquiring a JWT from Keycloak")
-			tokenForm := url.Values{
-				"client_id":  {"admin-cli"},
-				"username":   {kcAdminUser},
-				"password":   {kcAdminPassword},
-				"grant_type": {"password"},
-				"scope":      {"openid profile"},
-			}
-			tokenReq, err := http.NewRequest(http.MethodPost,
-				fmt.Sprintf("http://localhost:18090/realms/%s/protocol/openid-connect/token", kcRealm),
-				strings.NewReader(tokenForm.Encode()))
-			Expect(err).NotTo(HaveOccurred())
-			tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			tokenReq.Host = fmt.Sprintf("%s.%s.svc.cluster.local", kcService, kcNamespace)
-			tokenResp, err := http.DefaultClient.Do(tokenReq)
-			Expect(err).NotTo(HaveOccurred())
-			defer tokenResp.Body.Close()
-			Expect(tokenResp.StatusCode).To(Equal(http.StatusOK))
-			var td struct {
-				AccessToken string `json:"access_token"`
-			}
-			Expect(json.NewDecoder(tokenResp.Body).Decode(&td)).To(Succeed())
-			Expect(td.AccessToken).NotTo(BeEmpty())
-			bearerToken = td.AccessToken
+			By("Acquiring tokens from Keycloak")
+			userToken  = acquireToken(kcTestUser, kcTestPassword)
+			adminToken = acquireToken(kcAdminUser, kcAdminPassword)
 
 			By("Port-forwarding to webapi on :18085")
 			pfCmd = exec.Command("kubectl", "port-forward",
@@ -821,7 +824,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				webapiBase+"/api/v1/admin/notifications",
 				strings.NewReader(body))
 			Expect(err).NotTo(HaveOccurred())
-			req.Header.Set("Authorization", "Bearer "+bearerToken)
+			req.Header.Set("Authorization", "Bearer "+adminToken)
 			req.Header.Set("Content-Type", "application/json")
 			resp, err := http.DefaultClient.Do(req)
 			Expect(err).NotTo(HaveOccurred())
@@ -842,7 +845,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			req, err := http.NewRequest(http.MethodGet,
 				webapiBase+"/api/v1/notifications", nil)
 			Expect(err).NotTo(HaveOccurred())
-			req.Header.Set("Authorization", "Bearer "+bearerToken)
+			req.Header.Set("Authorization", "Bearer "+userToken)
 			resp, err := http.DefaultClient.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
@@ -865,7 +868,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			req, err := http.NewRequest(http.MethodPut,
 				webapiBase+"/api/v1/notifications/"+notificationID+"/read", nil)
 			Expect(err).NotTo(HaveOccurred())
-			req.Header.Set("Authorization", "Bearer "+bearerToken)
+			req.Header.Set("Authorization", "Bearer "+userToken)
 			resp, err := http.DefaultClient.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
@@ -876,7 +879,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			req2, err := http.NewRequest(http.MethodGet,
 				webapiBase+"/api/v1/notifications", nil)
 			Expect(err).NotTo(HaveOccurred())
-			req2.Header.Set("Authorization", "Bearer "+bearerToken)
+			req2.Header.Set("Authorization", "Bearer "+userToken)
 			resp2, err := http.DefaultClient.Do(req2)
 			Expect(err).NotTo(HaveOccurred())
 			defer resp2.Body.Close()
@@ -896,43 +899,25 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 	})
 
 	// Access Requests — e2e coverage for request / admin-list / approve flow.
-	// Requires the Keycloak admin user to be a member of the "admin" group in the
-	// Nebari realm for the admin-list and approve steps to succeed.
+	// userToken (test-user) submits the request; adminToken (admin group member)
+	// lists and approves it.
 	Context("Access Requests", func() {
 		var (
 			webapiBase  string
 			pfCmd       *exec.Cmd
-			bearerToken string
+			// userToken is for the requester side (any authenticated user).
+			userToken   string
+			// adminToken is for admin-gated endpoints (requires "admin" group).
+			adminToken  string
 			serviceUID  string
 			requestID   string
 			arAppName   = "test-ar-app"
 		)
 
 		BeforeAll(func() {
-			By("Acquiring a JWT from Keycloak")
-			tokenForm := url.Values{
-				"client_id":  {"admin-cli"},
-				"username":   {kcAdminUser},
-				"password":   {kcAdminPassword},
-				"grant_type": {"password"},
-				"scope":      {"openid profile"},
-			}
-			tokenReq, err := http.NewRequest(http.MethodPost,
-				fmt.Sprintf("http://localhost:18090/realms/%s/protocol/openid-connect/token", kcRealm),
-				strings.NewReader(tokenForm.Encode()))
-			Expect(err).NotTo(HaveOccurred())
-			tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			tokenReq.Host = fmt.Sprintf("%s.%s.svc.cluster.local", kcService, kcNamespace)
-			tokenResp, err := http.DefaultClient.Do(tokenReq)
-			Expect(err).NotTo(HaveOccurred())
-			defer tokenResp.Body.Close()
-			Expect(tokenResp.StatusCode).To(Equal(http.StatusOK))
-			var td struct {
-				AccessToken string `json:"access_token"`
-			}
-			Expect(json.NewDecoder(tokenResp.Body).Decode(&td)).To(Succeed())
-			Expect(td.AccessToken).NotTo(BeEmpty())
-			bearerToken = td.AccessToken
+			By("Acquiring tokens from Keycloak")
+			userToken  = acquireToken(kcTestUser, kcTestPassword)
+			adminToken = acquireToken(kcAdminUser, kcAdminPassword)
 
 			By("Creating a NebariApp to request access to")
 			arApp := newNebariApp(arAppName, e2eNamespace,
@@ -961,7 +946,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				if err != nil {
 					return err
 				}
-				req.Header.Set("Authorization", "Bearer "+bearerToken)
+				req.Header.Set("Authorization", "Bearer "+userToken)
 				resp, err := http.DefaultClient.Do(req)
 				if err != nil {
 					return err
@@ -972,8 +957,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 					return err
 				}
 				for _, svc := range result.Services {
-					if name, _ := svc["displayName"].(string); name == "Test Service "+arAppName {
-						if uid, _ := svc["uid"].(string); uid != "" {
+					if name, _ := svc["name"].(string); name == "Test Service "+arAppName {
+						if uid, _ := svc["id"].(string); uid != "" {
 							serviceUID = uid
 							return nil
 						}
@@ -1004,7 +989,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				webapiBase+"/api/v1/services/"+serviceUID+"/request_access",
 				strings.NewReader(body))
 			Expect(err).NotTo(HaveOccurred())
-			req.Header.Set("Authorization", "Bearer "+bearerToken)
+			req.Header.Set("Authorization", "Bearer "+userToken)
 			req.Header.Set("Content-Type", "application/json")
 			resp, err := http.DefaultClient.Do(req)
 			Expect(err).NotTo(HaveOccurred())
@@ -1025,18 +1010,18 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			req, err := http.NewRequest(http.MethodGet,
 				webapiBase+"/api/v1/admin/access-requests", nil)
 			Expect(err).NotTo(HaveOccurred())
-			req.Header.Set("Authorization", "Bearer "+bearerToken)
+			req.Header.Set("Authorization", "Bearer "+adminToken)
 			resp, err := http.DefaultClient.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK),
 				"GET /api/v1/admin/access-requests must return 200 (requires admin group)")
 			var body struct {
-				Requests []map[string]interface{} `json:"requests"`
+				AccessRequests []map[string]interface{} `json:"accessRequests"`
 			}
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			ids := make([]string, 0, len(body.Requests))
-			for _, r := range body.Requests {
+			ids := make([]string, 0, len(body.AccessRequests))
+			for _, r := range body.AccessRequests {
 				if id, ok := r["id"].(string); ok {
 					ids = append(ids, id)
 				}
@@ -1048,7 +1033,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			req, err := http.NewRequest(http.MethodPut,
 				webapiBase+"/api/v1/admin/access-requests/"+requestID+"/approve", nil)
 			Expect(err).NotTo(HaveOccurred())
-			req.Header.Set("Authorization", "Bearer "+bearerToken)
+			req.Header.Set("Authorization", "Bearer "+adminToken)
 			resp, err := http.DefaultClient.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
