@@ -128,6 +128,28 @@ jobs:
           fi
           echo "✔  keycloak-realm-setup Job complete — nebari realm is provisioned"
 
+      # ── Preflight: wait for the operator-provisioned OIDC client secret ──────
+      # nebari-operator creates nebari-landing-oidc-client when it reconciles
+      # the NebariApp resource that the platform profile's nebari-landingpage
+      # Argo app applies. Reconciliation can only start after we install the
+      # CRD (above), so the secret typically appears 10-60s after the realm-
+      # setup Job completes. setup-keycloak-e2e.sh below reads it, so block
+      # here until it exists or the operator visibly stalls.
+      - name: Wait for nebari-landing OIDC client secret
+        run: |
+          for i in $(seq 1 60); do
+            if kubectl -n nebari-system get secret nebari-landing-oidc-client >/dev/null 2>&1; then
+              echo "✔  nebari-landing-oidc-client present"
+              exit 0
+            fi
+            echo "  attempt $i/60 — secret not yet created, retrying in 5 s …"
+            sleep 5
+          done
+          echo "✗  nebari-landing-oidc-client never appeared; dumping diagnostics:"
+          kubectl -n nebari-system get secrets || true
+          kubectl -n argocd get application nebari-landingpage -o yaml 2>/dev/null | head -80 || true
+          exit 1
+
       # ── Read nebari realm admin password ─────────────────────────────────────
       # NIC creates nebari-realm-admin-credentials in the keycloak namespace
       # with a randomly-generated password (separate from the master realm admin
