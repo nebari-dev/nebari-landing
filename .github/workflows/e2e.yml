@@ -150,6 +150,15 @@ jobs:
           echo "::add-mask::${PASS}"
           echo "NEBARI_REALM_ADMIN_PASSWORD=${PASS}" >> "$GITHUB_ENV"
 
+      # ── Patch Keycloak for the e2e suite (TEMPORARY WORKAROUND) ──────────────
+      # Enables directAccessGrantsEnabled on the nebari-landing OIDC client and
+      # creates the realm fixtures (test-user + admin group) that the suite
+      # expects.  See .github/scripts/setup-keycloak-e2e.sh for full rationale
+      # and the removal plan — this step goes away once nebari-operator gains
+      # spec.auth.keycloakConfig.directAccessGrantsEnabled.
+      - name: Patch Keycloak for e2e (temporary workaround)
+        run: .github/scripts/setup-keycloak-e2e.sh --env-file "$GITHUB_ENV"
+
       # ── E2E suite ─────────────────────────────────────────────────────────────
       - name: Run e2e tests
         env:
@@ -160,9 +169,11 @@ jobs:
           WEBAPI_IMG: nebari-landing/webapi:dev
           # Password for the 'admin' user in the nebari realm (not the master realm).
           E2E_KEYCLOAK_ADMIN_PASSWORD: ${{ env.NEBARI_REALM_ADMIN_PASSWORD }}
+          # Client secret for the operator-provisioned nebari-landing OIDC client.
+          # Used by the e2e suite instead of admin-cli to acquire tokens with full
+          # identity claims (sub, preferred_username, groups).
+          E2E_OIDC_CLIENT_SECRET: ${{ env.E2E_OIDC_CLIENT_SECRET }}
         run: go test ./test/e2e/... -tags=e2e -v -timeout 10m
-
-      # ── Diagnostics ───────────────────────────────────────────────────────────
       - name: Collect diagnostics on failure
         if: failure()
         run: |
