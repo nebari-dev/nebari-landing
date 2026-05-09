@@ -6,6 +6,7 @@ import {
   type Notification,
 } from "../api/notifications";
 import { createWebSocketClient } from "../api/ws";
+import { apiFetch } from "../api/client";
 import { mapService } from "../api/mapServices";
 import { deletePin, putPin } from "../api/pin";
 import type { ServiceSocketMessage } from "../api/servicesSocket";
@@ -90,6 +91,22 @@ export function useLaunchpadData(user: unknown) {
 
     return createWebSocketClient<AppSocketMessage>({
       path: "/ws",
+      // Fetch a fresh single-use ticket before each connect (and each reconnect).
+      // Browsers cannot send Authorization headers on WebSocket upgrade requests,
+      // so the webapi accepts a short-lived ticket as an alternative.
+      // When the exchange fails (e.g. auth disabled in dev), connect without a ticket.
+      getQueryParams: async () => {
+        try {
+          const resp = await apiFetch("/ws-ticket", { method: "POST" });
+          if (resp.ok) {
+            const data = await resp.json() as { ticket: string };
+            return { ticket: data.ticket };
+          }
+        } catch {
+          // Ticket exchange failed — proceed without one (auth-disabled dev mode).
+        }
+        return {};
+      },
       onOpen: () =>
         console.log("app websocket connected", { authenticated: isAuthenticated }),
       onClose: () => console.log("app websocket disconnected"),

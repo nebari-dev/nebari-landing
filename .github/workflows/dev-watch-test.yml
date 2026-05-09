@@ -219,15 +219,28 @@ jobs:
         if: failure()
         run: |
           KUBECTL="$(command -v kubectl 2>/dev/null || echo .bin/kubectl)"
-          echo "=== frontend pods ==="
-          $KUBECTL -n nebari-system get pods -l app.kubernetes.io/component=frontend -o wide || true
-          echo "=== frontend deployment ==="
-          $KUBECTL -n nebari-system describe deployment nebari-landing-frontend || true
+          echo "=== all nebari-system pods ==="
+          $KUBECTL -n nebari-system get pods -o wide || true
           echo "=== frontend pod logs ==="
           POD=$($KUBECTL -n nebari-system get pods -l app.kubernetes.io/component=frontend \
                   -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
           if [ -n "$POD" ]; then
             $KUBECTL -n nebari-system logs "$POD" --all-containers --tail=100 || true
+          fi
+          echo "=== webapi pod logs ==="
+          POD=$($KUBECTL -n nebari-system get pods -l app.kubernetes.io/component=webapi \
+                  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [ -n "$POD" ]; then
+            $KUBECTL -n nebari-system logs "$POD" --all-containers --previous --tail=50 || true
+            $KUBECTL -n nebari-system logs "$POD" --all-containers --tail=100 || true
+            $KUBECTL -n nebari-system describe pod "$POD" || true
+          fi
+          echo "=== redis pod logs ==="
+          POD=$($KUBECTL -n nebari-system get pods -l app.kubernetes.io/component=master \
+                  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [ -n "$POD" ]; then
+            $KUBECTL -n nebari-system logs "$POD" --tail=50 || true
+            $KUBECTL -n nebari-system describe pod "$POD" || true
           fi
           echo "=== minikube mount log ==="
           cat /tmp/minikube-mount-frontend.log 2>/dev/null || echo "(no mount log)"

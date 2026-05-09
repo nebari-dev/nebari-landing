@@ -45,6 +45,7 @@ import (
 	"github.com/nebari-dev/nebari-landing/internal/pins"
 	"github.com/nebari-dev/nebari-landing/internal/watcher"
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
+	"github.com/nebari-dev/nebari-landing/internal/wsticket"
 )
 
 // Build-time version info — injected by GoReleaser via -ldflags.
@@ -189,6 +190,9 @@ func main() {
 	pinStore := pins.NewPinStore(rdb)
 	setupLog.Info("Pin store ready (Redis)")
 
+	wsTicketStore := wsticket.NewStore(rdb)
+	setupLog.Info("WebSocket ticket store ready (Redis)")
+
 	accessRequestStore := accessrequests.NewStore(rdb)
 	setupLog.Info("Access request store ready (Redis)")
 
@@ -288,6 +292,7 @@ func main() {
 		api.WithNotificationStore(notificationStore),
 		api.WithKeycloakAdminClient(keycloakAdminClient),
 		api.WithAllowedOrigins(splitOrigins(allowedOrigins)),
+		api.WithWSTicketStore(wsTicketStore),
 	}
 	if debugMode {
 		setupLog.Info("Debug mode enabled — GET /api/v1/debug is active; do not use in production")
