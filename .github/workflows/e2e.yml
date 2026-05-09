@@ -206,7 +206,6 @@ jobs:
           USE_EXISTING_CLUSTER: "true"
           CLUSTER_TYPE: k3d
           K3D_CLUSTER_NAME: ${{ steps.sandbox.outputs.cluster-name }}
-          WEBAPI_IMG: nebari-landing/webapi:dev
           # Password for the 'admin' user in the nebari realm (not the master realm).
           E2E_KEYCLOAK_ADMIN_PASSWORD: ${{ env.NEBARI_REALM_ADMIN_PASSWORD }}
           # Client secret for the operator-provisioned nebari-landing OIDC client.

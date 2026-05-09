@@ -388,18 +388,6 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred(), "helm upgrade --install should succeed")
 		}
 
-		By("Patching webapi deployment image to configured image")
-		// Always override the image so the deployment uses the locally built
-		// version that matches this codebase.  For existing clusters this
-		// corrects drift; for freshly installed charts it is a no-op when
-		// the helm --set already matched.
-		setImg := exec.Command("kubectl", "set", "image",
-			fmt.Sprintf("deployment/%s", e2eWebapiDeployment),
-			"-n", namespace,
-			fmt.Sprintf("webapi=%s", webapiImage))
-		_, err = utils.Run(setImg)
-		Expect(err).NotTo(HaveOccurred(), "Failed to patch webapi container image")
-
 		By("Patching webapi deployment with discovered KEYCLOAK_ISSUER_URL and ENABLE_DOCS=true")
 		// The issuer in tokens is set by KC_HOSTNAME_URL (e.g. http://<minikube-lb-ip>).
 		// Keycloak 17+ no longer uses /auth as a context root.
