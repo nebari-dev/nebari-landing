@@ -8,8 +8,6 @@
 # The Makefile 'install' target uses this file automatically.
 #
 # Pre-requisites (already created by other make targets):
-#   Secret nebari-landing-oauth2-proxy  (make frontend-client)
-#     keys: client-secret, cookie-secret
 #   Secret nebari-realm-admin-credentials  (make postgresql-secrets)
 #     keys: username, password
 
@@ -62,7 +60,7 @@ nebariApp:
   enabled: false
 
 # ---------------------------------------------------------------------------
-# Frontend + oauth2-proxy sidecar
+# Frontend
 # ---------------------------------------------------------------------------
 frontend:
   image:
@@ -76,51 +74,6 @@ frontend:
     url: "http://localhost:8180"
     realm: "nebari"
     clientId: "nebari-frontend-spa"
-
-  oauth2Proxy:
-    # Keycloak realm discovery endpoint — cluster-internal for the pod
-    oidcIssuerUrl: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/realms/nebari"
-    clientId: "nebari-landingpage"
-    # Secrets created by 'make frontend-client' — secret name: nebari-landing-oauth2-proxy
-    # keys: client-secret (OIDC client secret) and cookie-secret (session encryption)
-    existingClientSecret: "nebari-landing-oauth2-proxy"
-    existingCookieSecret: "nebari-landing-oauth2-proxy"
-    extraArgs:
-      # Skip TLS verification — self-signed certs in minikube
-      - --insecure-oidc-skip-issuer-verification=true
-      - --insecure-oidc-allow-unverified-email=true
-      # Cookie settings — no HTTPS in local dev
-      - --cookie-secure=false
-      - --cookie-samesite=lax
-      - --cookie-name=_nebari_session
-      # Browser-visible callback URL (via port-forward on PORT_LANDING)
-      - --redirect-url=http://localhost:8080/oauth2/callback
-      # groups is added via a Keycloak client mapper, not a scope
-      - --scope=openid profile email
-      # UX
-      - --skip-provider-button=true
-      - --silence-ping-logging=true
-      # Token refresh: proactively refresh the access token in the session cookie
-      # so the webapi never receives a stale Bearer token. Keycloak's access token
-      # lifetime is 5m (300s); refreshing at 4m ensures a live token is always
-      # forwarded to the webapi via Authorization: Bearer.
-      - --cookie-refresh=4m
-      # Public routes — skip auth so unauthenticated users can access /public
-      - --skip-auth-route=^/public
-      # Static assets must bypass auth so the browser can load JS/CSS chunks
-      # for public routes without being redirected to Keycloak login.
-      - --skip-auth-route=^/assets/
-      - --skip-auth-route=^/favicon
-      - --skip-auth-route=^/config\.json$
-      # Vite dev-server internal paths (dev-watch mode only).
-      # In production nginx serves pre-built bundles from /assets/ — these
-      # paths don't exist. In dev-watch Vite serves source files directly and
-      # oauth2-proxy would intercept them, breaking HMR and initial page load.
-      - --skip-auth-route=^/@vite/
-      - --skip-auth-route=^/@react-refresh
-      - --skip-auth-route=^/@fs/
-      - --skip-auth-route=^/src/
-      - --skip-auth-route=^/node_modules/
 
   # Expose via MetalLB LoadBalancer
   service:
