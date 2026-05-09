@@ -815,9 +815,17 @@ paths:
       - services
   /ws:
     get:
-      description: Upgrade to WebSocket. Server pushes JSON envelopes for service
-        add/update/delete and new notifications. The same auth gate as protected REST
-        endpoints applies before the upgrade is accepted.
+      description: 'Upgrade to WebSocket. Server pushes JSON envelopes for service
+        add/update/delete and new notifications. Auth is required before the upgrade:
+        send `Authorization: Bearer <token>` or pass `?ticket=<id>` from POST /api/v1/ws-ticket
+        (browsers must use the ticket path).'
+      parameters:
+      - description: Single-use ticket from POST /api/v1/ws-ticket (required for browser
+          clients)
+        in: query
+        name: ticket
+        schema:
+          type: string
       responses:
         "101":
           content:

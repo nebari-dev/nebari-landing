@@ -249,7 +249,7 @@ curl -s -X POST http://localhost:8080/api/v1/services/{id}/request_access \
 
 WebSocket: real-time service + notification events
 
-Upgrade to WebSocket. Server pushes JSON envelopes for service add/update/delete and new notifications. The same auth gate as protected REST endpoints applies before the upgrade is accepted.
+Upgrade to WebSocket. Server pushes JSON envelopes for service add/update/delete and new notifications. Auth is required before the upgrade: send `Authorization: Bearer <token>` or pass `?ticket=<id>` from POST /api/v1/ws-ticket (browsers must use the ticket path).
 
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/ws \

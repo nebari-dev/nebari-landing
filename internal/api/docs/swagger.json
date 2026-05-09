@@ -1272,7 +1272,17 @@
         },
         "/ws": {
             "get": {
-                "description": "Upgrade to WebSocket. Server pushes JSON envelopes for service add/update/delete and new notifications. The same auth gate as protected REST endpoints applies before the upgrade is accepted.",
+                "description": "Upgrade to WebSocket. Server pushes JSON envelopes for service add/update/delete and new notifications. Auth is required before the upgrade: send `Authorization: Bearer \u003ctoken\u003e` or pass `?ticket=\u003cid\u003e` from POST /api/v1/ws-ticket (browsers must use the ticket path).",
+                "parameters": [
+                    {
+                        "description": "Single-use ticket from POST /api/v1/ws-ticket (required for browser clients)",
+                        "in": "query",
+                        "name": "ticket",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
                 "responses": {
                     "101": {
                         "content": {
