@@ -271,6 +271,17 @@ type WSTicketResponse struct {
 // Issues a single-use ~30 s ticket for the authenticated caller. The browser
 // passes this ticket as ?ticket=<id> on the WebSocket upgrade request.
 // Returns 501 when no wsTicketStore is configured.
+//
+//	@Summary		Issue a single-use WebSocket ticket
+//	@Description	Mints a short-lived (~30 s) single-use ticket the browser passes as `?ticket=<id>` on the WebSocket upgrade request, since the WS spec forbids sending an Authorization header on the upgrade. Requires a Bearer JWT.
+//	@Tags			websocket
+//	@Produce		json
+//	@Success		200	{object}	WSTicketResponse
+//	@Failure		401	{string}	string	"Unauthorized"
+//	@Failure		405	{string}	string	"Method Not Allowed"
+//	@Failure		501	{string}	string	"WebSocket ticket exchange not configured"
+//	@Security		BearerAuth
+//	@Router			/ws-ticket [post]
 func (h *Handler) handleWSTicket(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

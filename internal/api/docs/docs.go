@@ -211,6 +211,14 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "api.WSTicketResponse": {
+                "properties": {
+                    "ticket": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "cache.HealthStatus": {
                 "properties": {
                     "lastCheck": {
@@ -1318,6 +1326,62 @@ const docTemplate = `{
                     }
                 ],
                 "summary": "WebSocket: real-time service + notification events",
+                "tags": [
+                    "websocket"
+                ]
+            }
+        },
+        "/ws-ticket": {
+            "post": {
+                "description": "Mints a short-lived (~30 s) single-use ticket the browser passes as ` + "`" + `?ticket=\u003cid\u003e` + "`" + ` on the WebSocket upgrade request, since the WS spec forbids sending an Authorization header on the upgrade. Requires a Bearer JWT.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.WSTicketResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "405": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "Method Not Allowed"
+                    },
+                    "501": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "WebSocket ticket exchange not configured"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Issue a single-use WebSocket ticket",
                 "tags": [
                     "websocket"
                 ]

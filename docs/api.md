@@ -51,6 +51,7 @@ Authorization: Bearer <token>
 | `GET` | [`/services/{id}`](#get-servicesid) | Get a service by UID |
 | `POST` | [`/services/{id}/request_access`](#post-servicesidrequest_access) | Request access to a private service |
 | `GET` | [`/ws`](#get-ws) | WebSocket: real-time service + notification events |
+| `POST` | [`/ws-ticket`](#post-ws-ticket) | Issue a single-use WebSocket ticket |
 
 ---
 
@@ -254,5 +255,20 @@ Upgrade to WebSocket. Server pushes JSON envelopes for service add/update/delete
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/ws \
   -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="post-ws-ticket"></a>`POST /ws-ticket`
+
+Issue a single-use WebSocket ticket
+
+Mints a short-lived (~30 s) single-use ticket the browser passes as `?ticket=<id>` on the WebSocket upgrade request, since the WS spec forbids sending an Authorization header on the upgrade. Requires a Bearer JWT.
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/ws-ticket \
+  -H 'Authorization: Bearer $TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
 ```
 <!-- /gendocs:api -->
