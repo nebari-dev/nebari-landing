@@ -70,32 +70,46 @@ jobs:
           restore-keys: |
             go-${{ runner.os }}-
 
-      # ── Webapi image (built before cluster so it's ready to import) ──────────
-      # Buildx + GHA layer cache — first run primes the cache (~94s),
-      # subsequent runs skip unchanged layers (~20-30s).
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build webapi image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          tags: nebari-landing/webapi:dev
-          load: true
-          cache-from: type=gha,scope=e2e-webapi
-          cache-to: type=gha,mode=max,scope=e2e-webapi
+      # ── Branch-tagged webapi image (published by webapi.yml) ─────────────────
+      # webapi.yml builds and pushes quay.io/nebari/nebari-webapi:<branch-tag>
+      # on every PR push. Reuse that image here instead of building a second
+      # one locally — single source of truth, less duplicated CI time.
+      - name: Compute branch tag
+        id: branch
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          TAG=$(echo "$BRANCH" | sed 's/\//-/g' | sed 's/[^a-zA-Z0-9._-]//g')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       # ── Kubernetes cluster + Nebari platform ─────────────────────────────────
+      # Pin to @main until v1.1+ is cut for the argocd-self-heal input.
+      # Self-heal off lets the image-swap step below stick instead of being
+      # reverted by ArgoCD on its next reconcile cycle.
       - name: Setup Nebari Sandbox
         id: sandbox
-        uses: nebari-dev/action-nebari-sandbox@v1.0.1
+        uses: nebari-dev/action-nebari-sandbox@main
         with:
           profile: platform
           cluster-name: nebari-e2e
+          argocd-self-heal: "false"
 
-      # ── Load webapi image into k3d ────────────────────────────────────────────
-      - name: Load webapi image into k3d
-        run: k3d image import nebari-landing/webapi:dev -c ${{ steps.sandbox.outputs.cluster-name }}
+      # ── Wait for the PR-tagged webapi image on Quay ──────────────────────────
+      # webapi.yml runs in parallel with this workflow on the same SHA. Block
+      # here until its manifest job has published the branch tag so the rollout
+      # step below has something to pull.
+      - name: Wait for webapi PR image on Quay
+        run: |
+          IMAGE="quay.io/nebari/nebari-webapi:${{ steps.branch.outputs.tag }}"
+          for i in $(seq 1 60); do
+            if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+              echo "✔ $IMAGE is available"
+              exit 0
+            fi
+            echo "  attempt $i/60 — waiting for $IMAGE …"
+            sleep 10
+          done
+          echo "✗ $IMAGE never became available"
+          exit 1
 
       # ── NebariApp CRD ─────────────────────────────────────────────────────────
       # Apply directly so the tests don't depend on ArgoCD sync timing.
@@ -149,6 +163,20 @@ jobs:
           kubectl -n nebari-system get secrets || true
           kubectl -n argocd get application nebari-landingpage -o yaml 2>/dev/null | head -80 || true
           exit 1
+
+      # ── Swap webapi to the PR-tagged image ───────────────────────────────────
+      # The platform profile deploys the foundational stack with main's webapi
+      # image. Replace it with the PR-tagged build from Quay so the e2e suite
+      # exercises this branch's code. argocd-self-heal: "false" on the sandbox
+      # keeps ArgoCD from reverting this on its next reconcile.
+      - name: Use PR-built webapi image
+        run: |
+          IMAGE="quay.io/nebari/nebari-webapi:${{ steps.branch.outputs.tag }}"
+          kubectl -n nebari-system set image \
+            deployment/nebari-landing-webapi \
+            webapi="$IMAGE"
+          kubectl -n nebari-system rollout status \
+            deployment/nebari-landing-webapi --timeout=5m
 
       # ── Read nebari realm admin password ─────────────────────────────────────
       # NIC creates nebari-realm-admin-credentials in the keycloak namespace
