@@ -164,19 +164,96 @@ jobs:
           kubectl -n argocd get application nebari-landingpage -o yaml 2>/dev/null | head -80 || true
           exit 1
 
-      # ── Swap webapi to the PR-tagged image ───────────────────────────────────
-      # The platform profile deploys the foundational stack with main's webapi
-      # image. Replace it with the PR-tagged build from Quay so the e2e suite
-      # exercises this branch's code. argocd-self-heal: "false" on the sandbox
-      # keeps ArgoCD from reverting this on its next reconcile.
-      - name: Use PR-built webapi image
+      # ── Swap webapi to the PR-tagged image (via GitOps source) ──────────────
+      # Patch the local file:// GitOps repo that ArgoCD reads from so Git
+      # itself becomes the source of truth for the PR image. A direct
+      # `kubectl set image` is not enough — ArgoCD's reconciler still
+      # auto-syncs the Application on its periodic refresh and reverts
+      # cluster-side patches even with selfHeal off.
+      - name: Override webapi image in GitOps source
+        env:
+          GITOPS_DIR: ${{ steps.sandbox.outputs.gitops-dir }}
+          NEW_TAG: ${{ steps.branch.outputs.tag }}
         run: |
-          IMAGE="quay.io/nebari/nebari-webapi:${{ steps.branch.outputs.tag }}"
-          kubectl -n nebari-system set image \
-            deployment/nebari-landing-webapi \
-            webapi="$IMAGE"
+          set -euo pipefail
+          if [[ -z "${GITOPS_DIR}" || ! -d "${GITOPS_DIR}" ]]; then
+            echo "✗ gitops-dir not set or not a directory: ${GITOPS_DIR:-<empty>}"
+            exit 1
+          fi
+
+          echo "::group::Files referencing nebari-webapi before patch"
+          mapfile -t targets < <(grep -rln "nebari-webapi" "${GITOPS_DIR}" || true)
+          if [[ ${#targets[@]} -eq 0 ]]; then
+            echo "✗ no files in ${GITOPS_DIR} reference nebari-webapi"
+            echo "  Listing top-level layout for diagnosis:"
+            find "${GITOPS_DIR}" -maxdepth 4 -type f | head -40
+            exit 1
+          fi
+          for f in "${targets[@]}"; do
+            echo "── $f ──"
+            grep -n -B 1 -A 2 "nebari-webapi" "$f" || true
+          done
+          echo "::endgroup::"
+
+          echo "::group::Patch webapi tag → ${NEW_TAG}"
+          # Two layouts handled:
+          #   1. Helm chart values:
+          #        repository: quay.io/nebari/nebari-webapi
+          #        tag: "<old>"
+          #   2. ArgoCD Application helm parameters:
+          #        name: webapi.image.tag
+          #        value: <old>
+          # perl -0777 slurps each file so the patterns can span newlines.
+          for f in "${targets[@]}"; do
+            before=$(sha1sum "$f" | cut -d' ' -f1)
+            NEW_TAG="$NEW_TAG" perl -0777 -i -pe '
+              s/(repository:[^\n]*nebari-webapi[^\n]*\n[ \t]*tag:[ \t]*)("[^"]*"|\x27[^\x27]*\x27|\S+)/$1."\"$ENV{NEW_TAG}\""/ge;
+              s/(name:[ \t]*webapi\.image\.tag[ \t]*\n[ \t]*value:[ \t]*)("[^"]*"|\x27[^\x27]*\x27|\S+)/$1."\"$ENV{NEW_TAG}\""/ge;
+            ' "$f"
+            after=$(sha1sum "$f" | cut -d' ' -f1)
+            if [[ "$before" != "$after" ]]; then
+              echo "  patched: $f"
+            else
+              echo "  no change: $f"
+            fi
+          done
+          echo "::endgroup::"
+
+          echo "::group::Diff in GitOps repo"
+          git -C "${GITOPS_DIR}" --no-pager diff || true
+          echo "::endgroup::"
+
+          echo "::group::Commit override to local file:// repo"
+          if git -C "${GITOPS_DIR}" diff --quiet; then
+            echo "✗ patch produced no changes — selectors did not match expected layout"
+            exit 1
+          fi
+          git -C "${GITOPS_DIR}" \
+            -c user.email=ci@e2e \
+            -c user.name="e2e bot" \
+            commit -am "ci: override webapi image tag to ${NEW_TAG} for e2e"
+          echo "::endgroup::"
+
+          echo "::group::Refresh ArgoCD nebari-landingpage Application"
+          kubectl -n argocd annotate application nebari-landingpage \
+            argocd.argoproj.io/refresh=hard --overwrite
+          echo "::endgroup::"
+
+          echo "::group::Wait for webapi rollout to PR image"
+          for i in $(seq 1 36); do
+            cur=$(kubectl -n nebari-system get deployment nebari-landing-webapi \
+              -o jsonpath='{.spec.template.spec.containers[?(@.name=="webapi")].image}' \
+              2>/dev/null || echo "")
+            if [[ "$cur" == *":${NEW_TAG}"* ]]; then
+              echo "  ArgoCD applied the override (deployment image = $cur)"
+              break
+            fi
+            echo "  attempt $i/36 — deployment image still '$cur', waiting 5s …"
+            sleep 5
+          done
           kubectl -n nebari-system rollout status \
             deployment/nebari-landing-webapi --timeout=5m
+          echo "::endgroup::"
 
       # ── Read nebari realm admin password ─────────────────────────────────────
       # NIC creates nebari-realm-admin-credentials in the keycloak namespace
