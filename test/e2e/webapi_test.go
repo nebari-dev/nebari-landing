@@ -1145,31 +1145,8 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		)
 
 		BeforeAll(func() {
-			By("Acquiring a JWT from Keycloak")
-			tokenForm := url.Values{
-				"client_id":  {"admin-cli"},
-				"username":   {kcAdminUser},
-				"password":   {kcAdminPassword},
-				"grant_type": {"password"},
-				"scope":      {"openid profile"},
-			}
-			tokenReq, err := http.NewRequest(http.MethodPost,
-				fmt.Sprintf("http://localhost:18090/realms/%s/protocol/openid-connect/token", kcRealm),
-				strings.NewReader(tokenForm.Encode()))
-			Expect(err).NotTo(HaveOccurred())
-			tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			tokenReq.Host = fmt.Sprintf("%s.%s.svc.cluster.local", kcService, kcNamespace)
-			tokenResp, err := http.DefaultClient.Do(tokenReq)
-			Expect(err).NotTo(HaveOccurred(), "Keycloak must be reachable via port-forward")
-			defer tokenResp.Body.Close()
-			Expect(tokenResp.StatusCode).To(Equal(http.StatusOK),
-				"Keycloak token endpoint must return 200")
-			var td struct {
-				AccessToken string `json:"access_token"`
-			}
-			Expect(json.NewDecoder(tokenResp.Body).Decode(&td)).To(Succeed())
-			Expect(td.AccessToken).NotTo(BeEmpty(), "JWT must be non-empty")
-			bearerToken = td.AccessToken
+			By("Acquiring a JWT from Keycloak via the operator-provisioned OIDC client")
+			bearerToken = acquireToken(kcTestUser, kcTestPassword)
 
 			By("Port-forwarding to webapi on :18083")
 			pfCmd = exec.Command("kubectl", "port-forward",
