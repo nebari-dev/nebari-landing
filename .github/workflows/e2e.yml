@@ -182,11 +182,36 @@ jobs:
           fi
 
           # NIC writes manifests as Git objects but does not leave a checked-out
-          # working tree, so a plain grep finds nothing. Populate the working
-          # tree on main (which ArgoCD reads from) so we can edit and re-commit.
-          echo "::group::Populate working tree on main"
-          git -C "${GITOPS_DIR}" -c safe.directory='*' checkout main -- .
-          git -C "${GITOPS_DIR}" -c safe.directory='*' status --short | head -20 || true
+          # working tree, so a plain grep finds nothing. Dump repo state then
+          # populate the working tree on the branch ArgoCD reads from.
+          export GIT_CONFIG_GLOBAL=/dev/null
+          git -C "${GITOPS_DIR}" config --local --add safe.directory "${GITOPS_DIR}" || true
+
+          echo "::group::GitOps repo state"
+          echo "--- branches ---"
+          git -C "${GITOPS_DIR}" branch -a || true
+          echo "--- HEAD ---"
+          git -C "${GITOPS_DIR}" rev-parse --abbrev-ref HEAD || true
+          git -C "${GITOPS_DIR}" log --oneline -5 HEAD || true
+          echo "--- ls-tree -r HEAD (first 50) ---"
+          git -C "${GITOPS_DIR}" ls-tree -r HEAD --name-only | head -50 || true
+          echo "::endgroup::"
+
+          # Pick the branch ArgoCD reads from (main per NIC config), falling
+          # back to HEAD if main does not exist on this NIC build.
+          BRANCH=main
+          if ! git -C "${GITOPS_DIR}" rev-parse --verify "refs/heads/${BRANCH}" >/dev/null 2>&1; then
+            BRANCH=$(git -C "${GITOPS_DIR}" rev-parse --abbrev-ref HEAD)
+            echo "  (no 'main' branch — falling back to HEAD branch: ${BRANCH})"
+          fi
+
+          echo "::group::Populate working tree from ${BRANCH}"
+          # Switch to the branch (if needed) and force a checkout so manifest
+          # files appear in the working tree.
+          git -C "${GITOPS_DIR}" checkout -f "${BRANCH}" 2>&1 || true
+          git -C "${GITOPS_DIR}" status --short | head -20 || true
+          echo "--- working tree files (top 30) ---"
+          find "${GITOPS_DIR}" -maxdepth 6 -type f -not -path '*/\.git/*' | head -30 || true
           echo "::endgroup::"
 
           echo "::group::Files referencing nebari-webapi before patch"
