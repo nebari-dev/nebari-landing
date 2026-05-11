@@ -261,18 +261,37 @@ jobs:
             argocd.argoproj.io/refresh=hard --overwrite
           echo "::endgroup::"
 
-          echo "::group::Wait for webapi rollout to PR image"
-          for i in $(seq 1 36); do
+          echo "::group::Wait for ArgoCD to apply the override to the deployment"
+          # Poll until spec.image actually matches the PR tag. ArgoCD's sync
+          # can take 3-4 min after the Git commit, and previously we exited
+          # the loop too early — kubectl rollout status then reported on an
+          # in-flight rollout that ArgoCD subsequently superseded, leaving
+          # the running pods on the wrong image when the suite started.
+          TARGET_IMAGE="quay.io/nebari/nebari-webapi:${NEW_TAG}"
+          applied=false
+          for i in $(seq 1 60); do
             cur=$(kubectl -n nebari-system get deployment nebari-landing-webapi \
               -o jsonpath='{.spec.template.spec.containers[?(@.name=="webapi")].image}' \
               2>/dev/null || echo "")
-            if [[ "$cur" == *":${NEW_TAG}"* ]]; then
-              echo "  ArgoCD applied the override (deployment image = $cur)"
+            if [[ "$cur" == "$TARGET_IMAGE" ]]; then
+              echo "  ArgoCD applied the override (spec.image = $cur)"
+              applied=true
               break
             fi
-            echo "  attempt $i/36 — deployment image still '$cur', waiting 5s …"
-            sleep 5
+            echo "  attempt $i/60 — deployment image still '$cur', waiting 10s …"
+            sleep 10
           done
+          if ! $applied; then
+            echo "✗ ArgoCD never applied the override; dumping Application state:"
+            kubectl -n argocd get application nebari-landingpage -o yaml 2>/dev/null \
+              | head -120 || true
+            exit 1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Wait for rollout to complete on the PR image"
+          # Now that spec.image is fixed at the PR tag, this rollout-status
+          # is guaranteed to wait on a rollout that produces PR-image pods.
           kubectl -n nebari-system rollout status \
             deployment/nebari-landing-webapi --timeout=5m
           echo "::endgroup::"
