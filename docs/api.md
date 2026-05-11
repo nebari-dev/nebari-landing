@@ -29,6 +29,33 @@ Endpoints requiring authentication accept a Keycloak-issued JWT in the
 Authorization: Bearer <token>
 ```
 
+## WebSocket authentication
+
+The `Authorization` header cannot be set on a WebSocket upgrade request
+(the WS spec forbids it), so browsers cannot use the same Bearer-token path
+the REST endpoints use. Instead, the SPA exchanges its Bearer JWT for a
+short-lived single-use ticket and includes the ticket as a query parameter
+on the upgrade request:
+
+1. `POST /api/v1/ws-ticket` with `Authorization: Bearer <jwt>` returns
+   `{"ticket": "<32-char hex>"}` with a ~30 s TTL.
+2. `wss://<host>/api/v1/ws?ticket=<id>` upgrades to `101 Switching Protocols`.
+   The webapi validates and atomically deletes the ticket via Redis `GETDEL`
+   before accepting the upgrade.
+3. Re-dialing the WS with the same ticket returns `401`. Tickets are single
+   use.
+
+The SPA's `useLaunchpadData` hook fetches a fresh ticket via its
+`getQueryParams` callback on every connect (initial and auto-reconnect), so
+each WS lifetime corresponds to exactly one redeemed ticket. On a fresh
+page load it is normal to see two `/ws-ticket` POSTs: the first when the
+hook mounts with no user, the second when `keycloak-js` resolves the user
+and the WS client is rebuilt. After sign-in, steady state is one ticket
+per WS connection.
+
+Non-browser clients can skip the ticket exchange and send the Bearer token
+directly on the upgrade. The `/ws` endpoint accepts either mechanism.
+
 ---
 
 <!-- gendocs:api -->

@@ -86,6 +86,14 @@ export function useLaunchpadData(user: unknown) {
     []
   );
 
+  // The useMemo dependency on `user` rebuilds this WS client whenever the
+  // auth state flips. On a fresh page load that typically fires twice: once
+  // on initial mount with user=null (the ticket POST may 401, the silent
+  // fallback below kicks in), and once after keycloak-js resolves and user
+  // becomes the parsed claims. Two /ws-ticket POSTs per page load is
+  // expected. Steady state is one redeemed ticket per WS lifetime — a
+  // sustained drumbeat of fresh POSTs without disconnect events would
+  // indicate a real reconnect storm.
   const appSocket = useMemo(() => {
     const isAuthenticated = Boolean(user);
 
