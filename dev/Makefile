@@ -370,22 +370,13 @@ keycloak-client:
 ## on the 'nebari-landingpage' NebariApp. In dev, the operator exits early at the
 ## TLS step (envoy-gateway-system missing) and never reaches auth provisioning.
 ## This target replicates what the operator would do:
-##   1. Creates the Keycloak client (kcadm Job)
-##   2. Writes nebari-landing-oauth2-proxy Secret (client-secret + cookie-secret)
-##      consumed by the Helm chart's oauth2-proxy sidecar
+##   Creates the Keycloak client (kcadm Job) used by the SPA for PKCE auth.
 frontend-client:
 	@echo "→  Creating nebari-landingpage Keycloak client (dev fallback) …"
 	$(KUBECTL_BIN) delete job keycloak-frontend-client-setup -n $(NAMESPACE_KC) --ignore-not-found
 	PORT_LANDING=$(PORT_LANDING) LANDING_HOST=$(LANDING_HOST) envsubst '$${PORT_LANDING} $${LANDING_HOST}' < dev/keycloak/frontend-client-job.yaml | $(KUBECTL_BIN) apply -f -
 	$(KUBECTL_BIN) wait --for=condition=complete job/keycloak-frontend-client-setup \
 	  -n $(NAMESPACE_KC) --timeout=3m
-	@echo "→  Writing nebari-landing-oauth2-proxy Secret (Helm chart oauth2-proxy input) …"
-	$(KUBECTL_BIN) create namespace $(NAMESPACE_APP) --dry-run=client -o yaml | $(KUBECTL_BIN) apply -f -
-	$(KUBECTL_BIN) create secret generic nebari-landing-oauth2-proxy \
-	  --namespace $(NAMESPACE_APP) \
-	  --from-literal=client-secret=nebari-frontend-dev-secret \
-	  --from-literal=cookie-secret=$$(openssl rand -hex 16) \
-	  --dry-run=client -o yaml | $(KUBECTL_BIN) apply -f -
 	@echo "✔  Keycloak nebari-landingpage client ready"
 
 # ── ArgoCD Application manifests ─────────────────────────────────────────────
@@ -445,7 +436,7 @@ install:
 	$(HELM_BIN) upgrade --install $(HELM_RELEASE) charts/nebari-landing \
 	  --namespace $(NAMESPACE_APP) \
 	  --values dev/chart-values.yaml \
-	  --wait --timeout 5m
+	  --wait --timeout 10m
 	# Force pods to restart so pullPolicy:Never always picks up the freshly loaded :dev image.
 	# This is a no-op on first install (pods already started above) but essential on re-runs.
 	-$(KUBECTL_BIN) rollout restart deployment/$(HELM_RELEASE)-webapi    -n $(NAMESPACE_APP) 2>/dev/null || true
@@ -523,7 +514,7 @@ print('   Mount PID', p.pid, '— log: /tmp/minikube-mount-frontend.log'); \
 	@echo "   Waiting for Vite pod to become ready (~2-3 min for npm install + Vite startup) …"
 	$(KUBECTL_BIN) rollout status deployment/$(HELM_RELEASE)-frontend -n $(NAMESPACE_APP) --timeout=8m
 	@pkill -f "kubect[l].*port-forward.*$(HELM_RELEASE)-frontend" 2>/dev/null || true
-	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-frontend $(PORT_LANDING):4180 \
+	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-frontend $(PORT_LANDING):8080 \
 	  > /tmp/pf-landing.log 2>&1 &
 	@sleep 1
 	@echo ""
@@ -555,7 +546,7 @@ stop-dev-watch:
 	  --wait --timeout 5m
 	@echo "→  Restarting port-forward for the restored frontend …"
 	@pkill -f "kubect[l].*port-forward.*$(HELM_RELEASE)-frontend" 2>/dev/null || true
-	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-frontend $(PORT_LANDING):4180 \
+	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-frontend $(PORT_LANDING):8080 \
 	  > /tmp/pf-landing.log 2>&1 &
 	@sleep 1
 	@echo "✔  dev-watch stopped — nginx frontend restored at http://localhost:$(PORT_LANDING)/"
@@ -638,7 +629,7 @@ info:
 	 echo "║"; \
 	 echo "║  MetalLB LoadBalancer IPs:"; \
 	 echo "║"; \
-	 echo "║  Landing page + oauth2-proxy:"; \
+	 echo "║  Landing page:"; \
 	 echo "║    http://$${LAND_IP}/"; \
 	 echo "║    SPA token endpoint: http://$${LAND_IP}/auth-token"; \
 	 echo "║"; \
@@ -682,7 +673,7 @@ port-forward:
 	@pkill -f "kubect[l].*port-forward.*(nebari-landing-webapi|nebari-landing-frontend)" 2>/dev/null || true
 	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_KC)  port-forward svc/keycloak-keycloakx-http        $(PORT_KEYCLOAK):80   > /tmp/pf-keycloak.log 2>&1 &
 	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-webapi          $(PORT_WEBAPI):8080  > /tmp/pf-webapi.log 2>&1 &
-	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-frontend        $(PORT_LANDING):4180 > /tmp/pf-landing.log 2>&1 &
+	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-frontend        $(PORT_LANDING):8080 > /tmp/pf-landing.log 2>&1 &
 	@sleep 2
 	@echo "✔  Port-forwards active (logs: /tmp/pf-*.log):"
 	@echo "     Keycloak   : http://localhost:$(PORT_KEYCLOAK)"
