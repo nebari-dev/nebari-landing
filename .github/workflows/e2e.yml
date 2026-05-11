@@ -214,42 +214,31 @@ jobs:
           find "${GITOPS_DIR}" -maxdepth 6 -type f -not -path '*/\.git/*' | head -30 || true
           echo "::endgroup::"
 
-          echo "::group::Files referencing nebari-webapi before patch"
-          mapfile -t targets < <(grep -rln "nebari-webapi" "${GITOPS_DIR}" --exclude-dir='.git' || true)
-          if [[ ${#targets[@]} -eq 0 ]]; then
-            echo "✗ no files in ${GITOPS_DIR} reference nebari-webapi"
-            echo "  Listing top-level layout for diagnosis:"
-            find "${GITOPS_DIR}" -maxdepth 4 -type f | head -40
+          # The chart's image is pinned by targetRevision (v0.1.0-alpha.4) and
+          # the gitops repo's Application does not redeclare it. Override the
+          # image tag by injecting into the existing inline values block of
+          # apps/nebari-landingpage.yaml.
+          APP_FILE="${GITOPS_DIR}/apps/nebari-landingpage.yaml"
+          if [[ ! -f "${APP_FILE}" ]]; then
+            echo "✗ expected Application file not found: ${APP_FILE}"
             exit 1
           fi
-          for f in "${targets[@]}"; do
-            echo "── $f ──"
-            grep -n -B 1 -A 2 "nebari-webapi" "$f" || true
-          done
-          echo "::endgroup::"
 
-          echo "::group::Patch webapi tag → ${NEW_TAG}"
-          # Two layouts handled:
-          #   1. Helm chart values:
-          #        repository: quay.io/nebari/nebari-webapi
-          #        tag: "<old>"
-          #   2. ArgoCD Application helm parameters:
-          #        name: webapi.image.tag
-          #        value: <old>
-          # perl -0777 slurps each file so the patterns can span newlines.
-          for f in "${targets[@]}"; do
-            before=$(sha1sum "$f" | cut -d' ' -f1)
-            NEW_TAG="$NEW_TAG" perl -0777 -i -pe '
-              s/(repository:[^\n]*nebari-webapi[^\n]*\n[ \t]*tag:[ \t]*)("[^"]*"|\x27[^\x27]*\x27|\S+)/$1."\"$ENV{NEW_TAG}\""/ge;
-              s/(name:[ \t]*webapi\.image\.tag[ \t]*\n[ \t]*value:[ \t]*)("[^"]*"|\x27[^\x27]*\x27|\S+)/$1."\"$ENV{NEW_TAG}\""/ge;
-            ' "$f"
-            after=$(sha1sum "$f" | cut -d' ' -f1)
-            if [[ "$before" != "$after" ]]; then
-              echo "  patched: $f"
-            else
-              echo "  no change: $f"
-            fi
-          done
+          echo "::group::Inject webapi.image override into ${APP_FILE}"
+          before=$(sha1sum "${APP_FILE}" | cut -d' ' -f1)
+          # Insert an "image:" block immediately under the "webapi:" key in the
+          # inline values. The indent (10 spaces) matches the surrounding YAML
+          # produced by NIC's template.
+          NEW_TAG="$NEW_TAG" perl -0777 -i -pe '
+            s/^(        webapi:\n)(?!          image:)/$1."          image:\n            tag: \"$ENV{NEW_TAG}\"\n"/me;
+          ' "${APP_FILE}"
+          after=$(sha1sum "${APP_FILE}" | cut -d' ' -f1)
+          if [[ "$before" == "$after" ]]; then
+            echo "✗ patch left ${APP_FILE} unchanged — file content:"
+            cat "${APP_FILE}"
+            exit 1
+          fi
+          echo "  patched: ${APP_FILE}"
           echo "::endgroup::"
 
           echo "::group::Diff in GitOps repo"
