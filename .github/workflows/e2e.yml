@@ -181,8 +181,16 @@ jobs:
             exit 1
           fi
 
+          # NIC writes manifests as Git objects but does not leave a checked-out
+          # working tree, so a plain grep finds nothing. Populate the working
+          # tree on main (which ArgoCD reads from) so we can edit and re-commit.
+          echo "::group::Populate working tree on main"
+          git -C "${GITOPS_DIR}" -c safe.directory='*' checkout main -- .
+          git -C "${GITOPS_DIR}" -c safe.directory='*' status --short | head -20 || true
+          echo "::endgroup::"
+
           echo "::group::Files referencing nebari-webapi before patch"
-          mapfile -t targets < <(grep -rln "nebari-webapi" "${GITOPS_DIR}" || true)
+          mapfile -t targets < <(grep -rln "nebari-webapi" "${GITOPS_DIR}" --exclude-dir='.git' || true)
           if [[ ${#targets[@]} -eq 0 ]]; then
             echo "✗ no files in ${GITOPS_DIR} reference nebari-webapi"
             echo "  Listing top-level layout for diagnosis:"
