@@ -82,16 +82,16 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       # ── Kubernetes cluster + Nebari platform ─────────────────────────────────
-      # Pin to @main until v1.1+ is cut for the argocd-self-heal input.
-      # Self-heal off lets the image-swap step below stick instead of being
-      # reverted by ArgoCD on its next reconcile cycle.
+      # The image override below is applied via a Git commit to the local
+      # file:// gitops repo ArgoCD reads from, so ArgoCD's auto-sync converges
+      # on it as desired state — no cluster-side patch to revert, no need for
+      # an argocd-self-heal toggle. Pinned to @main until v1.1+ is cut.
       - name: Setup Nebari Sandbox
         id: sandbox
         uses: nebari-dev/action-nebari-sandbox@main
         with:
           profile: platform
           cluster-name: nebari-e2e
-          argocd-self-heal: "false"
 
       # ── Wait for the PR-tagged webapi image on Quay ──────────────────────────
       # webapi.yml runs in parallel with this workflow on the same SHA. Block
