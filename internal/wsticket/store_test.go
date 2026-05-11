@@ -26,7 +26,7 @@ func newStore(t *testing.T) (*wsticket.Store, *miniredis.Miniredis) {
 
 func TestIssue_ReturnsNonEmptyHexTicket(t *testing.T) {
 	store, _ := newStore(t)
-	ticket, err := store.Issue(context.Background(), "alice")
+	ticket, err := store.Issue(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -48,11 +48,11 @@ func TestIssue_ReturnsNonEmptyHexTicket(t *testing.T) {
 func TestIssue_EachCallReturnsUniqueTicket(t *testing.T) {
 	store, _ := newStore(t)
 	ctx := context.Background()
-	t1, err := store.Issue(ctx, "alice")
+	t1, err := store.Issue(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t2, err := store.Issue(ctx, "alice")
+	t2, err := store.Issue(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,25 +63,21 @@ func TestIssue_EachCallReturnsUniqueTicket(t *testing.T) {
 
 // --- Redeem ---
 
-func TestRedeem_ValidTicket_ReturnsUsername(t *testing.T) {
+func TestRedeem_ValidTicket_Succeeds(t *testing.T) {
 	store, _ := newStore(t)
 	ctx := context.Background()
-	ticket, err := store.Issue(ctx, "alice")
+	ticket, err := store.Issue(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := store.Redeem(ctx, ticket)
-	if err != nil {
+	if err := store.Redeem(ctx, ticket); err != nil {
 		t.Fatalf("unexpected error redeeming valid ticket: %v", err)
-	}
-	if got != "alice" {
-		t.Errorf("expected username %q, got %q", "alice", got)
 	}
 }
 
 func TestRedeem_UnknownTicket_Errors(t *testing.T) {
 	store, _ := newStore(t)
-	_, err := store.Redeem(context.Background(), "deadbeefdeadbeefdeadbeefdeadbeef")
+	err := store.Redeem(context.Background(), "deadbeefdeadbeefdeadbeefdeadbeef")
 	if err == nil {
 		t.Fatal("expected error for unknown ticket, got nil")
 	}
@@ -90,16 +86,16 @@ func TestRedeem_UnknownTicket_Errors(t *testing.T) {
 func TestRedeem_SingleUse_SecondRedeemErrors(t *testing.T) {
 	store, _ := newStore(t)
 	ctx := context.Background()
-	ticket, err := store.Issue(ctx, "alice")
+	ticket, err := store.Issue(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// First redeem succeeds.
-	if _, err := store.Redeem(ctx, ticket); err != nil {
+	if err := store.Redeem(ctx, ticket); err != nil {
 		t.Fatalf("first redeem failed: %v", err)
 	}
 	// Second redeem must fail — ticket was deleted by the first call.
-	if _, err := store.Redeem(ctx, ticket); err == nil {
+	if err := store.Redeem(ctx, ticket); err == nil {
 		t.Fatal("expected error on second redeem of a used ticket, got nil")
 	}
 }
@@ -107,13 +103,13 @@ func TestRedeem_SingleUse_SecondRedeemErrors(t *testing.T) {
 func TestRedeem_ExpiredTicket_Errors(t *testing.T) {
 	store, mr := newStore(t)
 	ctx := context.Background()
-	ticket, err := store.Issue(ctx, "alice")
+	ticket, err := store.Issue(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Jump miniredis clock past the 30 s TTL.
 	mr.FastForward(31e9) // 31 seconds in nanoseconds
-	_, err = store.Redeem(ctx, ticket)
+	err = store.Redeem(ctx, ticket)
 	if err == nil {
 		t.Fatal("expected error for expired ticket, got nil")
 	}
@@ -121,33 +117,8 @@ func TestRedeem_ExpiredTicket_Errors(t *testing.T) {
 
 func TestRedeem_EmptyTicket_Errors(t *testing.T) {
 	store, _ := newStore(t)
-	_, err := store.Redeem(context.Background(), "")
+	err := store.Redeem(context.Background(), "")
 	if err == nil {
 		t.Fatal("expected error for empty ticket, got nil")
-	}
-}
-
-func TestIssue_DifferentUsersGetDifferentTickets(t *testing.T) {
-	store, _ := newStore(t)
-	ctx := context.Background()
-	ta, _ := store.Issue(ctx, "alice")
-	tb, _ := store.Issue(ctx, "bob")
-	if ta == tb {
-		t.Error("different users received identical tickets")
-	}
-	// Ensure each ticket resolves to the correct owner.
-	ua, err := store.Redeem(ctx, ta)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ub, err := store.Redeem(ctx, tb)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ua != "alice" {
-		t.Errorf("expected alice, got %q", ua)
-	}
-	if ub != "bob" {
-		t.Errorf("expected bob, got %q", ub)
 	}
 }

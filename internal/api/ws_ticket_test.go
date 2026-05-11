@@ -204,7 +204,7 @@ func TestHandleWS_Unauthorized_WhenNoCredentials(t *testing.T) {
 
 func TestHandleWS_Upgrades_WithValidTicket(t *testing.T) {
 	store, _ := newTicketStore(t)
-	ticket, err := store.Issue(context.Background(), "alice")
+	ticket, err := store.Issue(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestHandleWS_Unauthorized_WithInvalidTicket(t *testing.T) {
 
 func TestHandleWS_Unauthorized_WithAlreadyUsedTicket(t *testing.T) {
 	store, _ := newTicketStore(t)
-	ticket, err := store.Issue(context.Background(), "alice")
+	ticket, err := store.Issue(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestHandleWS_Unauthorized_WithAlreadyUsedTicket(t *testing.T) {
 
 func TestHandleWS_Unauthorized_WithExpiredTicket(t *testing.T) {
 	store, mr := newTicketStore(t)
-	ticket, err := store.Issue(context.Background(), "alice")
+	ticket, err := store.Issue(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

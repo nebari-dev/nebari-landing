@@ -228,6 +228,11 @@ func (h *Handler) Routes() http.Handler {
 // when a ticket store is configured, and a ticket query param triggers path (2)
 // even when a claimsExtractor is injected (test mode).
 //
+// Precedence: if a request carries both an Authorization header and a ticket
+// query parameter, the Bearer path is taken and the ticket is left sitting in
+// Redis until it expires. An invalid Bearer returns 401 and does NOT fall back
+// to the ticket — clients have to choose one mechanism per request.
+//
 //	@Summary		WebSocket: real-time service + notification events
 //	@Description	Upgrade to WebSocket. Server pushes JSON envelopes for service add/update/delete and new notifications. Auth is required before the upgrade: send `Authorization: Bearer <token>` or pass `?ticket=<id>` from POST /api/v1/ws-ticket (browsers must use the ticket path).
 //	@Tags			websocket
@@ -251,7 +256,11 @@ func (h *Handler) handleWS(w http.ResponseWriter, r *http.Request) {
 		}
 	case ticket != "" && h.wsTicketStore != nil:
 		// Single-use ticket exchanged by the browser via POST /api/v1/ws-ticket.
-		if _, err := h.wsTicketStore.Redeem(r.Context(), ticket); err != nil {
+		if err := h.wsTicketStore.Redeem(r.Context(), ticket); err != nil {
+			// Log at Info so operators can diagnose a "everyone gets 401 on /ws"
+			// outage without enabling debug mode. The Bearer path is already
+			// covered by extractAndValidateJWT's logging.
+			log.Info("WebSocket ticket redemption failed", "error", err.Error())
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -295,13 +304,16 @@ func (h *Handler) handleWSTicket(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	username := claims.PreferredUsername
-	if username == "" {
-		username = claims.Subject
-	}
-	ticket, err := h.wsTicketStore.Issue(r.Context(), username)
+	// The ticket itself does not carry identity (the store does not associate
+	// tickets with users), but we keep claims around so operators can audit
+	// who triggered a failed issuance.
+	ticket, err := h.wsTicketStore.Issue(r.Context())
 	if err != nil {
-		log.Error(err, "Failed to issue WebSocket ticket", "user", username)
+		caller := claims.PreferredUsername
+		if caller == "" {
+			caller = claims.Subject
+		}
+		log.Error(err, "Failed to issue WebSocket ticket", "user", caller)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,6 +19,10 @@ import (
 const (
 	ticketTTL = 30 * time.Second
 	keyPrefix = "wsticket:"
+	// Stored value is empty — the existence of the key is the only signal
+	// callers care about. We previously stored the issuing user's username
+	// but no caller read it back, so it has been removed.
+	storedValue = ""
 )
 
 // Store issues and redeems single-use WebSocket authentication tickets.
@@ -30,30 +35,30 @@ func NewStore(rdb *redis.Client) *Store {
 	return &Store{rdb: rdb}
 }
 
-// Issue mints a random single-use ticket associated with username. The ticket
-// expires after 30 seconds whether or not it is redeemed.
-func (s *Store) Issue(ctx context.Context, username string) (string, error) {
+// Issue mints a random single-use ticket. The ticket expires after 30
+// seconds whether or not it is redeemed.
+func (s *Store) Issue(ctx context.Context) (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("wsticket: generate ticket: %w", err)
 	}
 	ticket := hex.EncodeToString(b)
-	if err := s.rdb.Set(ctx, keyPrefix+ticket, username, ticketTTL).Err(); err != nil {
+	if err := s.rdb.Set(ctx, keyPrefix+ticket, storedValue, ticketTTL).Err(); err != nil {
 		return "", fmt.Errorf("wsticket: store ticket: %w", err)
 	}
 	return ticket, nil
 }
 
-// Redeem validates ticket, removes it from the store (making it single-use),
-// and returns the associated username. Returns an error when the ticket is
-// unknown, expired, or has already been redeemed.
-func (s *Store) Redeem(ctx context.Context, ticket string) (string, error) {
-	username, err := s.rdb.GetDel(ctx, keyPrefix+ticket).Result()
+// Redeem validates ticket and removes it from the store (making it
+// single-use). Returns an error when the ticket is unknown, expired, or has
+// already been redeemed.
+func (s *Store) Redeem(ctx context.Context, ticket string) error {
+	_, err := s.rdb.GetDel(ctx, keyPrefix+ticket).Result()
 	if err != nil {
-		if err == redis.Nil {
-			return "", fmt.Errorf("wsticket: unknown or expired ticket")
+		if errors.Is(err, redis.Nil) {
+			return fmt.Errorf("wsticket: unknown or expired ticket")
 		}
-		return "", fmt.Errorf("wsticket: redeem: %w", err)
+		return fmt.Errorf("wsticket: redeem: %w", err)
 	}
-	return username, nil
+	return nil
 }
