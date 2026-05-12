@@ -80,8 +80,7 @@ flowchart TD
     Hub["WebSocket hub (real-time notifications)"]
 
     Browser -->|PKCE: discovery + tokens| Keycloak
-    Browser -->|REST: Authorization: Bearer JWT| Nginx
-    Browser -->|"WS: POST /ws-ticket → wss://.../ws?ticket=&lt;id&gt;"| Nginx
+    Browser -->|"REST: Authorization: Bearer JWT<br/>WS: POST /ws-ticket → wss://.../ws?ticket=&lt;id&gt;"| Nginx
     Nginx --> Webapi
     Webapi --> Watcher
     Webapi --> Redis
