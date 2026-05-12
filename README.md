@@ -56,8 +56,10 @@ Nebari Landing is the **Launchpad** — the entry point for every NIC-managed cl
 `NebariApp` services in a single, authenticated UI so users can discover and launch platform tools without knowing
 individual URLs.
 
-It is deployed automatically by the [Nebari Operator](https://github.com/nebari-dev/nebari-infrastructure-core) as part
-of NIC's foundational software. Two components work together:
+It is deployed automatically by the [Nebari Infrastructure Core](https://github.com/nebari-dev/nebari-infrastructure-core)
+as part of NIC's foundational software layer, and reconciled by the
+[Nebari Operator](https://github.com/nebari-dev/nebari-operator) — the controller that orchestrates routing, TLS, and
+OIDC client provisioning for every `NebariApp` on the cluster. Two components work together:
 
 - **webapi** — Go REST API + WebSocket hub that watches `NebariApp` CRs via the Kubernetes API, validates JWTs from
   Keycloak, manages service pins, access requests, and real-time notifications over WebSocket.
