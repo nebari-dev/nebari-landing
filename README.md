@@ -63,7 +63,7 @@ OIDC client provisioning for every `NebariApp` on the cluster. Two components wo
 
 - **webapi** — Go REST API + WebSocket hub that watches `NebariApp` CRs via the Kubernetes API, validates JWTs from
   Keycloak, manages service pins, access requests, and real-time notifications over WebSocket.
-- **frontend** — Vite/React SPA (USWDS design system) served by nginx. The browser authenticates directly with
+- **frontend** — Vite/React SPA (shadcn/ui + Tailwind) served by nginx. The browser authenticates directly with
   Keycloak via [keycloak-js](https://www.keycloak.org/securing-apps/javascript-adapter) using PKCE; there is no
   server-side session and no proxy in front of the SPA.
 
@@ -106,7 +106,7 @@ Release artifacts — the Go webapi binary (linux/darwin, amd64/arm64) and the p
 | **Real-time Updates** | WebSocket hub pushes service changes and notifications to the browser instantly |
 | **SSO-Aware** | keycloak-js PKCE in the browser, JWT validation by the webapi — users land authenticated, admins see admin controls |
 | **Pins & Access Requests** | Users can pin favourite services and request access to restricted ones |
-| **USWDS Design System** | Accessible, government-grade UI components out of the box |
+| **shadcn/ui + Tailwind** | Accessible UI primitives with theme tokens; no design-system runtime to ship |
 | **Runtime Branding** | Custom title, logo, favicon, and CSS theme tokens — no image rebuild required |
 
 ## Branding & Theming
@@ -225,10 +225,12 @@ make -f dev/Makefile cluster-delete
 ### Front end development
 
 ```sh
-# Start the dev-watch (hot reaload for the front end for continuous development)
+# Start dev-watch: Vite serves the SPA with hot-reload, proxied through the
+# in-cluster nginx so /api/* calls reach the real webapi.
 make -f dev/Makefile dev-watch
 
-# Stop dev-watch, - Run this when manually reloading the front end. (will result in errors if not)
+# Stop dev-watch. Run this before deploying a manually-built frontend image,
+# otherwise the watcher will keep overwriting the deployed bundle.
 make -f dev/Makefile stop-dev-watch
 ```
 
@@ -290,7 +292,7 @@ npm run dev
   - `wsticket/` — Single-use WebSocket ticket store (Redis-backed).
 - `frontend/src/` — Vite/React SPA:
   - `api/` — Typed API clients.
-  - `app/` — App shell and SCSS.
+  - `app/` — App shell and global CSS (Tailwind + theme tokens).
   - `auth/` — Keycloak integration (keycloak-js PKCE).
   - `components/` — UI components.
 - `charts/nebari-landing/` — Helm chart.
@@ -372,8 +374,8 @@ make build
 # Run unit tests
 make test
 
-# Start the local dev environment
-make -f dev/Makefile up
+# Start the local dev environment (full minikube + Keycloak + webapi + frontend bootstrap)
+make -f dev/Makefile setup
 ```
 
 **Documentation**:
