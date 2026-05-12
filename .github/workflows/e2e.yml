@@ -70,26 +70,91 @@ jobs:
           restore-keys: |
             go-${{ runner.os }}-
 
-      # ── Webapi image tag (published by webapi.yml) ───────────────────────────
-      # webapi.yml uses different tagging schemes for the two event types:
-      #   - pull_request → quay.io/nebari/nebari-webapi:<branch-tag>
-      #     (sanitised head ref, set by the "manifest (PR)" job)
-      #   - push to main → quay.io/nebari/nebari-webapi:<short-sha> + :latest
-      #     (no branch-named tag is pushed on main, so falling back to the
-      #     short SHA matches what the upstream workflow actually publishes)
-      # Reuse whichever tag exists for the event we are running under so we
-      # are not building a second webapi locally.
-      - name: Compute webapi image tag
+      # ── Resolve and wait for the webapi image on Quay ────────────────────────
+      # webapi.yml triggers only on cmd/** and internal/** changes, while
+      # e2e.yml additionally triggers on charts/**, test/e2e/**, and
+      # .github/workflows/e2e.yml. For events that don't touch webapi-relevant
+      # files, webapi.yml is skipped — no per-event tag is published — and any
+      # naive wait against the expected tag would hang for the full timeout.
+      #
+      # Strategy:
+      #   1. Resolve the tag webapi.yml would publish for this event:
+      #        - pull_request → :<sanitised-head-ref>
+      #        - push         → :<short-sha>
+      #   2. Inspect the file diff for this event. If it contains any cmd/**
+      #      or internal/** path, webapi.yml is expected to build the tag —
+      #      wait up to 10 min for the manifest to appear.
+      #   3. Otherwise, webapi.yml will not run. Fall back to :latest
+      #      (the current main webapi), which is what the unmodified webapi
+      #      code in this PR/push would have used anyway.
+      - name: Resolve webapi image tag
         id: branch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+          set -euo pipefail
+          EVENT="${GITHUB_EVENT_NAME}"
+          HEAD_SHA="${GITHUB_SHA}"
+
+          if [[ "$EVENT" == "pull_request" ]]; then
             BRANCH="${GITHUB_HEAD_REF}"
-            TAG=$(echo "$BRANCH" | sed 's/\//-/g' | sed 's/[^a-zA-Z0-9._-]//g')
+            EXPECTED_TAG=$(echo "$BRANCH" | sed 's/\//-/g' | sed 's/[^a-zA-Z0-9._-]//g')
           else
-            TAG="${GITHUB_SHA:0:7}"
+            EXPECTED_TAG="${HEAD_SHA:0:7}"
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "  resolved tag: $TAG (event: $GITHUB_EVENT_NAME)"
+          echo "  expected per-event tag: :$EXPECTED_TAG"
+
+          echo "::group::Inspect diff to predict whether webapi.yml will run"
+          if [[ "$EVENT" == "pull_request" ]]; then
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            changed_files=$(gh api \
+              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+              --paginate --jq '.[].filename')
+          else
+            BEFORE="${{ github.event.before }}"
+            if [[ -z "$BEFORE" || "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+              # New ref or force-push without a meaningful "before" SHA —
+              # treat as if webapi-relevant files changed so we still wait
+              # for the freshly-built image. Conservative default.
+              changed_files="cmd/SENTINEL"
+            else
+              changed_files=$(gh api \
+                "repos/${GITHUB_REPOSITORY}/compare/${BEFORE}...${HEAD_SHA}" \
+                --jq '.files[].filename')
+            fi
+          fi
+          matches=$(printf '%s\n' "$changed_files" | grep -E '^(cmd|internal)/' || true)
+          if [[ -n "$matches" ]]; then
+            echo "  webapi-relevant changes detected:"
+            printf '    %s\n' $matches
+            webapi_will_build=true
+          else
+            echo "  no cmd/** or internal/** in diff — webapi.yml will be skipped"
+            webapi_will_build=false
+          fi
+          echo "::endgroup::"
+
+          if $webapi_will_build; then
+            TARGET="$EXPECTED_TAG"
+            MAX_ATTEMPTS=60   # 10 min, comfortably above webapi.yml's typical 3-5 min build
+            echo "  → waiting for :$TARGET (up to 10 min)"
+          else
+            TARGET="latest"
+            MAX_ATTEMPTS=6    # 1 min, :latest should already exist
+            echo "  → falling back to :$TARGET (1 min check)"
+          fi
+
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            if docker manifest inspect "quay.io/nebari/nebari-webapi:${TARGET}" >/dev/null 2>&1; then
+              echo "tag=$TARGET" >> "$GITHUB_OUTPUT"
+              echo "✔ resolved webapi image tag: :$TARGET"
+              exit 0
+            fi
+            echo "  attempt $i/$MAX_ATTEMPTS — :$TARGET not yet on Quay …"
+            sleep 10
+          done
+          echo "✗ :$TARGET never became available"
+          exit 1
 
       # ── Kubernetes cluster + Nebari platform ─────────────────────────────────
       # The image override below is applied via a Git commit to the local
@@ -102,25 +167,6 @@ jobs:
         with:
           profile: platform
           cluster-name: nebari-e2e
-
-      # ── Wait for the resolved webapi image on Quay ───────────────────────────
-      # webapi.yml runs in parallel with this workflow on the same SHA. Block
-      # here until its manifest job has published the tag (branch-named on PRs,
-      # short-SHA on main pushes) so the rollout step below has something to
-      # pull.
-      - name: Wait for webapi image on Quay
-        run: |
-          IMAGE="quay.io/nebari/nebari-webapi:${{ steps.branch.outputs.tag }}"
-          for i in $(seq 1 60); do
-            if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
-              echo "✔ $IMAGE is available"
-              exit 0
-            fi
-            echo "  attempt $i/60 — waiting for $IMAGE …"
-            sleep 10
-          done
-          echo "✗ $IMAGE never became available"
-          exit 1
 
       # ── NebariApp CRD ─────────────────────────────────────────────────────────
       # Apply directly so the tests don't depend on ArgoCD sync timing.
