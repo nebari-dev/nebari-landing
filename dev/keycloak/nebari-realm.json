@@ -88,7 +88,9 @@
         "https://nebari.example.com/*"
       ],
       "webOrigins": [
-        "http://localhost:*",
+        "+",
+        "http://localhost:5173",
+        "http://localhost:8080",
         "https://nebari.example.com"
       ],
       "fullScopeAllowed": false,
@@ -110,5 +112,39 @@
   "accessTokenLifespan": 300,
   "refreshTokenMaxReuse": 0,
   "offlineSessionMaxLifespanEnabled": false,
-  "accessCodeLifespan": 60
+  "accessCodeLifespan": 60,
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@example.com",
+      "firstName": "Admin",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "groups": ["/admin", "/users"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "dev",
+      "email": "dev@example.com",
+      "firstName": "Dev",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "groups": ["/users"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
 }

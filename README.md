@@ -271,6 +271,10 @@ npm run dev
 > require a running webapi. For a fully connected local dev loop (Keycloak + webapi + frontend with hot-reload) use the
 > dev cluster described in [dev/QUICKSTART.md](dev/QUICKSTART.md).
 
+> **Frontend-only path**: if you're iterating on the SPA and don't need the operator or webapi, use the lighter
+> docker-compose + MSW workflow in [docs/dev-quickstart.md](docs/dev-quickstart.md) — real Keycloak login, mocked
+> `/api/v1/*` driven by the OpenAPI spec, ~10-second boot.
+
 ## Development
 
 ### Project structure

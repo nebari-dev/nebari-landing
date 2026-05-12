@@ -61,10 +61,19 @@ apicard: ## Render docs/assets/api-{dark,light}.svg from the OpenAPI spec.
 gendocs: ## Inject auto-generated sections into docs/api.md.
 	go run ./cmd/gendocs
 
-# One-shot target: regenerate the OpenAPI spec, the SVG cards, and the
-# markdown reference. Run this after editing handler annotations.
+# Regenerate the MSW request handlers used by the frontend's mock layer.
+# Output goes to frontend/src/mocks/generated/handlers.ts (committed). Run
+# whenever the OpenAPI spec changes so the mocks stay in sync; the
+# openapi-drift workflow enforces this in CI.
+.PHONY: generate-msw
+generate-msw: ## Regenerate MSW handlers from the OpenAPI spec.
+	cd frontend && npm run mocks:generate
+
+# One-shot target: regenerate the OpenAPI spec, the SVG cards, the markdown
+# reference, and the frontend MSW handlers. Run this after editing handler
+# annotations.
 .PHONY: docs
-docs: generate-docs apicard gendocs ## Regenerate spec, SVG cards, and docs/api.md.
+docs: generate-docs apicard gendocs generate-msw ## Regenerate spec, SVG cards, docs/api.md, and MSW handlers.
 
 ##@ Testing
 

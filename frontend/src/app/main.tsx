@@ -26,6 +26,18 @@ for (const cookie of document.cookie.split(";")) {
   }
 }
 
+// Optional MSW layer for local frontend dev: start the service worker before
+// any Keycloak / config fetches so every subsequent network call (REST + WS)
+// is intercepted. The worker is gated behind VITE_USE_MOCKS=1 so production
+// builds never even bundle it. See docs/dev-quickstart.md.
+if (import.meta.env.VITE_USE_MOCKS === "1") {
+  const { worker } = await import("../mocks/browser");
+  await worker.start({
+    onUnhandledRequest: "bypass",
+    serviceWorker: { url: "/mockServiceWorker.js" },
+  });
+}
+
 await loadAppConfig();
 await initKeycloak();
 
