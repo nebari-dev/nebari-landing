@@ -18,7 +18,12 @@ frontend:
 
   image:
     repository: quay.io/nebari/nebari-landing
-    tag: "latest"
+    # Defaults to .Chart.AppVersion when empty. On main that is "latest"
+    # (the floating tag that always points at main's most recent build); on
+    # a release tag it is bumped to the release version (e.g. "0.1.0-alpha.6")
+    # so the chart at that tag pins to a matching image. Override explicitly
+    # to pull a specific PR build or short-SHA tag from Quay.
+    tag: ""
     pullPolicy: IfNotPresent
 
   # Port nginx listens on. Must be > 1024 — the container runs as non-root
@@ -87,7 +92,10 @@ webapi:
 
   image:
     repository: quay.io/nebari/nebari-webapi
-    tag: "latest"
+    # Same convention as frontend.image.tag — empty falls back to
+    # .Chart.AppVersion. See the frontend.image.tag comment above for the
+    # full rationale.
+    tag: ""
     pullPolicy: IfNotPresent
 
   port: 8080
