@@ -106,8 +106,9 @@ npm --prefix frontend run test:run
 ## Disabling mocks
 
 Set `VITE_USE_MOCKS=0` (or remove the line) in `frontend/.env`. Vite will
-then proxy `/api/*` to whatever `WEBAPI_URL` points at, matching the
-existing minikube `dev-watch` behavior.
+then proxy `/api/*` and WebSocket upgrades to `WEBAPI_URL`, defaulting to
+`http://localhost:8080`. The minikube `dev-watch` path keeps its in-cluster
+default when `VITE_USE_POLLING=true`.
 
 ## Troubleshooting
 
