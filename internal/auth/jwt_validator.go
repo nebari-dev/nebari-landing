@@ -159,7 +159,9 @@ func (v *JWTValidator) initLoop() {
 			"backoff", backoff, "error", err,
 			"hint", "verify KEYCLOAK_URL is correct — Keycloak 17+ does not use /auth as a context root")
 		if attempt < retryMaxAttempts {
-			retryDelay(backoff)
+			if !v.sleepOrStop(backoff) {
+				return
+			}
 			backoff *= 2
 		}
 	}
@@ -199,6 +201,25 @@ func (v *JWTValidator) stopped() bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// sleepOrStop runs retryDelay(d) on a helper goroutine and races it against
+// stopCh; returns false if Stop interrupts the sleep so the caller can exit
+// promptly instead of waiting out the remaining backoff. Indirecting through
+// retryDelay preserves the existing test hook (no real sleeping in unit
+// tests) while still keeping the loop cancellable.
+func (v *JWTValidator) sleepOrStop(d time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		retryDelay(d)
+		close(done)
+	}()
+	select {
+	case <-v.stopCh:
+		return false
+	case <-done:
+		return true
 	}
 }
 

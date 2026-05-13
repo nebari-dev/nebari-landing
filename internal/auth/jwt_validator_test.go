@@ -502,6 +502,38 @@ func TestNewJWTValidator_BackoffDoublesOnEachRetry(t *testing.T) {
 	}
 }
 
+// TestNewJWTValidator_DoesNotBlockOnSlowKeycloak is the regression test for
+// issue #85: the constructor must return promptly even if the JWKS endpoint
+// hangs. If anyone reintroduces a synchronous retry loop, this assertion
+// fails before the change ships.
+//
+// The constructor budget is intentionally tight (250 ms) — much less than the
+// 10 s per-attempt HTTP timeout in fetchPublicKeys, so even one synchronous
+// attempt would blow it. Generous enough for a slow CI scheduler to schedule
+// the goroutine.
+func TestNewJWTValidator_DoesNotBlockOnSlowKeycloak(t *testing.T) {
+	withNoBackoff(t, 1)
+
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-block
+	}))
+	defer func() { close(block); srv.Close() }()
+
+	start := time.Now()
+	v := NewJWTValidator(srv.URL, testRealm)
+	elapsed := time.Since(start)
+	t.Cleanup(v.Stop)
+
+	if elapsed > 250*time.Millisecond {
+		t.Errorf("NewJWTValidator blocked for %v; expected to return immediately. "+
+			"Did someone reintroduce a synchronous JWKS fetch?", elapsed)
+	}
+	if v.Ready() {
+		t.Error("Ready() should be false while JWKS server hangs")
+	}
+}
+
 func TestValidateToken_NotReady_ReturnsErrNotReady(t *testing.T) {
 	// Server hangs so the goroutine is stuck on the first attempt and Ready()
 	// stays false; ValidateToken must return ErrNotReady rather than a generic
