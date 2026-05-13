@@ -70,7 +70,7 @@ docs: generate-docs apicard gendocs ## Regenerate spec, SVG cards, and docs/api.
 
 .PHONY: test
 test: fmt vet ## Run unit tests.
-	go test ./internal/... -count=1 -coverprofile=coverage.out
+	go test ./internal/... -race -count=1 -coverprofile=coverage.out
 	@go tool cover -func=coverage.out | tail -1
 
 .PHONY: test-html

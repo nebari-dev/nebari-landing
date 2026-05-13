@@ -96,7 +96,9 @@ jobs:
         run: go vet ./...
 
       - name: Unit tests
-        run: go test ./internal/... -count=1 -coverprofile=coverage.out
+        # -race is on so concurrency bugs (e.g. unsynchronised shared state in
+        # tests that spawn goroutines) fail CI instead of someone's laptop.
+        run: go test ./internal/... -race -count=1 -coverprofile=coverage.out
 
       - name: Coverage summary
         run: go tool cover -func=coverage.out | tail -1
