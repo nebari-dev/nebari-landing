@@ -56,33 +56,41 @@ Nebari Landing is the **Launchpad** — the entry point for every NIC-managed cl
 `NebariApp` services in a single, authenticated UI so users can discover and launch platform tools without knowing
 individual URLs.
 
-It is deployed automatically by the [Nebari Operator](https://github.com/nebari-dev/nebari-infrastructure-core) as part
-of NIC's foundational software. Two components work together:
+It is deployed automatically by the [Nebari Infrastructure Core](https://github.com/nebari-dev/nebari-infrastructure-core)
+as part of NIC's foundational software layer, and reconciled by the
+[Nebari Operator](https://github.com/nebari-dev/nebari-operator) — the controller that orchestrates routing, TLS, and
+OIDC client provisioning for every `NebariApp` on the cluster. Two components work together:
 
 - **webapi** — Go REST API + WebSocket hub that watches `NebariApp` CRs via the Kubernetes API, validates JWTs from
   Keycloak, manages service pins, access requests, and real-time notifications over WebSocket.
-- **frontend** — Vite/React SPA (USWDS design system) served by nginx and protected by an OAuth2 Proxy sidecar.
+- **frontend** — Vite/React SPA (shadcn/ui + Tailwind) served by nginx. The browser authenticates directly with
+  Keycloak via [keycloak-js](https://www.keycloak.org/securing-apps/javascript-adapter) using PKCE; there is no
+  server-side session and no proxy in front of the SPA.
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    Browser["Browser (SPA + keycloak-js PKCE)"]
+    Keycloak[("Keycloak")]
+    Nginx["nginx (serves SPA, proxies /api/*)"]
+    Webapi[("webapi")]
+    Watcher["NebariApp CR watcher (Kubernetes API)"]
+    Redis[("Redis<br/>pins, access requests,<br/>WS tickets (30 s TTL),<br/>service cache")]
+    Hub["WebSocket hub (real-time notifications)"]
+
+    Browser -->|PKCE: discovery + tokens| Keycloak
+    Browser -->|"REST: Authorization: Bearer JWT<br/>WS: POST /ws-ticket → wss://.../ws?ticket=&lt;id&gt;"| Nginx
+    Nginx --> Webapi
+    Webapi --> Watcher
+    Webapi --> Redis
+    Webapi --> Hub
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Browser                                                │
-│    │                                                    │
-│    ▼                                                    │
-│  oauth2-proxy ──► Keycloak (JWT validation)             │
-│    │                                                    │
-│    ▼                                                    │
-│  nginx (frontend SPA)                                   │
-│    │  REST + WebSocket                                  │
-│    ▼                                                    │
-│  webapi                                                 │
-│    ├── NebariApp CR watcher (Kubernetes API)            │
-│    ├── Service cache + pins (Redis / in-memory)         │
-│    ├── Access request store                             │
-│    └── WebSocket hub (real-time notifications)          │
-└─────────────────────────────────────────────────────────┘
-```
+
+Browsers cannot set an `Authorization` header on a WebSocket upgrade request, so the SPA exchanges its Bearer JWT for
+a short-lived single-use ticket and passes it as `?ticket=<id>` on the upgrade. Non-browser clients can skip the
+exchange and send the Bearer token directly. See [`docs/api.md`](docs/api.md#websocket-authentication) for the full
+flow.
 
 Both pods are deployed via the `charts/nebari-landing` Helm chart, typically managed by ArgoCD through NIC.
 
@@ -95,9 +103,9 @@ Release artifacts — the Go webapi binary (linux/darwin, amd64/arm64) and the p
 | --- | --- |
 | **Service Discovery** | Automatically surfaces every `NebariApp` on the cluster — no manual registration required |
 | **Real-time Updates** | WebSocket hub pushes service changes and notifications to the browser instantly |
-| **SSO-Aware** | OAuth2 Proxy + Keycloak JWT validation — users land authenticated, admins see admin controls |
+| **SSO-Aware** | keycloak-js PKCE in the browser, JWT validation by the webapi — users land authenticated, admins see admin controls |
 | **Pins & Access Requests** | Users can pin favourite services and request access to restricted ones |
-| **USWDS Design System** | Accessible, government-grade UI components out of the box |
+| **shadcn/ui + Tailwind** | Accessible UI primitives with theme tokens; no design-system runtime to ship |
 | **Runtime Branding** | Custom title, logo, favicon, and CSS theme tokens — no image rebuild required |
 
 ## Branding & Theming
@@ -162,11 +170,16 @@ helm repo update
 ```sh
 helm upgrade --install nebari-landing nebari/nebari-landing \
   --namespace nebari-system --create-namespace \
-  --set frontend.oauth2Proxy.oidcIssuerURL=https://<keycloak-host>/realms/<realm> \
-  --set frontend.oauth2Proxy.clientID=<client-id> \
-  --set frontend.oauth2Proxy.clientSecret=<client-secret> \
-  --set frontend.oauth2Proxy.cookieSecret=<32-byte-base64-secret>
+  --set frontend.keycloak.url=https://<keycloak-host> \
+  --set frontend.keycloak.realm=<realm> \
+  --set webapi.keycloak.url=http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080 \
+  --set webapi.keycloak.realm=<realm> \
+  --set webapi.keycloak.issuerUrl=https://<keycloak-host>
 ```
+
+`frontend.keycloak.url` is the public Keycloak base URL the browser uses for PKCE redirects (Keycloak 17+ does not
+have an `/auth` context root). `webapi.keycloak.url` is the in-cluster URL the webapi uses to fetch JWKS; the
+`issuerUrl` is what the webapi validates the `iss` claim against and must match what the browser sees.
 
 See [`charts/nebari-landing/values.yaml`](charts/nebari-landing/values.yaml) for the full set of configurable values.
 
@@ -211,10 +224,12 @@ make -f dev/Makefile cluster-delete
 ### Front end development
 
 ```sh
-# Start the dev-watch (hot reaload for the front end for continuous development)
+# Start dev-watch: Vite serves the SPA with hot-reload, proxied through the
+# in-cluster nginx so /api/* calls reach the real webapi.
 make -f dev/Makefile dev-watch
 
-# Stop dev-watch, - Run this when manually reloading the front end. (will result in errors if not)
+# Stop dev-watch. Run this before deploying a manually-built frontend image,
+# otherwise the watcher will keep overwriting the deployed bundle.
 make -f dev/Makefile stop-dev-watch
 ```
 
@@ -260,37 +275,35 @@ npm run dev
 
 ### Project structure
 
-```
-cmd/                  webapi entry point (main.go)
-internal/
-  ├── accessrequests/ Access request store
-  ├── api/            HTTP handlers and routes
-  ├── app/            Application wiring
-  ├── auth/           JWT validation
-  ├── cache/          Service cache (backed by Redis)
-  ├── health/         Health check endpoint
-  ├── keycloak/       Keycloak client
-  ├── notifications/  Notification store
-  ├── pins/           Pin store
-  ├── watcher/        NebariApp CR watcher
-  └── websocket/      WebSocket hub
-frontend/
-  src/
-    ├── api/          Typed API clients
-    ├── app/          App shell and SCSS
-    ├── auth/         Keycloak integration
-    └── components/   UI components
-charts/nebari-landing/ Helm chart
-dev/                  Local dev environment (minikube + Keycloak)
-docs/
-  ├── api.md          HTTP API reference (auto-generated)
-  ├── design/         Architecture and design documents
-  ├── maintainers/    Release checklist and maintainer guides
-  └── static/imgs/    Screenshots and static assets
-test/e2e/             End-to-end tests (Ginkgo)
-cmd/gendocs/          Injects auto-generated sections into docs/api.md
-cmd/genapicard/       Renders docs/assets/api-{dark,light}.svg endpoint cards
-```
+- `cmd/` — webapi entry point (`main.go`).
+- `internal/` — webapi packages:
+  - `accessrequests/` — Access request store.
+  - `api/` — HTTP handlers and routes.
+  - `app/` — Application wiring.
+  - `auth/` — JWT validation.
+  - `cache/` — Service cache (backed by Redis).
+  - `health/` — Health check endpoint.
+  - `keycloak/` — Keycloak client.
+  - `notifications/` — Notification store.
+  - `pins/` — Pin store.
+  - `watcher/` — NebariApp CR watcher.
+  - `websocket/` — WebSocket hub.
+  - `wsticket/` — Single-use WebSocket ticket store (Redis-backed).
+- `frontend/src/` — Vite/React SPA:
+  - `api/` — Typed API clients.
+  - `app/` — App shell and global CSS (Tailwind + theme tokens).
+  - `auth/` — Keycloak integration (keycloak-js PKCE).
+  - `components/` — UI components.
+- `charts/nebari-landing/` — Helm chart.
+- `dev/` — Local dev environment (minikube + Keycloak).
+- `docs/`:
+  - `api.md` — HTTP API reference (auto-generated).
+  - `design/` — Architecture and design documents.
+  - `maintainers/` — Release checklist and maintainer guides.
+  - `static/imgs/` — Screenshots and static assets.
+- `test/e2e/` — End-to-end tests (Ginkgo).
+- `cmd/gendocs/` — Injects auto-generated sections into `docs/api.md`.
+- `cmd/genapicard/` — Renders `docs/assets/api-{dark,light}.svg` endpoint cards.
 
 ### Running tests
 
@@ -360,8 +373,8 @@ make build
 # Run unit tests
 make test
 
-# Start the local dev environment
-make -f dev/Makefile up
+# Start the local dev environment (full minikube + Keycloak + webapi + frontend bootstrap)
+make -f dev/Makefile setup
 ```
 
 **Documentation**:
