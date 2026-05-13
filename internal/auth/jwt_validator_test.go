@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -92,10 +93,7 @@ func signJWT(t *testing.T, key *rsa.PrivateKey, issuer string, exp time.Time, ex
 // the goroutine does not leak between tests.
 func newValidator(t *testing.T, srv *httptest.Server) *JWTValidator {
 	t.Helper()
-	v, err := NewJWTValidator(srv.URL, testRealm)
-	if err != nil {
-		t.Fatalf("NewJWTValidator: %v", err)
-	}
+	v := NewJWTValidator(srv.URL, testRealm)
 	t.Cleanup(v.Stop)
 	waitReady(t, v, 2*time.Second)
 	return v
@@ -115,19 +113,20 @@ func waitReady(t *testing.T, v *JWTValidator, timeout time.Duration) {
 	t.Fatalf("validator never became ready within %v", timeout)
 }
 
-// waitForCalls polls *calls until it reaches want or the deadline expires.
+// waitForCalls polls calls until it reaches want or the deadline expires.
 // Used by tests that need to observe an exact retry-budget count before
-// asserting and stopping the validator.
-func waitForCalls(t *testing.T, calls *int, want int, timeout time.Duration) {
+// asserting and stopping the validator. The counter is atomic because the
+// HTTP handler goroutine and the test goroutine both touch it.
+func waitForCalls(t *testing.T, calls *atomic.Int32, want int32, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if *calls >= want {
+		if calls.Load() >= want {
 			return
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
-	t.Fatalf("expected at least %d calls within %v, got %d", want, timeout, *calls)
+	t.Fatalf("expected at least %d calls within %v, got %d", want, timeout, calls.Load())
 }
 
 // --- parseRSAPublicKey ---
@@ -182,10 +181,7 @@ func assertNotReady(t *testing.T, v *JWTValidator, settle time.Duration) {
 
 func TestNewJWTValidator_InvalidURL_StaysNotReady(t *testing.T) {
 	withNoBackoff(t, 1)
-	v, err := NewJWTValidator("http://127.0.0.1:1", "realm")
-	if err != nil {
-		t.Fatalf("NewJWTValidator should not return an error: %v", err)
-	}
+	v := NewJWTValidator("http://127.0.0.1:1", "realm")
 	t.Cleanup(v.Stop)
 	assertNotReady(t, v, 50*time.Millisecond)
 }
@@ -196,10 +192,7 @@ func TestNewJWTValidator_EmptyKeys_StaysNotReady(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"keys": []interface{}{}})
 	}))
 	defer srv.Close()
-	v, err := NewJWTValidator(srv.URL, testRealm)
-	if err != nil {
-		t.Fatalf("NewJWTValidator should not return an error: %v", err)
-	}
+	v := NewJWTValidator(srv.URL, testRealm)
 	t.Cleanup(v.Stop)
 	assertNotReady(t, v, 50*time.Millisecond)
 }
@@ -392,10 +385,7 @@ func TestNewJWTValidator_404_StaysNotReady(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	v, err := NewJWTValidator(srv.URL, testRealm)
-	if err != nil {
-		t.Fatalf("NewJWTValidator should not return an error: %v", err)
-	}
+	v := NewJWTValidator(srv.URL, testRealm)
 	t.Cleanup(v.Stop)
 	assertNotReady(t, v, 50*time.Millisecond)
 }
@@ -405,7 +395,7 @@ func TestNewJWTValidator_RetriesOnTransientFailure(t *testing.T) {
 	withNoBackoff(t, 5)
 
 	key := generateTestKey(t)
-	calls := 0
+	var calls atomic.Int32
 	jwks := map[string]interface{}{
 		"keys": []map[string]interface{}{
 			{
@@ -419,8 +409,8 @@ func TestNewJWTValidator_RetriesOnTransientFailure(t *testing.T) {
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		if calls <= 2 {
+		n := calls.Add(1)
+		if n <= 2 {
 			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -429,14 +419,11 @@ func TestNewJWTValidator_RetriesOnTransientFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	v, err := NewJWTValidator(srv.URL, testRealm)
-	if err != nil {
-		t.Fatalf("NewJWTValidator: %v", err)
-	}
+	v := NewJWTValidator(srv.URL, testRealm)
 	t.Cleanup(v.Stop)
 	waitReady(t, v, 2*time.Second)
-	if calls != 3 {
-		t.Errorf("expected 3 calls to JWKS endpoint, got %d", calls)
+	if got := calls.Load(); got != 3 {
+		t.Errorf("expected 3 calls to JWKS endpoint, got %d", got)
 	}
 }
 
@@ -445,20 +432,17 @@ func TestNewJWTValidator_ExhaustsRetries_StaysNotReady(t *testing.T) {
 	// and the active retry budget must be honored (the goroutine then enters the
 	// slow-poll loop, which uses real time.After and so will not fire before the
 	// test calls Stop()).
-	const attempts = 3
-	withNoBackoff(t, attempts)
+	const attempts int32 = 3
+	withNoBackoff(t, int(attempts))
 
-	calls := 0
+	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
+		calls.Add(1)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
-	v, err := NewJWTValidator(srv.URL, testRealm)
-	if err != nil {
-		t.Fatalf("NewJWTValidator: %v", err)
-	}
+	v := NewJWTValidator(srv.URL, testRealm)
 	t.Cleanup(v.Stop)
 	waitForCalls(t, &calls, attempts, time.Second)
 	// give the goroutine a chance to enter slow-poll (which uses real
@@ -468,8 +452,8 @@ func TestNewJWTValidator_ExhaustsRetries_StaysNotReady(t *testing.T) {
 	if v.Ready() {
 		t.Error("validator unexpectedly became ready")
 	}
-	if calls != attempts {
-		t.Errorf("expected exactly %d attempts, got %d", attempts, calls)
+	if got := calls.Load(); got != attempts {
+		t.Errorf("expected exactly %d attempts, got %d", attempts, got)
 	}
 }
 
@@ -489,14 +473,14 @@ func TestNewJWTValidator_BackoffDoublesOnEachRetry(t *testing.T) {
 	}
 
 	// Server always fails so we exercise all retry gaps.
-	calls := 0
+	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
+		calls.Add(1)
 		http.Error(w, "fail", http.StatusServiceUnavailable)
 	}))
 	defer srv.Close()
 
-	v, _ := NewJWTValidator(srv.URL, testRealm)
+	v := NewJWTValidator(srv.URL, testRealm)
 	t.Cleanup(v.Stop)
 	waitForCalls(t, &calls, 4, time.Second)
 	// Give the goroutine a beat to record the final inter-attempt delay.
@@ -530,13 +514,10 @@ func TestValidateToken_NotReady_ReturnsErrNotReady(t *testing.T) {
 	}))
 	defer func() { close(block); srv.Close() }()
 
-	v, err := NewJWTValidator(srv.URL, testRealm)
-	if err != nil {
-		t.Fatalf("NewJWTValidator: %v", err)
-	}
+	v := NewJWTValidator(srv.URL, testRealm)
 	t.Cleanup(v.Stop)
 
-	_, err = v.ValidateToken("any-token")
+	_, err := v.ValidateToken("any-token")
 	if !errors.Is(err, ErrNotReady) {
 		t.Errorf("expected ErrNotReady, got %v", err)
 	}

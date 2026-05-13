@@ -248,7 +248,7 @@ func main() {
 		// a background goroutine. The HTTP server can therefore bind to its
 		// port and answer liveness probes even if Keycloak is still coming up.
 		// Handlers gating on Authorization return 503 until v.Ready() is true.
-		jwtValidator, _ = auth.NewJWTValidator(keycloakURL, keycloakRealm)
+		jwtValidator = auth.NewJWTValidator(keycloakURL, keycloakRealm)
 		// KEYCLOAK_ISSUER_URL lets operators keep KEYCLOAK_URL pointing at the
 		// internal cluster address (fast, no TLS) while validating the `iss`
 		// claim against the external public URL that Keycloak embeds in tokens.

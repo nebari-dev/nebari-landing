@@ -50,7 +50,7 @@ jobs:
         run: go vet ./...
 
       - name: Unit tests
-        run: go test ./internal/... -count=1
+        run: go test ./internal/... -race -count=1
 
   # ── Validate frontend ──────────────────────────────────────────────────────
   validate-frontend:

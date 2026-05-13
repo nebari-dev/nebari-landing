@@ -90,6 +90,9 @@ type JWTValidator struct {
 	// doneCh closes when initLoop exits (either on success, on stop, or
 	// before entering slow poll). Used by Stop() to wait for the goroutine.
 	doneCh chan struct{}
+	// stopOnce guards the close(stopCh) in Stop so concurrent callers cannot
+	// double-close the channel.
+	stopOnce sync.Once
 }
 
 // JWK represents a JSON Web Key
@@ -115,7 +118,7 @@ type JWKS struct {
 // exponential backoff. If those all fail, it switches to a `slowPollInterval`
 // cadence and keeps trying indefinitely. Either way, `Ready()` flips to true
 // the moment any fetch succeeds.
-func NewJWTValidator(keycloakURL, realm string) (*JWTValidator, error) {
+func NewJWTValidator(keycloakURL, realm string) *JWTValidator {
 	cleanURL := strings.TrimSuffix(keycloakURL, "/")
 	v := &JWTValidator{
 		keycloakURL: cleanURL,
@@ -130,7 +133,7 @@ func NewJWTValidator(keycloakURL, realm string) (*JWTValidator, error) {
 
 	log.Info("JWT validator created; initial JWKS fetch running in background",
 		"keycloakURL", keycloakURL, "realm", realm)
-	return v, nil
+	return v
 }
 
 // initLoop runs the initial JWKS fetch with exponential backoff, then falls
@@ -145,16 +148,16 @@ func (v *JWTValidator) initLoop() {
 		if v.stopped() {
 			return
 		}
-		if err := v.fetchPublicKeys(); err == nil {
+		err := v.fetchPublicKeys()
+		if err == nil {
 			v.ready.Store(true)
 			log.Info("JWT validator ready", "attempt", attempt)
 			return
-		} else {
-			log.Info("Failed to fetch Keycloak public keys, retrying",
-				"attempt", attempt, "maxRetries", retryMaxAttempts,
-				"backoff", backoff, "error", err,
-				"hint", "verify KEYCLOAK_URL is correct — Keycloak 17+ does not use /auth as a context root")
 		}
+		log.Info("Failed to fetch Keycloak public keys, retrying",
+			"attempt", attempt, "maxRetries", retryMaxAttempts,
+			"backoff", backoff, "error", err,
+			"hint", "verify KEYCLOAK_URL is correct — Keycloak 17+ does not use /auth as a context root")
 		if attempt < retryMaxAttempts {
 			retryDelay(backoff)
 			backoff *= 2
@@ -178,13 +181,13 @@ func (v *JWTValidator) initLoop() {
 			return
 		case <-time.After(slowPollInterval):
 		}
-		if err := v.fetchPublicKeys(); err == nil {
+		err := v.fetchPublicKeys()
+		if err == nil {
 			v.ready.Store(true)
 			log.Info("JWT validator ready (slow poll)")
 			return
-		} else {
-			log.Info("Slow poll JWKS fetch failed", "error", err)
 		}
+		log.Info("Slow poll JWKS fetch failed", "error", err)
 	}
 }
 
@@ -208,16 +211,12 @@ func (v *JWTValidator) Ready() bool {
 }
 
 // Stop signals the background init goroutine to exit and waits for it.
-// Safe to call multiple times. In production, NewJWTValidator's goroutine
-// runs for process lifetime so Stop is mainly for tests that need to avoid
-// leaking goroutines.
+// Safe to call multiple times, including concurrently from multiple goroutines
+// (stopOnce guards against a double-close panic). In production,
+// NewJWTValidator's goroutine runs for process lifetime so Stop is mainly for
+// tests that need to avoid leaking goroutines.
 func (v *JWTValidator) Stop() {
-	select {
-	case <-v.stopCh:
-		// already closed
-	default:
-		close(v.stopCh)
-	}
+	v.stopOnce.Do(func() { close(v.stopCh) })
 	<-v.doneCh
 }
 
