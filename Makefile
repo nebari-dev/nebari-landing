@@ -129,45 +129,12 @@ helm-package: ## Package the Helm chart (requires Helm).
 	helm package $(CHART_DIR) --destination dist/
 	@echo "✅ Chart packaged to dist/"
 
-.PHONY: helm-chart-version
-helm-chart-version: ## Update Helm chart version and appVersion (requires VERSION and APP_VERSION vars).
-	@if [ -z "$(VERSION)" ] || [ -z "$(APP_VERSION)" ]; then \
-		echo "❌ Error: VERSION and APP_VERSION are required"; \
-		echo "   Usage: make helm-chart-version VERSION=0.2.0 APP_VERSION=v0.2.0"; \
-		exit 1; \
-	fi
-	@echo "⎈  Updating chart version to $(VERSION), appVersion to $(APP_VERSION)..."
-	@sed -i 's/^version:.*/version: $(VERSION)/' $(CHART_DIR)/Chart.yaml
-	@sed -i 's/^appVersion:.*/appVersion: "$(APP_VERSION)"/' $(CHART_DIR)/Chart.yaml
-	@echo "✅ Chart versions updated"
-	@echo "   Note: values.yaml image tags are pinned by CI at release time; do not commit them."
-
 ##@ Release
 
-.PHONY: prepare-release
-prepare-release: ## Prepare release artifacts (must be on a release tag)
-	@if ! git describe --exact-match --tags HEAD 2>/dev/null; then \
-		echo "❌ Error: Not on a release tag. Create and checkout tag first."; \
-		echo "   Example: git tag v0.2.0 && git checkout v0.2.0"; \
-		exit 1; \
-	fi
-	@TAG=$$(git describe --exact-match --tags HEAD); \
-	VERSION="$${TAG#v}"; \
-	echo "📦 Preparing release artifacts for $$TAG..."; \
-	echo ""; \
-	echo "1️⃣  Updating Helm chart versions..."; \
-	$(MAKE) helm-chart-version VERSION="$$VERSION" APP_VERSION="$$TAG"; \
-	echo ""; \
-	echo "2️⃣  Packaging Helm chart..."; \
-	$(MAKE) helm-package; \
-	echo ""; \
-	echo "3️⃣  Staging Chart.yaml for commit (values.yaml tag stays 'latest' — CI pins it)..."; \
-	git add $(CHART_DIR)/Chart.yaml; \
-	echo ""; \
-	echo "✅ Release artifacts prepared for $$TAG"; \
-	echo ""; \
-	echo "Next steps:"; \
-	echo "  1. Review changes: git status && git diff --cached"; \
-	echo "  2. Commit: git commit -m 'chore: prepare chart for $$TAG'"; \
-	echo "  3. Push tag: git push origin $$TAG"; \
-	echo "  4. Publish the GitHub release to trigger CI"
+# helm-chart-version / prepare-release targets were removed in favour of the
+# release-prep workflow (.github/workflows/release-prep.yaml). The Makefile
+# versions wrote appVersion with a leading `v` (e.g. "v0.2.0") which does not
+# match the actual Quay tag scheme produced by docker/metadata-action's
+# type=semver,pattern={{version}} (no `v`), so anything they produced ended up
+# pointing at non-existent images. See docs/maintainers/release-checklist.md
+# for the current release flow.

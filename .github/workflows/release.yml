@@ -338,6 +338,10 @@ jobs:
           # appVersion main has. Fail loudly rather than ship a broken artifact.
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
+          # The `^` anchor is load-bearing: Chart.yaml's `dependencies:` block
+          # has indented `    version: 23.1.1` entries for the Redis subchart.
+          # Without the anchor, awk would pick up that line and the comparison
+          # below would fail spuriously. Do not "simplify" to a grep.
           CHART_VERSION=$(awk '/^version:/ {print $2}' charts/nebari-landing/Chart.yaml)
           APP_VERSION=$(awk '/^appVersion:/ {gsub(/"/, "", $2); print $2}' charts/nebari-landing/Chart.yaml)
           echo "tag=$TAG  expected version=$VERSION  chart version=$CHART_VERSION  appVersion=$APP_VERSION"
@@ -366,12 +370,16 @@ jobs:
 
       - name: Build summary
         run: |
+          # The git tag is v-prefixed (v0.2.0) but docker/metadata-action's
+          # type=semver,pattern={{version}} strips the v before pushing to
+          # Quay, so the actual image tag is the unprefixed VERSION. Use
+          # that for the summary so the printed pull commands are copy-pasteable.
           VERSION="${GITHUB_REF_NAME#v}"
           echo "### Release ${{ github.event.release.tag_name }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Images published:**" >> "$GITHUB_STEP_SUMMARY"
-          echo "- \`${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}:${{ github.event.release.tag_name }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- \`${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ github.event.release.tag_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}:${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Helm chart:** \`nebari-landing-${VERSION}.tgz\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

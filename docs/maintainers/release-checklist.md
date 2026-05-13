@@ -53,7 +53,7 @@ Visit https://github.com/nebari-dev/nebari-landing/releases/new
 - **Description**: Summarize changes (see previous releases for format)
 - Click **Publish release**
 
-### 5. Monitor Release Workflow
+### 4. Monitor Release Workflow
 
 The GitHub Actions workflow will automatically:
 
@@ -74,7 +74,7 @@ https://github.com/nebari-dev/nebari-landing/actions/workflows/release.yml
 
 Expected duration: ~15-20 minutes
 
-### 6. Verify Release Artifacts
+### 5. Verify Release Artifacts
 
 Check that the following were created:
 
@@ -96,7 +96,7 @@ docker pull quay.io/nebari/nebari-landing:0.2.0
 - Find PR titled "feat: add nebari-landing v0.2.0"
 - Review and merge the PR.
 
-### 7. Test the Release
+### 6. Test the Release
 
 **Via Helm repository** (after helm-repository PR is merged):
 ```bash
@@ -112,7 +112,7 @@ helm install nebari-landing \
   https://github.com/nebari-dev/nebari-landing/releases/download/v0.2.0/nebari-landing-0.2.0.tgz
 ```
 
-### 8. Update Documentation (if needed)
+### 7. Update Documentation (if needed)
 
 If this release includes breaking changes or new features:
 - [ ] Update README.md
@@ -146,7 +146,7 @@ Common issues:
 
 **Chart packaging failure**: Run `helm lint charts/nebari-landing/` locally
 
-**helm-repository sync failure**: Verify `NEBARI_BOT_ TOKEN` secret has correct permissions
+**helm-repository sync failure**: Verify `NEBARI_HELM_REPO_TOKEN` secret has correct permissions
 
 ### helm-repository PR not created
 
@@ -171,7 +171,7 @@ Then check the manifest jobs ran successfully.
 
 After a successful release:
 
-1. **Merge back to main** (if you made documentation changes on the release branch)
+1. **Merge back to main** — only if you hand-edited the release branch beyond the Chart.yaml bump that release-prep produced. The bump itself stays on the release branch + tag and is **not** merged to main.
 2. **Announce the release** in relevant channels
 3. **Update nebari-infrastructure-core** if this release contains changes that affect the Nebari Operator
 
