@@ -1281,6 +1281,15 @@ func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.Cla
 		// so that pin operations still work in dev/test mode (all stored under "").
 		return &auth.Claims{PreferredUsername: "_anonymous"}, true
 	}
+	// If the caller presented credentials but our JWKS fetch hasn't completed
+	// yet, surface that as 503 with a Retry-After hint so clients distinguish
+	// "auth not online yet" from "your token is bad" (401). Without this they
+	// would mistakenly clear cached credentials and bounce users to login.
+	if r.Header.Get("Authorization") != "" && !h.jwtValidator.Ready() {
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, "JWT validator not ready; Keycloak may still be initializing", http.StatusServiceUnavailable)
+		return nil, false
+	}
 	claims, ok := h.extractAndValidateJWT(r)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
