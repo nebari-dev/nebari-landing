@@ -190,6 +190,24 @@ jobs:
       # sandbox itself can wait for realm-readiness.
       - name: Wait for Keycloak realm-setup Job
         run: |
+          # kubectl wait returns NotFound *immediately* (does not poll) when
+          # the target object doesn't exist yet — and the realm-setup Job is
+          # applied by ArgoCD post-sync, which can lag the keycloak app
+          # reporting Healthy by several seconds. Poll until the Job appears
+          # before waiting on its completion condition.
+          for i in $(seq 1 60); do
+            if kubectl get job/keycloak-realm-setup -n keycloak >/dev/null 2>&1; then
+              echo "✔  keycloak-realm-setup Job exists; waiting for completion"
+              break
+            fi
+            if [ "$i" = "60" ]; then
+              echo "✗  keycloak-realm-setup Job was never created (5 min); ArgoCD state:"
+              kubectl get applications -n argocd || true
+              exit 1
+            fi
+            echo "waiting for keycloak-realm-setup Job to be created (attempt $i/60)..."
+            sleep 5
+          done
           if ! kubectl wait --for=condition=complete \
                  job/keycloak-realm-setup -n keycloak --timeout=10m; then
             echo "✗  keycloak-realm-setup did not complete; dumping diagnostics:"
