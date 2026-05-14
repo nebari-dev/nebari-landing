@@ -42,10 +42,8 @@ export function ServicesTable({
             <TableHead className="w-[20%] py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
               Status
             </TableHead>
-            <TableHead className="w-[10%] overflow-visible py-4 px-5 pl-2 text-right text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
-              <span className="relative inline-block -translate-x-5 whitespace-nowrap sm:-translate-x-3 md:translate-x-0">
-                Actions
-              </span>
+            <TableHead className="w-[10%] px-0 py-4 text-center text-[12px] font-semibold uppercase tracking-[0.02em] text-(--text-secondary) md:text-[13px] md:tracking-[0.05em]">
+              Actions
             </TableHead>
           </TableRow>
         </TableHeader>
