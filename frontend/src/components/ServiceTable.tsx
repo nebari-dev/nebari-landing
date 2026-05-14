@@ -27,8 +27,8 @@ export function ServicesTable({
         <colgroup>
           <col className="w-[50%]" />
           <col className="w-[20%]" />
-          <col className="w-[20%]" />
-          <col className="w-[10%]" />
+          <col className="w-[15%]" />
+          <col className="w-[15%]" />
         </colgroup>
 
         <TableHeader>
@@ -42,7 +42,7 @@ export function ServicesTable({
             <TableHead className="w-[20%] py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
               Status
             </TableHead>
-            <TableHead className="w-[10%] px-0 py-4 text-center text-[12px] font-semibold uppercase tracking-[0.02em] text-(--text-secondary) md:text-[13px] md:tracking-[0.05em]">
+            <TableHead className="w-[10%] pr-5 py-4 text-right text-[12px] font-semibold uppercase tracking-[0.02em] text-(--text-secondary) md:text-[13px] md:tracking-[0.05em]">
               Actions
             </TableHead>
           </TableRow>
