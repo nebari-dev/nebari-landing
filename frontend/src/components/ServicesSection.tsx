@@ -56,14 +56,14 @@ export function ServicesSection({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 px-1 md:flex-row md:items-center md:justify-between">
-        <div className="flex h-[46px] w-full max-w-[262px] overflow-visible">
+      <div className="flex items-center justify-between gap-3 px-1">
+        <div className="flex h-[46px] min-w-[180px] max-w-[262px] flex-1 overflow-visible">
           <Input
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search"
-            className="h-full rounded-r-none rounded-l-[8px] border border-input border-r-0 px-3"
+            className="h-full rounded-r-none rounded-l-[8px] border border-input border-r-0 px-3 text-sm leading-5 md:text-sm"
           />
 
           <Button
@@ -84,7 +84,7 @@ export function ServicesSection({
               setView(value)
             }
           }}
-          className="h-[46px] gap-1 rounded-[8px] border border-border bg-secondary p-1"
+          className="h-[46px] shrink-0 gap-1 rounded-[8px] border border-border bg-secondary p-1"
         >
           <ToggleGroupItem
             value="table"
