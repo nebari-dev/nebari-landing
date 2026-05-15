@@ -79,7 +79,7 @@ docs: generate-docs apicard gendocs generate-msw ## Regenerate spec, SVG cards, 
 
 .PHONY: test
 test: fmt vet ## Run unit tests.
-	go test ./internal/... -count=1 -coverprofile=coverage.out
+	go test ./internal/... -race -count=1 -coverprofile=coverage.out
 	@go tool cover -func=coverage.out | tail -1
 
 .PHONY: test-html

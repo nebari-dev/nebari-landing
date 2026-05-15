@@ -429,7 +429,11 @@ func (h *Handler) handleGetServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, authenticated := h.extractAndValidateJWT(r)
+	claims, authenticated, err := h.extractAndValidateJWT(r)
+	if errors.Is(err, auth.ErrNotReady) {
+		writeAuthWarmupResponse(w)
+		return
+	}
 	pinnedUIDs := h.callerPinnedUIDs(claims, authenticated)
 
 	allServices := h.cache.GetAll()
@@ -498,7 +502,11 @@ func (h *Handler) handleGetServiceByUID(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	claims, authenticated := h.extractAndValidateJWT(r)
+	claims, authenticated, err := h.extractAndValidateJWT(r)
+	if errors.Is(err, auth.ErrNotReady) {
+		writeAuthWarmupResponse(w)
+		return
+	}
 	if !h.canAccessService(service, authenticated, claims) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
@@ -1024,10 +1032,22 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool) {
+// extractAndValidateJWT returns the parsed claims for the request, a boolean
+// indicating whether validation succeeded, and an error.
+//
+// The error is non-nil only when the caller presented credentials but the JWT
+// validator's initial JWKS fetch has not yet completed (auth.ErrNotReady). All
+// other failure modes — missing header, malformed scheme, bad signature, wrong
+// issuer — return (nil, false, nil) so the caller can treat the request as
+// anonymous. Callers that gate behavior on auth (returning a 401/403/private
+// data) should check the error first and emit 503 + Retry-After via
+// writeAuthWarmupResponse so clients distinguish "auth offline" from "your
+// token is bad" (401) or "your stuff disappeared" (silent anonymous).
+func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, error) {
 	// Test/debug hook: use the injected extractor when present.
 	if h.claimsExtractor != nil {
-		return h.claimsExtractor(r)
+		claims, ok := h.claimsExtractor(r)
+		return claims, ok, nil
 	}
 
 	if !h.enableAuth || h.jwtValidator == nil {
@@ -1036,7 +1056,7 @@ func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool) {
 				"enableAuth", h.enableAuth,
 				"validatorConfigured", h.jwtValidator != nil)
 		}
-		return nil, false
+		return nil, false, nil
 	}
 
 	authHeader := r.Header.Get("Authorization")
@@ -1044,25 +1064,30 @@ func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool) {
 		if h.debugMode {
 			log.Info("[debug] No Authorization header on request", "path", r.URL.Path)
 		}
-		return nil, false
+		return nil, false, nil
 	}
 
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || parts[0] != "Bearer" {
 		log.Info("Invalid Authorization header format",
 			"scheme", parts[0], "path", r.URL.Path)
-		return nil, false
+		return nil, false, nil
 	}
 
 	tokenString := parts[1]
 
 	claims, err := h.jwtValidator.ValidateToken(tokenString)
 	if err != nil {
+		if errors.Is(err, auth.ErrNotReady) {
+			// Propagate so the caller can surface 503 rather than silently
+			// degrading the user to anonymous during the warmup window.
+			return nil, false, err
+		}
 		log.Info("JWT validation failed",
 			"error", err.Error(),
 			"path", r.URL.Path,
 			"hint", "check KEYCLOAK_ISSUER_URL matches the 'iss' claim in the token")
-		return nil, false
+		return nil, false, nil
 	}
 
 	if h.debugMode {
@@ -1071,7 +1096,16 @@ func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool) {
 			"groups", claims.Groups,
 			"issuer", claims.Issuer)
 	}
-	return claims, true
+	return claims, true, nil
+}
+
+// writeAuthWarmupResponse writes a 503 + Retry-After response for callers
+// that hit extractAndValidateJWT during the JWKS warmup window. The SPA reads
+// Retry-After to back off rather than clearing credentials and bouncing the
+// user to the login page.
+func writeAuthWarmupResponse(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "5")
+	http.Error(w, "JWT validator not ready; Keycloak may still be initializing", http.StatusServiceUnavailable)
 }
 
 func (h *Handler) canAccessService(service *cache.ServiceInfo, authenticated bool, claims *auth.Claims) bool {
@@ -1128,7 +1162,11 @@ func (h *Handler) handleCallerIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, authenticated := h.extractAndValidateJWT(r)
+	claims, authenticated, err := h.extractAndValidateJWT(r)
+	if errors.Is(err, auth.ErrNotReady) {
+		writeAuthWarmupResponse(w)
+		return
+	}
 
 	var resp CallerIdentityResponse
 	if authenticated {
@@ -1281,7 +1319,11 @@ func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.Cla
 		// so that pin operations still work in dev/test mode (all stored under "").
 		return &auth.Claims{PreferredUsername: "_anonymous"}, true
 	}
-	claims, ok := h.extractAndValidateJWT(r)
+	claims, ok, err := h.extractAndValidateJWT(r)
+	if errors.Is(err, auth.ErrNotReady) {
+		writeAuthWarmupResponse(w)
+		return nil, false
+	}
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return nil, false
@@ -1354,8 +1396,10 @@ func (h *Handler) handleDebug(w http.ResponseWriter, r *http.Request) {
 	// When a claimsExtractor is configured (test / dev injection) or when the full
 	// JWT validator is available, extractAndValidateJWT already handles everything.
 	// For the debug response we also want to surface the validation *error* when
-	// the real validator is present, so we run the two paths in parallel.
-	claims, authenticated := h.extractAndValidateJWT(r)
+	// the real validator is present, so we run the two paths in parallel. The
+	// ErrNotReady signal is intentionally discarded — debug should still serve
+	// during warmup so operators can see the reason in ValidationError below.
+	claims, authenticated, _ := h.extractAndValidateJWT(r)
 
 	authInfo := DebugAuthInfo{
 		Enabled:             h.enableAuth,

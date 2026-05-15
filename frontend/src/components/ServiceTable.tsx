@@ -23,19 +23,26 @@ export function ServicesTable({
 }: ServicesTableProps) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-background transition-none">
-      <Table>
+      <Table className="min-w-140 table-fixed">
+        <colgroup>
+          <col className="w-[50%]" />
+          <col className="w-[20%]" />
+          <col className="w-[15%]" />
+          <col className="w-[15%]" />
+        </colgroup>
+
         <TableHeader>
-          <TableRow className="h-[54px] border-b border-border transition-none">
-            <TableHead className="px-5 py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
+          <TableRow className="h-13.5 border-b border-border transition-none">
+            <TableHead className="w-[50%] py-4 pr-2 pl-5 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
               Service
             </TableHead>
-            <TableHead className="px-5 py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
+            <TableHead className="w-[20%] py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
               Category
             </TableHead>
-            <TableHead className="px-5 py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
+            <TableHead className="w-[20%] py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
               Status
             </TableHead>
-            <TableHead className="px-5 py-4 text-right text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
+            <TableHead className="w-[10%] pr-5 py-4 text-right text-[12px] font-semibold uppercase tracking-[0.02em] text-(--text-secondary) md:text-[13px] md:tracking-[0.05em]">
               Actions
             </TableHead>
           </TableRow>
@@ -82,27 +89,27 @@ function ServiceRow({
       onClick={openService}
       onKeyDown={handleRowKeyDown}
     >
-      <TableCell className="px-5 py-4 align-middle">
-        <div className="flex items-start gap-4">
+      <TableCell className="py-4 pr-2 pl-5 align-middle whitespace-normal">
+        <div className="flex min-w-0 items-start gap-3">
           <ServiceIcon imageUrl={service.image} />
 
-          <div className="min-w-0">
-            <p className="text-sm font-semibold leading-5 text-foreground">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold leading-5 text-foreground">
               {service.name}
             </p>
-            <p className="text-(--text-secondary) text-sm leading-5">
+            <p className="overflow-hidden text-(--text-secondary) text-sm leading-5 whitespace-normal break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
               {service.description}
             </p>
           </div>
         </div>
       </TableCell>
 
-      <TableCell className="px-5 py-4 align-middle">
-        <div className="flex flex-wrap gap-2">
+      <TableCell className="px-2 py-4 align-middle whitespace-normal">
+        <div className="flex min-w-0 flex-wrap gap-1">
           {service.category.map((item) => (
             <span
               key={item}
-              className="inline-flex items-center rounded-sm bg-accent px-2 py-0.5 text-xs capitalize text-(--pill-category-fg)"
+              className="inline-flex max-w-full items-center rounded-sm bg-accent px-1.5 py-0.5 text-xs capitalize text-(--pill-category-fg) whitespace-normal break-words"
             >
               {item}
             </span>
@@ -110,11 +117,13 @@ function ServiceRow({
         </div>
       </TableCell>
 
-      <TableCell className="px-5 py-4 align-middle">
-        <StatusBadge status={service.status} />
+      <TableCell className="px-2 py-4 align-middle">
+        <div className="min-w-0">
+          <StatusBadge status={service.status} />
+        </div>
       </TableCell>
 
-      <TableCell className="px-5 py-4 text-right align-middle">
+      <TableCell className="py-4 pr-5 pl-2 text-right align-middle">
         <Button
           type="button"
           variant="ghost"

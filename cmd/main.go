@@ -244,11 +244,11 @@ func main() {
 			setupLog.Error(nil, "keycloak-url is required when auth is enabled")
 			os.Exit(1)
 		}
-		jwtValidator, err = auth.NewJWTValidator(keycloakURL, keycloakRealm)
-		if err != nil {
-			setupLog.Error(err, "Failed to create JWT validator")
-			os.Exit(1)
-		}
+		// NewJWTValidator returns immediately; the initial JWKS fetch runs on
+		// a background goroutine. The HTTP server can therefore bind to its
+		// port and answer liveness probes even if Keycloak is still coming up.
+		// Handlers gating on Authorization return 503 until v.Ready() is true.
+		jwtValidator = auth.NewJWTValidator(keycloakURL, keycloakRealm)
 		// KEYCLOAK_ISSUER_URL lets operators keep KEYCLOAK_URL pointing at the
 		// internal cluster address (fast, no TLS) while validating the `iss`
 		// claim against the external public URL that Keycloak embeds in tokens.
