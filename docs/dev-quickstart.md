@@ -22,10 +22,11 @@ paths are independent and can coexist.
 # Install JS deps
 npm --prefix frontend ci
 
-# Bootstrap the local env file (if you don't have one already) and flip the
-# mocks flag on. `frontend/.env` is gitignored — your local toggles live there.
+# Bootstrap the local env file if you don't have one already.
+# `frontend/.env` is gitignored — your local toggles live there.
 cp frontend/.env.example frontend/.env
-sed -i '' 's/^VITE_USE_MOCKS=.*/VITE_USE_MOCKS=1/' frontend/.env
+
+# Open frontend/.env and set VITE_USE_MOCKS=1.
 ```
 
 ## Every session
