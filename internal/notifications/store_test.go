@@ -17,7 +17,7 @@ func newStore(t *testing.T) *Store {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	return NewStore(rdb)
+	return NewStore(rdb, time.Hour)
 }
 
 // --- Create ---
@@ -44,6 +44,22 @@ func TestCreate_NoImage_OK(t *testing.T) {
 	n, err := s.Create("", "Title", "Body")
 	if err != nil || n.Image != "" {
 		t.Errorf("unexpected: err=%v image=%q", err, n.Image)
+	}
+}
+
+func TestCreate_SetsTTL(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	retention := time.Hour
+	s := NewStore(rdb, retention)
+
+	n, err := s.Create("", "Title", "Body")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ttl := mr.TTL(notifKey(n.ID)); ttl != retention {
+		t.Errorf("expected TTL %s, got %s", retention, ttl)
 	}
 }
 
@@ -172,13 +188,13 @@ func TestReadSet_PersistsAcrossTwoClients(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb1 := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb1.Close() })
-	s1 := NewStore(rdb1)
+	s1 := NewStore(rdb1, time.Hour)
 	n, _ := s1.Create("", "T", "M")
 	_ = s1.MarkRead("alice", n.ID)
 
 	rdb2 := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb2.Close() })
-	s2 := NewStore(rdb2)
+	s2 := NewStore(rdb2, time.Hour)
 	rs, _ := s2.ReadSet("alice")
 	if !rs[n.ID] {
 		t.Error("read state should be visible from a second Store client")
@@ -200,7 +216,7 @@ func TestCreate_RedisDown_ReturnsError(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	s := NewStore(rdb)
+	s := NewStore(rdb, time.Hour)
 
 	mr.SetError("server error")
 
@@ -214,7 +230,7 @@ func TestGet_RedisDown_ReturnsError(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	s := NewStore(rdb)
+	s := NewStore(rdb, time.Hour)
 
 	mr.SetError("server error")
 
@@ -228,7 +244,7 @@ func TestList_RedisDown_ReturnsError(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	s := NewStore(rdb)
+	s := NewStore(rdb, time.Hour)
 
 	mr.SetError("server error")
 
@@ -242,7 +258,7 @@ func TestMarkRead_RedisDown_ReturnsError(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	s := NewStore(rdb)
+	s := NewStore(rdb, time.Hour)
 
 	mr.SetError("server error")
 

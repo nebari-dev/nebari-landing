@@ -29,7 +29,7 @@ func newNotifStore(t *testing.T) *notifications.Store {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	return notifications.NewStore(rdb)
+	return notifications.NewStore(rdb, time.Hour)
 }
 
 // newNotifHandler wires a notification store into a handler with auth disabled.

@@ -55,13 +55,14 @@ type Notification struct {
 
 // Store is a Redis-backed store for notifications and per-user read state.
 type Store struct {
-	rdb *redis.Client
+	rdb       *redis.Client
+	retention time.Duration
 }
 
 // NewStore returns a Store backed by the given Redis client.
 // The client must already be configured; no connection is verified here.
-func NewStore(rdb *redis.Client) *Store {
-	return &Store{rdb: rdb}
+func NewStore(rdb *redis.Client, retention time.Duration) *Store {
+	return &Store{rdb: rdb, retention: retention}
 }
 
 // Close is a no-op; the Redis client lifetime is managed by the caller.
@@ -86,6 +87,7 @@ func (s *Store) Create(image, title, message string) (*Notification, error) {
 			"message", n.Message,
 			"createdAt", ts,
 		)
+		pipe.Expire(ctx, notifKey(n.ID), s.retention)
 		pipe.ZAdd(ctx, notifIndexKey, redis.Z{
 			Score:  float64(n.CreatedAt.UnixMilli()),
 			Member: n.ID,

@@ -136,6 +136,8 @@ webapi:
     #   - Service removed from the landing page
     #   - Service recovers from unhealthy → healthy ("back online")
     lifecycleNotifications: true
+    # How long notifications remain in Redis before expiring.
+    retention: "72h"
 
   resources:
     requests:
