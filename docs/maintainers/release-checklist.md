@@ -30,19 +30,19 @@ Enter the version (e.g. `0.2.0`) and click **Run workflow**. The workflow will:
 
 - ✅ Validate the version (semver, no leading `v`).
 - ✅ Refuse to overwrite an existing tag.
-- ✅ Create a `release/v<version>` branch from current `main`.
-- ✅ Bump `charts/nebari-landing/Chart.yaml` (`version` + `appVersion`).
-- ✅ Commit `chore: prepare chart for v<version>` on that branch.
-- ✅ Push the branch and tag `v<version>` at its HEAD.
+- ✅ Bump `charts/nebari-landing/Chart.yaml` (`version` + `appVersion`) on a detached HEAD.
+- ✅ Commit `chore: prepare chart for v<version>` on that detached HEAD.
+- ✅ Tag `v<version>` at the bump commit and push only the tag.
 
-The tag push triggers `release.yml`, which produces the images, binaries, and
-chart tarball.
+Publishing a GitHub Release against the new tag triggers `release.yml`, which
+produces the images, binaries, and chart tarball.
 
-> **Why a separate branch?** The `values.yaml` image tags are empty and the
+> **Why a tag-only commit?** The `values.yaml` image tags are empty and the
 > deployment templates fall back to `.Chart.AppVersion`. Source-based consumers
 > (e.g. ArgoCD pointing at the git tag) need the bumped `appVersion` to be
-> committed at the tag so the fallback resolves to a real image. The release
-> branch carries that commit; `main`'s `appVersion` stays as `"latest"`.
+> committed at the tag so the fallback resolves to a real image. The tag carries
+> that commit directly — no branch ref is needed, and `main`'s `appVersion`
+> stays as `"latest"`.
 
 ### 3. Create the GitHub Release
 
@@ -171,14 +171,13 @@ Then check the manifest jobs ran successfully.
 
 After a successful release:
 
-1. **Merge back to main** — only if you hand-edited the release branch beyond the Chart.yaml bump that release-prep produced. The bump itself stays on the release branch + tag and is **not** merged to main.
-2. **Announce the release** in relevant channels
-3. **Update nebari-infrastructure-core** if this release contains changes that affect the Nebari Operator
+1. **Announce the release** in relevant channels.
+2. **Update nebari-infrastructure-core** if this release contains changes that affect the Nebari Operator.
 
 ## Release Checklist Summary
 
 - [ ] Ran **Release prep** workflow with the new version.
-- [ ] Verified the workflow pushed `release/v<version>` branch + `v<version>` tag.
+- [ ] Verified the workflow pushed the `v<version>` tag (no release branch is created).
 - [ ] Published GitHub release at the new tag.
 - [ ] Verified images built successfully (`:0.2.0` exists on Quay).
 - [ ] Verified Helm chart `.tgz` attached to release with the right `appVersion`.

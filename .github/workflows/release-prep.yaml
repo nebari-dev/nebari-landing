@@ -3,22 +3,21 @@
 # Inputs a release version (e.g. "0.1.0-alpha.6", no leading v). The workflow:
 #   1. Validates the version against a semver pattern.
 #   2. Refuses to overwrite an existing tag.
-#   3. Branches from main into release/v<version>.
-#   4. Bumps charts/nebari-landing/Chart.yaml: version and appVersion to the
-#      release version (no v prefix — matches the Quay tag scheme set by
-#      docker/metadata-action's type=semver,pattern={{version}}).
-#   5. Commits "chore: prepare chart for v<version>" on the release branch.
-#   6. Pushes the branch and tags v<version> at its HEAD.
-#   7. Push of the tag triggers release.yml, which builds Quay images
-#      (already tagged 0.1.0-alpha.X via docker/metadata-action) and packages
-#      the Helm chart from the release-branch source — values.yaml's empty
-#      tag fields fall back to .Chart.AppVersion = 0.1.0-alpha.X, pinning the
-#      image references in the published .tgz.
+#   3. Bumps charts/nebari-landing/Chart.yaml on a detached HEAD: version and
+#      appVersion to the release version (no v prefix — matches the Quay tag
+#      scheme set by docker/metadata-action's type=semver,pattern={{version}}).
+#   4. Commits "chore: prepare chart for v<version>" on the detached HEAD.
+#   5. Tags v<version> at the bump commit and pushes only the tag — git's push
+#      protocol bundles the otherwise-unreachable commit along with the tag, so
+#      no branch ref is left on the remote.
+#   6. Publishing a GitHub Release against the new tag triggers release.yml,
+#      which builds Quay images and packages the Helm chart from the tagged
+#      source — values.yaml's empty tag fields fall back to .Chart.AppVersion =
+#      <version>, pinning the image references in the published .tgz.
 #
-# main is intentionally untouched. The release commit lives on the release
-# branch and tag only. After the tag's release.yml run finishes, the
-# release/v<version> branch can be deleted via the GitHub UI; the tag is the
-# only source-of-truth artifact downstream consumers care about.
+# main is intentionally untouched. The release commit is reachable only via
+# the tag, which is the source-of-truth artifact downstream consumers care
+# about. No release/v<version> branch is created.
 
 name: Release prep
 
@@ -69,15 +68,16 @@ jobs:
           fi
           echo "✔ tag ${TAG} is available"
 
-      - name: Bump Chart.yaml on release branch
+      - name: Bump Chart.yaml on detached HEAD
         env:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          BRANCH="release/v${VERSION}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "${BRANCH}"
+          # Detached HEAD so the bump commit is reachable only via the tag we
+          # create below — no release/v<version> branch is left on the remote.
+          git checkout --detach main
 
           sed -i -E "s/^version: .*/version: ${VERSION}/" charts/nebari-landing/Chart.yaml
           sed -i -E "s/^appVersion: .*/appVersion: \"${VERSION}\"/" charts/nebari-landing/Chart.yaml
@@ -88,19 +88,19 @@ jobs:
           git add charts/nebari-landing/Chart.yaml
           git commit -m "chore: prepare chart for v${VERSION}"
 
-      - name: Push branch and tag
+      - name: Tag and push
         env:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          BRANCH="release/v${VERSION}"
           TAG="v${VERSION}"
-          git push origin "${BRANCH}"
           git tag -a "${TAG}" -m "Release ${VERSION}"
-          git push origin "${TAG}"
-          echo "✔ pushed ${BRANCH} and ${TAG}"
+          # Pushing the tag also pushes the (otherwise unreachable) bump commit
+          # it points at — no branch push needed.
+          git push origin "refs/tags/${TAG}"
+          echo "✔ pushed ${TAG}"
           echo ""
-          echo "release.yml will now run on the tag push and produce:"
+          echo "Publish a GitHub Release against ${TAG} to trigger release.yml, which produces:"
           echo "  - quay.io/nebari/nebari-webapi:${VERSION}"
           echo "  - quay.io/nebari/nebari-landing:${VERSION}"
           echo "  - the GoReleaser binaries"
