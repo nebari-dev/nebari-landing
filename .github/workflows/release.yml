@@ -330,12 +330,16 @@ jobs:
 
       - name: Verify chart is pinned to release tag
         run: |
-          # The release-prep workflow (.github/workflows/release-prep.yaml)
-          # commits the version + appVersion bump on a dedicated release
-          # branch before the tag is pushed. If the source at this tag does
-          # not match the tag's version, the release was not produced through
+          # release-prep (.github/workflows/release-prep.yaml) produces the
+          # tag with a single commit that bumps Chart.yaml's version and
+          # appVersion to match. If the source at this tag does not match
+          # the tag's version, the release was not produced through
           # release-prep and the packaged chart would float on whatever
           # appVersion main has. Fail loudly rather than ship a broken artifact.
+          #
+          # Note: this check assumes Chart.yaml's `version` and `appVersion`
+          # move together (release-prep always writes both). If the project
+          # ever decouples them, update this check accordingly.
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
           # The `^` anchor is load-bearing: Chart.yaml's `dependencies:` block
@@ -347,8 +351,7 @@ jobs:
           echo "tag=$TAG  expected version=$VERSION  chart version=$CHART_VERSION  appVersion=$APP_VERSION"
           if [[ "$CHART_VERSION" != "$VERSION" || "$APP_VERSION" != "$VERSION" ]]; then
             echo "✗ Chart.yaml is not pinned to the release tag."
-            echo "  Run release-prep workflow (.github/workflows/release-prep.yaml) instead of tagging manually,"
-            echo "  or bump Chart.yaml on a release branch before pushing the tag."
+            echo "  Run release-prep workflow (.github/workflows/release-prep.yaml) instead of tagging manually."
             exit 1
           fi
           echo "✔ Chart.yaml matches the release tag"

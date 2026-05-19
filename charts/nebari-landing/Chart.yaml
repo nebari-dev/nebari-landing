@@ -10,14 +10,11 @@ version: 0.1.0
 # at a non-release commit) resolve to the floating :latest image tag, which
 # always points at main's most recent webapi/frontend build on Quay.
 #
-# At release time, the release-prep workflow
-# (.github/workflows/release-prep.yaml) replaces this with the release
-# version (e.g. "0.1.0-alpha.6") on a dedicated release branch, commits the
-# bump, and tags it. Consumers checking out the tag see appVersion pinned
-# to a real image tag.
-#
-# Image tags themselves are left empty in values.yaml so the deployment
-# templates fall back to .Chart.AppVersion. See values.yaml.
+# At release time, release-prep (.github/workflows/release-prep.yaml) bumps
+# this to the real version (e.g. "0.1.0-alpha.6") in the commit the release
+# tag points at, so consumers checking out the tag see appVersion pinned to
+# a matching image tag. Image tags themselves are left empty in values.yaml
+# so the deployment templates fall back to .Chart.AppVersion — see values.yaml.
 appVersion: "latest"
 maintainers:
   - name: OpenTeams

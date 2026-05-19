@@ -138,12 +138,5 @@ helm-package: ## Package the Helm chart (requires Helm).
 	helm package $(CHART_DIR) --destination dist/
 	@echo "✅ Chart packaged to dist/"
 
-##@ Release
-
-# helm-chart-version / prepare-release targets were removed in favour of the
-# release-prep workflow (.github/workflows/release-prep.yaml). The Makefile
-# versions wrote appVersion with a leading `v` (e.g. "v0.2.0") which does not
-# match the actual Quay tag scheme produced by docker/metadata-action's
-# type=semver,pattern={{version}} (no `v`), so anything they produced ended up
-# pointing at non-existent images. See docs/maintainers/release-checklist.md
-# for the current release flow.
+# Releases are produced by the release-prep GitHub Actions workflow
+# (.github/workflows/release-prep.yaml). See docs/maintainers/release-checklist.md.
