@@ -31,6 +31,10 @@ on:
       - go.sum
       - Makefile
       - .github/workflows/openapi-drift.yml
+      - frontend/scripts/generate-msw-handlers.ts
+      - frontend/src/mocks/generated/**
+      - frontend/package.json
+      - frontend/package-lock.json
   pull_request:
     branches: [main]
     paths:
@@ -42,6 +46,10 @@ on:
       - go.sum
       - Makefile
       - .github/workflows/openapi-drift.yml
+      - frontend/scripts/generate-msw-handlers.ts
+      - frontend/src/mocks/generated/**
+      - frontend/package.json
+      - frontend/package-lock.json
   workflow_dispatch:
 
 concurrency:
@@ -65,14 +73,23 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Regenerate spec, SVG cards, and api.md
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps (for the MSW handler generator)
+        run: npm ci --prefix frontend
+
+      - name: Regenerate spec, SVG cards, api.md, and MSW handlers
         run: make docs
 
       - name: Verify all generated artefacts match what's committed
         run: |
-          if ! git diff --exit-code -- internal/api/docs docs/api.md docs/assets/api-dark.svg docs/assets/api-light.svg; then
+          if ! git diff --exit-code -- internal/api/docs docs/api.md docs/assets/api-dark.svg docs/assets/api-light.svg frontend/src/mocks/generated; then
             echo ""
-            echo "✗ Generated documentation is out of date."
+            echo "✗ Generated documentation or MSW handlers are out of date."
             echo "  Run 'make docs' locally and commit the result."
             exit 1
           fi

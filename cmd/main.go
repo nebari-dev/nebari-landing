@@ -60,6 +60,8 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+const defaultNotificationRetention = 72 * time.Hour
+
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 
@@ -88,6 +90,7 @@ func main() {
 		allowedOrigins string
 		notifStartup   bool
 		notifLifecycle bool
+		notifRetention time.Duration
 		enableDocs     bool
 	)
 
@@ -123,6 +126,8 @@ func main() {
 		"Post a welcome/feedback notification on every startup (env: NOTIFICATIONS_STARTUP)")
 	flag.BoolVar(&notifLifecycle, "notifications-lifecycle", envBool("NOTIFICATIONS_LIFECYCLE", true),
 		"Auto-post notifications for service lifecycle events: added, removed, back online (env: NOTIFICATIONS_LIFECYCLE)")
+	flag.DurationVar(&notifRetention, "notifications-retention", envDuration("NOTIFICATIONS_RETENTION", defaultNotificationRetention),
+		"How long notifications remain in Redis before expiring, e.g. 72h (env: NOTIFICATIONS_RETENTION)")
 	flag.BoolVar(&enableDocs, "enable-docs", envBool("ENABLE_DOCS", false),
 		"Expose the OpenAPI spec at /api/v1/docs/openapi.json and a Scalar viewer at /api/v1/docs. Never enable in production (env: ENABLE_DOCS)")
 
@@ -196,7 +201,7 @@ func main() {
 	accessRequestStore := accessrequests.NewStore(rdb)
 	setupLog.Info("Access request store ready (Redis)")
 
-	notificationStore := notifications.NewStore(rdb)
+	notificationStore := notifications.NewStore(rdb, notifRetention)
 	setupLog.Info("Notification store ready (Redis)")
 
 	nebariAppWatcher, err := watcher.NewNebariAppWatcher(config, scheme, serviceCache)
@@ -376,6 +381,19 @@ func envBool(name string, def bool) bool {
 		return def
 	}
 	return b
+}
+
+// envDuration returns the duration value of the named environment variable, or def if unset/invalid.
+func envDuration(name string, def time.Duration) time.Duration {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return def
+	}
+	return d
 }
 
 // splitOrigins splits a comma-separated ALLOWED_ORIGINS string into a trimmed slice.
