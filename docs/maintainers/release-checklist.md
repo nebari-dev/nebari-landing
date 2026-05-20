@@ -37,7 +37,7 @@ Enter the version (e.g. `0.2.0`) and click **Run workflow**. The workflow will:
 Publishing a GitHub Release against the new tag triggers `release.yml`, which
 produces the images, binaries, and chart tarball.
 
-For the design rationale (why the bump lives at the tag, how the chart resolves the image reference at install time, what the runtime flow looks like end-to-end), see [`docs/design/release-flow.md`](../design/release-flow.md).
+> **Why a tag-only commit?** The `values.yaml` image tags are empty and the deployment templates fall back to `.Chart.AppVersion`. Source-based consumers (e.g. ArgoCD pointing at the git tag) need the bumped `appVersion` to be committed at the tag so the fallback resolves to a real image. The tag carries that commit directly — no branch ref is needed, and `main`'s `appVersion` stays as `"latest"`. See **How It Works** at the bottom of this doc for the full picture.
 
 ### 3. Create the GitHub Release
 
@@ -179,3 +179,33 @@ After a successful release:
 - [ ] Merged helm-repository PR.
 - [ ] Tested chart installation.
 - [ ] Updated documentation (if needed).
+
+## How It Works
+
+Three pieces drive the release flow:
+
+1. **`values.yaml` image tags are empty.** Both `webapi.image.tag` and `frontend.image.tag` default to `""` — not `"latest"`.
+2. **Deployment templates fall back to `.Chart.AppVersion`.** The image string renders as `{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}`. When the tag is empty, Helm fills it in from `Chart.yaml`.
+3. **`appVersion` is the per-release knob.** `main` carries `appVersion: "latest"` so non-release commits resolve to the floating image. Each release tag carries a single commit that bumps `appVersion` to the real version.
+
+Same files in both states; only `Chart.yaml` differs:
+
+| File | On `main` | On `v0.1.0-alpha.6` |
+| --- | --- | --- |
+| `Chart.yaml` `appVersion` | `"latest"` | `"0.1.0-alpha.6"` |
+| `values.yaml` image tags | `""` | `""` (unchanged) |
+| `templates/.../deployment.yaml` | template expression | template expression (unchanged) |
+
+**When the substitution happens.** Not at release time. `release.yml` runs `helm package` against the tagged source and ships the templates as-is in the `.tgz`. Helm evaluates the `default` fallback at install time, when a consumer runs `helm install` or ArgoCD reconciles. So the chart artifact stays generic; the appVersion at the tag drives the result.
+
+**Three consumer scenarios:**
+
+| Scenario | What the consumer sets | Rendered image |
+| --- | --- | --- |
+| `main`, no overrides | (defaults) | `quay.io/nebari/nebari-{webapi,landing}:latest` |
+| Release tag, no overrides | (defaults) | `quay.io/nebari/nebari-{webapi,landing}:0.1.0-alpha.6` |
+| Explicit override | `--set webapi.image.tag=feat-foo` | `quay.io/nebari/nebari-webapi:feat-foo` |
+
+The first two scenarios share the same code path — both rely on the `AppVersion` fallback. The third bypasses the fallback because `.tag` is non-empty (used for testing PR builds or pinning to a specific main commit; available tags come from `webapi.yml`'s per-PR and per-SHA builds).
+
+**Why no release branch.** Tags carry commits independently of branches, and no part of the build pipeline triggers on `release/*` (image builds fire on push-to-main and on `release: published`). `release-prep` makes the bump commit on a detached HEAD and pushes only the tag; git's push protocol bundles the otherwise-unreachable commit along with it. The branch list stays clean and there's no post-release cleanup step.
