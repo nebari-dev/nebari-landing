@@ -37,12 +37,7 @@ Enter the version (e.g. `0.2.0`) and click **Run workflow**. The workflow will:
 Publishing a GitHub Release against the new tag triggers `release.yml`, which
 produces the images, binaries, and chart tarball.
 
-> **Why a tag-only commit?** The `values.yaml` image tags are empty and the
-> deployment templates fall back to `.Chart.AppVersion`. Source-based consumers
-> (e.g. ArgoCD pointing at the git tag) need the bumped `appVersion` to be
-> committed at the tag so the fallback resolves to a real image. The tag carries
-> that commit directly — no branch ref is needed, and `main`'s `appVersion`
-> stays as `"latest"`.
+For the design rationale (why the bump lives at the tag, how the chart resolves the image reference at install time, what the runtime flow looks like end-to-end), see [`docs/design/release-flow.md`](../design/release-flow.md).
 
 ### 3. Create the GitHub Release
 
