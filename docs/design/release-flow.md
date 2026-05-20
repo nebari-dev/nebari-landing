@@ -84,16 +84,16 @@ sequenceDiagram
     RP->>R: bump Chart.yaml on detached HEAD
     RP->>R: tag v0.1.0-alpha.6 at bump commit
     RP->>R: git push origin v0.1.0-alpha.6
-    Note over R: tag points at bump commit;<br/>no branch ref involved
+    Note over R: tag points at bump commit (no branch ref involved)
     M->>R: Publish GitHub Release against v0.1.0-alpha.6
-    R->>RL: release: published event
+    R->>RL: release published event
     RL->>R: checkout tag
     RL->>RL: verify Chart.yaml is pinned
     RL->>Q: push nebari-webapi:0.1.0-alpha.6
     RL->>Q: push nebari-landing:0.1.0-alpha.6
     RL->>R: attach nebari-landing-0.1.0-alpha.6.tgz to release
-    C->>R: fetch chart source at v0.1.0-alpha.6<br/>(or pull .tgz from release)
-    C->>C: helm install — template engine evaluates<br/>{{ .tag | default .Chart.AppVersion }}
+    C->>R: fetch chart source at v0.1.0-alpha.6 (or pull .tgz)
+    C->>C: helm install evaluates default .Chart.AppVersion fallback
     C->>Q: pull nebari-{webapi,landing}:0.1.0-alpha.6
 ```
 
