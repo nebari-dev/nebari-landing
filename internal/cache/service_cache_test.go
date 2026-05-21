@@ -267,4 +267,3 @@ func TestGetByNamespacedName_NotFound(t *testing.T) {
 		t.Errorf("expected nil, got %+v", svc)
 	}
 }
-

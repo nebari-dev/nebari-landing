@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
+	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
 	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 	webkeycloak "github.com/nebari-dev/nebari-landing/internal/keycloak"
@@ -326,14 +326,14 @@ func (h *Handler) handleWSTicket(w http.ResponseWriter, r *http.Request) {
 
 // ServiceView is the client-facing representation of a service.
 type ServiceView struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Status      string   `json:"status"`
-	Description string   `json:"description"`
-	Category    []string `json:"category"`
-	Pinned      bool     `json:"pinned"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Status      string          `json:"status"`
+	Description string          `json:"description"`
+	Category    []string        `json:"category"`
+	Pinned      bool            `json:"pinned"`
 	Image       sdapp.IconValue `json:"image"`
-	URL         string   `json:"url"`
+	URL         string          `json:"url"`
 }
 
 // ServiceResponse is the response format for GET /api/v1/services.
