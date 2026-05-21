@@ -51,7 +51,7 @@ func TestAdd_Enabled_StoresCorrectFields(t *testing.T) {
 		Enabled:        true,
 		DisplayName:    "My App",
 		Description:    "A test app",
-		Icon:           "jupyter",
+		Icon:           sdapp.ThemeIcon{Plain: "jupyter"},
 		Category:       "Development",
 		Priority:       42,
 		Visibility:     "public",
@@ -69,7 +69,7 @@ func TestAdd_Enabled_StoresCorrectFields(t *testing.T) {
 		"Namespace":   {"default", svc.Namespace},
 		"DisplayName": {"My App", svc.DisplayName},
 		"Description": {"A test app", svc.Description},
-		"Icon":        {"jupyter", svc.Icon},
+		"Icon":        {"jupyter", svc.Icon.Plain},
 		"Category":    {"Development", svc.Category},
 		"Priority":    {42, svc.Priority},
 		"Visibility":  {"public", svc.Visibility},
@@ -267,3 +267,4 @@ func TestGetByNamespacedName_NotFound(t *testing.T) {
 		t.Errorf("expected nil, got %+v", svc)
 	}
 }
+

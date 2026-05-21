@@ -13,6 +13,7 @@ import {
 import { loadAppConfig, getAppConfig, applyAppConfig } from './config.ts';
 
 import App from './index.tsx'
+import { ThemeProvider } from '../hooks/ThemeContext'
 
 import "./index.css";
 
@@ -46,6 +47,8 @@ if (appConfig) applyAppConfig(appConfig);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   </StrictMode>
 );

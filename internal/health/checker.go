@@ -93,7 +93,7 @@ func (h *HealthChecker) postRecoveryNotif(uid string) {
 		name = svc.Name
 	}
 	n, err := h.notifStore.Create(
-		svc.Icon,
+		svc.Icon.String(),
 		fmt.Sprintf("%s is back online!", name),
 		fmt.Sprintf("%s is back online! Service is ready to use.", name),
 	)

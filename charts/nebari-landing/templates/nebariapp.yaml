@@ -68,7 +68,13 @@ spec:
     enabled: {{ .Values.nebariApp.landingPage.enabled }}
     displayName: {{ .Values.nebariApp.landingPage.displayName | quote }}
     description: {{ .Values.nebariApp.landingPage.description | quote }}
+    {{- if kindIs "map" .Values.nebariApp.landingPage.icon }}
+    icon:
+      light: {{ .Values.nebariApp.landingPage.icon.light | quote }}
+      dark: {{ .Values.nebariApp.landingPage.icon.dark | quote }}
+    {{- else if .Values.nebariApp.landingPage.icon }}
     icon: {{ .Values.nebariApp.landingPage.icon | quote }}
+    {{- end }}
     category: {{ .Values.nebariApp.landingPage.category | quote }}
     priority: {{ .Values.nebariApp.landingPage.priority }}
 {{- end }}

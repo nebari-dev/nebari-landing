@@ -7,6 +7,68 @@
 // layer never imports k8s machinery directly.
 package app
 
+import "encoding/json"
+
+// ThemeIcon holds the icon URL(s) for a service. Use Plain for a single URL that
+// works in both modes, or set Light/Dark for theme-aware variants.
+// When both Plain and Light/Dark are set, Light/Dark take precedence.
+type ThemeIcon struct {
+	Plain string
+	Light string
+	Dark  string
+}
+
+// AsIconValue converts ThemeIcon to its JSON-serializable form. The two types
+// are structurally identical; this cast makes the conversion explicit.
+func (t ThemeIcon) AsIconValue() IconValue { return IconValue(t) }
+
+// IconValue is the JSON-serializable icon for a service. It marshals to either a
+// plain string or a {"light","dark"} object depending on which fields are set.
+type IconValue struct {
+	Plain string
+	Light string
+	Dark  string
+}
+
+func (v IconValue) MarshalJSON() ([]byte, error) {
+	if v.Light != "" || v.Dark != "" {
+		return json.Marshal(struct {
+			Light string `json:"light,omitempty"`
+			Dark  string `json:"dark,omitempty"`
+		}{Light: v.Light, Dark: v.Dark})
+	}
+	return json.Marshal(v.Plain)
+}
+
+func (v *IconValue) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		v.Plain = s
+		return nil
+	}
+	var obj struct {
+		Light string `json:"light"`
+		Dark  string `json:"dark"`
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	v.Light = obj.Light
+	v.Dark = obj.Dark
+	return nil
+}
+
+// String returns a single URL for contexts that require a plain string (e.g. notifications).
+func (v IconValue) String() string {
+	if v.Light != "" {
+		return v.Light
+	}
+	if v.Dark != "" {
+		return v.Dark
+	}
+	return v.Plain
+}
+
 // App is the internal representation of a Nebari application that participates
 // in service discovery. It is derived from a NebariApp CR by the watcher and
 // passed to the ServiceCache.
@@ -57,8 +119,8 @@ type LandingPage struct {
 	// Description is supplementary text for the service card.
 	Description string
 
-	// Icon identifies the service icon (built-in name or image URL).
-	Icon string
+	// Icon holds the service icon. Set Plain for a single URL; set Light/Dark for theme-aware variants.
+	Icon ThemeIcon
 
 	// Category groups related services on the landing page.
 	Category string

@@ -7,7 +7,7 @@ export type BackendSocketService = {
   displayName: string
   description: string
   url: string
-  icon: string
+  icon: string | { light?: string; dark?: string }
   category: string
   priority: number
   visibility: string

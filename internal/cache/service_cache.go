@@ -17,7 +17,7 @@ type ServiceInfo struct {
 	DisplayName       string             `json:"displayName"`
 	Description       string             `json:"description"`
 	URL               string             `json:"url"`
-	Icon              string             `json:"icon"`
+	Icon              sdapp.IconValue    `json:"icon"`
 	Category          string             `json:"category"`
 	Priority          int                `json:"priority"`
 	Visibility        string             `json:"visibility"`
@@ -85,7 +85,7 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 		DisplayName:       lp.DisplayName,
 		Description:       lp.Description,
 		URL:               buildURL(a),
-		Icon:              lp.Icon,
+		Icon:              lp.Icon.AsIconValue(),
 		Category:          lp.Category,
 		Priority:          priority,
 		Visibility:        visibility,

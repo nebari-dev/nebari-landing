@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
 	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
@@ -331,7 +332,7 @@ type ServiceView struct {
 	Description string   `json:"description"`
 	Category    []string `json:"category"`
 	Pinned      bool     `json:"pinned"`
-	Image       string   `json:"image"`
+	Image       sdapp.IconValue `json:"image"`
 	URL         string   `json:"url"`
 }
 
