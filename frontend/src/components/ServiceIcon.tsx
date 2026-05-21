@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import fallbackServiceImage from "../assets/Nebari.svg"
 import { useTheme } from "../hooks/ThemeContext"
 
@@ -18,20 +18,17 @@ function resolveIcon(imageUrl: IconUrl | undefined, isDarkMode: boolean): string
 export function ServiceIcon({ imageUrl }: ServiceIconProps) {
   const { isDarkMode } = useTheme()
   const resolvedUrl = resolveIcon(imageUrl, isDarkMode)
-  const [hasError, setHasError] = useState(false)
-
-  useEffect(() => {
-    setHasError(false)
-  }, [resolvedUrl])
+  const [errorUrl, setErrorUrl] = useState<string | null>(null)
+  const src = errorUrl === resolvedUrl ? fallbackServiceImage : resolvedUrl
 
   return (
     <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-muted">
       <img
-        src={hasError ? fallbackServiceImage : resolvedUrl}
+        src={src}
         alt=""
         aria-hidden="true"
         className="h-9 w-9 object-contain"
-        onError={() => setHasError(true)}
+        onError={() => setErrorUrl(resolvedUrl)}
       />
     </div>
   )
