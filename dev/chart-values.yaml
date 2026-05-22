@@ -24,8 +24,8 @@ webapi:
 
   keycloak:
     # Cluster-internal URL for back-channel calls (JWKS fetch, admin API)
-    # keycloakx chart v7+ exposes the service on httpPort (8080), not the HTTP default 80.
-    url: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080"
+    # The keycloakx chart is deployed with service.httpPort: 80 (see dev/keycloak/values.yaml).
+    url: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local"
     # Issuer URL that Keycloak stamps in JWTs (matches KC_HOSTNAME_URL in values.yaml)
     issuerUrl: "http://localhost:8180"
     realm: "nebari"
