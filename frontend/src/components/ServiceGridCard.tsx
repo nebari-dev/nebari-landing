@@ -24,7 +24,7 @@ export function ServiceGridCard({
       <Card className="overflow-hidden border border-border bg-background shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-3">
-            <ServiceIcon imageUrl={service.image} />
+            <ServiceIcon image={service.image} imageLight={service.imageLight} imageDark={service.imageDark} />
 
             <StatusBadge status={service.status} />
           </div>

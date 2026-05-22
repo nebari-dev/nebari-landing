@@ -2,22 +2,20 @@ import { useState } from "react"
 import fallbackServiceImage from "../assets/Nebari.svg"
 import { useTheme } from "../hooks/ThemeContext"
 
-type IconUrl = string | { light?: string; dark?: string }
-
 type ServiceIconProps = {
-  imageUrl?: IconUrl
+  image?: string
+  imageLight?: string
+  imageDark?: string
 }
 
-function resolveIcon(imageUrl: IconUrl | undefined, isDarkMode: boolean): string {
-  if (!imageUrl) return fallbackServiceImage
-  if (typeof imageUrl === "string") return imageUrl
-  if (isDarkMode) return imageUrl.dark || imageUrl.light || fallbackServiceImage
-  return imageUrl.light || imageUrl.dark || fallbackServiceImage
+function resolveIcon({ image, imageLight, imageDark }: ServiceIconProps, isDarkMode: boolean): string {
+  if (isDarkMode) return imageDark || image || imageLight || fallbackServiceImage
+  return imageLight || image || imageDark || fallbackServiceImage
 }
 
-export function ServiceIcon({ imageUrl }: ServiceIconProps) {
+export function ServiceIcon({ image, imageLight, imageDark }: ServiceIconProps) {
   const { isDarkMode } = useTheme()
-  const resolvedUrl = resolveIcon(imageUrl, isDarkMode)
+  const resolvedUrl = resolveIcon({ image, imageLight, imageDark }, isDarkMode)
   const [errorUrl, setErrorUrl] = useState<string | null>(null)
   const src = errorUrl === resolvedUrl ? fallbackServiceImage : resolvedUrl
 
