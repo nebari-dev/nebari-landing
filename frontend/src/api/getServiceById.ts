@@ -1,15 +1,7 @@
 import { apiFetch } from "./client";
+import type { Service } from "./listServices";
 
-export type Service = {
-  id: string;
-  name: string;
-  status: string;
-  description: string;
-  category: string[];
-  pinned: boolean;
-  url: string;
-  image: string;
-};
+export type { Service };
 
 export async function getServiceById(serviceId: string): Promise<Service> {
   if (!serviceId) {
