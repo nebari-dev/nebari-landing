@@ -47,7 +47,7 @@ vet: ## Run go vet against code.
 # at build time and served by the --enable-docs handler.
 .PHONY: generate-docs
 generate-docs: ## Regenerate the OpenAPI 3.1 spec from swag annotations.
-	go tool swag init -g cmd/main.go -d ./,./internal -o internal/api/docs --v3.1 --parseInternal --quiet
+	go tool swag init -g cmd/main.go -d ./,./internal,./internal/app -o internal/api/docs --v3.1 --parseInternal --quiet
 
 # Render the dark/light SVG endpoint cards into docs/assets/ from the OpenAPI
 # spec. Embedded into docs/api.md by the gendocs target via a <picture> block.

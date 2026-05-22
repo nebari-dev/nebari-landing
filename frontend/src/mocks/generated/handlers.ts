@@ -70,7 +70,11 @@ export const generatedHandlers = [
       "category": [],
       "description": "",
       "id": "",
-      "image": "",
+      "image": {
+        "dark": "",
+        "light": "",
+        "plain": ""
+      },
       "name": "",
       "pinned": false,
       "status": "",

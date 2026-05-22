@@ -194,7 +194,7 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "image": {
-                        "type": "string"
+                        "$ref": "#/components/schemas/github_com_nebari-dev_nebari-landing_internal_app.IconValue"
                     },
                     "name": {
                         "type": "string"
@@ -249,7 +249,7 @@ const docTemplate = `{
                         "$ref": "#/components/schemas/cache.HealthStatus"
                     },
                     "icon": {
-                        "type": "string"
+                        "$ref": "#/components/schemas/github_com_nebari-dev_nebari-landing_internal_app.IconValue"
                     },
                     "name": {
                         "type": "string"
@@ -274,6 +274,20 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "visibility": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_nebari-dev_nebari-landing_internal_app.IconValue": {
+                "properties": {
+                    "dark": {
+                        "type": "string"
+                    },
+                    "light": {
+                        "type": "string"
+                    },
+                    "plain": {
                         "type": "string"
                     }
                 },
