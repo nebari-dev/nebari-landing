@@ -41,8 +41,8 @@ spec:
     enabled: true
     displayName: "JupyterHub"
     description: "Interactive Python notebooks for data science"
-    iconLight: https://raw.githubusercontent.com/nebari-dev/nebari-data-science-pack/b16c2ced7f7d59201fcb4764b49520e09086f8d3/assets/icons/jupyter-icon-light.svg
-    iconDark: https://raw.githubusercontent.com/nebari-dev/nebari-data-science-pack/b16c2ced7f7d59201fcb4764b49520e09086f8d3/assets/icons/jupyter-icon-dark.svg
+    iconLight: https://raw.githubusercontent.com/nebari-dev/nebari-data-science-pack/main/assets/icons/jupyter-icon-light.svg
+    iconDark: https://raw.githubusercontent.com/nebari-dev/nebari-data-science-pack/main/assets/icons/jupyter-icon-dark.svg
     category: "Data Science"
     priority: 1
     healthCheck:
