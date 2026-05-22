@@ -325,16 +325,16 @@ func (h *Handler) handleWSTicket(w http.ResponseWriter, r *http.Request) {
 
 // ServiceView is the client-facing representation of a service.
 type ServiceView struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Status     string   `json:"status"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Status      string   `json:"status"`
 	Description string   `json:"description"`
-	Category   []string `json:"category"`
-	Pinned     bool     `json:"pinned"`
-	Image      string   `json:"image,omitempty"`
-	ImageLight string   `json:"imageLight,omitempty"`
-	ImageDark  string   `json:"imageDark,omitempty"`
-	URL        string   `json:"url"`
+	Category    []string `json:"category"`
+	Pinned      bool     `json:"pinned"`
+	Image       string   `json:"image,omitempty"`
+	ImageLight  string   `json:"imageLight,omitempty"`
+	ImageDark   string   `json:"imageDark,omitempty"`
+	URL         string   `json:"url"`
 }
 
 // ServiceResponse is the response format for GET /api/v1/services.
@@ -357,16 +357,16 @@ func toServiceView(svc *cache.ServiceInfo, pinned bool) *ServiceView {
 		category = []string{svc.Category}
 	}
 	return &ServiceView{
-		ID:         svc.UID,
-		Name:       name,
-		Status:     status,
+		ID:          svc.UID,
+		Name:        name,
+		Status:      status,
 		Description: svc.Description,
-		Category:   category,
-		Pinned:     pinned,
-		Image:      svc.Icon,
-		ImageLight: svc.IconLight,
-		ImageDark:  svc.IconDark,
-		URL:        svc.URL,
+		Category:    category,
+		Pinned:      pinned,
+		Image:       svc.Icon,
+		ImageLight:  svc.IconLight,
+		ImageDark:   svc.IconDark,
+		URL:         svc.URL,
 	}
 }
 
