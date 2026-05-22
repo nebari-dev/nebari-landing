@@ -17,13 +17,26 @@ type ServiceInfo struct {
 	DisplayName       string             `json:"displayName"`
 	Description       string             `json:"description"`
 	URL               string             `json:"url"`
-	Icon              sdapp.IconValue    `json:"icon"`
+	Icon              string             `json:"icon,omitempty"`
+	IconLight         string             `json:"iconLight,omitempty"`
+	IconDark          string             `json:"iconDark,omitempty"`
 	Category          string             `json:"category"`
 	Priority          int                `json:"priority"`
 	Visibility        string             `json:"visibility"`
 	RequiredGroups    []string           `json:"requiredGroups,omitempty"`
 	Health            *HealthStatus      `json:"health,omitempty"`
 	HealthCheckConfig *HealthCheckConfig `json:"-"` // not serialised; used by the health checker
+}
+
+// IconURL returns a single icon URL for theme-neutral contexts (e.g. notifications).
+func (s *ServiceInfo) IconURL() string {
+	if s.Icon != "" {
+		return s.Icon
+	}
+	if s.IconLight != "" {
+		return s.IconLight
+	}
+	return s.IconDark
 }
 
 // HealthCheckConfig holds the resolved probe settings for a service.
@@ -85,7 +98,9 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 		DisplayName:       lp.DisplayName,
 		Description:       lp.Description,
 		URL:               buildURL(a),
-		Icon:              lp.Icon.AsIconValue(),
+		Icon:              lp.Icon,
+		IconLight:         lp.IconLight,
+		IconDark:          lp.IconDark,
 		Category:          lp.Category,
 		Priority:          priority,
 		Visibility:        visibility,
