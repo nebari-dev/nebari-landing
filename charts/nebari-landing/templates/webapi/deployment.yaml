@@ -48,7 +48,7 @@ spec:
 
       containers:
         - name: webapi
-          image: "{{ .Values.webapi.image.repository }}:{{ .Values.webapi.image.tag }}"
+          image: "{{ .Values.webapi.image.repository }}:{{ .Values.webapi.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.webapi.image.pullPolicy }}
           ports:
             - name: http

@@ -15,109 +15,83 @@ This document provides step-by-step instructions for creating a new release of n
 ### 1. Determine Release Version
 
 Follow [Semantic Versioning](https://semver.org/):
-- **Patch** (`v0.1.1`): Bug fixes, small improvements
-- **Minor** (`v0.2.0`): New features, non-breaking changes
-- **Major** (`v1.0.0`): Breaking changes
+- **Patch** (`0.1.1`): Bug fixes, small improvements
+- **Minor** (`0.2.0`): New features, non-breaking changes
+- **Major** (`1.0.0`): Breaking changes
 
-### 2. Create and Push Release Tag
+The release-prep workflow adds the `v` prefix when creating the git tag. You
+input the version without it (e.g. `0.1.0-alpha.6`, not `v0.1.0-alpha.6`).
 
-```bash
-# Ensure you're on main and up-to-date
-git checkout main
-git pull origin main
+### 2. Run the Release Prep workflow
 
-# Create release tag (replace with your version)
-git tag v0.2.0
+Go to **Actions → [Release prep](https://github.com/nebari-dev/nebari-landing/actions/workflows/release-prep.yaml) → Run workflow**.
 
-# Checkout the tag
-git checkout v0.2.0
-```
+Enter the version (e.g. `0.2.0`) and click **Run workflow**. The workflow will:
 
-### 3. Prepare Release Artifacts
+- ✅ Validate the version (semver, no leading `v`).
+- ✅ Refuse to overwrite an existing tag.
+- ✅ Bump `charts/nebari-landing/Chart.yaml` (`version` + `appVersion`) on a detached HEAD.
+- ✅ Commit `chore: prepare chart for v<version>` on that detached HEAD.
+- ✅ Tag `v<version>` at the bump commit and push only the tag.
 
-Run the automated release preparation:
+Publishing a GitHub Release against the new tag triggers `release.yml`, which
+produces the images, binaries, and chart tarball.
 
-```bash
-make prepare-release
-```
+> **Why a tag-only commit?** The `values.yaml` image tags are empty and the deployment templates fall back to `.Chart.AppVersion`. Source-based consumers (e.g. ArgoCD pointing at the git tag) need the bumped `appVersion` to be committed at the tag so the fallback resolves to a real image. The tag carries that commit directly — no branch ref is needed, and `main`'s `appVersion` stays as `"latest"`. See **How It Works** at the bottom of this doc for the full picture.
 
-This will:
-- ✅ Verify you're on a release tag
-- ✅ Update `Chart.yaml` version and appVersion
-- ✅ Package the Helm chart
-- ✅ Stage `Chart.yaml` for commit
-
-> **Note**: `values.yaml` image tags are intentionally kept as `"latest"` in source
-> control. CI pins them to the release tag transiently during chart packaging — they
-> are never committed back.
-
-### 4. Review and Commit Changes
-
-```bash
-# Review what was changed
-git status
-git diff --cached
-
-# Commit the release artifacts
-git commit -m "chore: prepare chart for v0.2.0"
-```
-
-### 5. Push Tag
-
-```bash
-# Push the tag to trigger CI
-git push origin v0.2.0
-```
-
-⚠️ **Important**: Do NOT push the commit from step 4 back to main. The chart version changes are tag-specific for the release.
-
-### 6. Create GitHub Release
+### 3. Create the GitHub Release
 
 Visit https://github.com/nebari-dev/nebari-landing/releases/new
 
-- **Tag**: Select `v0.2.0` (the tag you just pushed)
+- **Tag**: Select `v0.2.0` (the tag the workflow created)
 - **Title**: `v0.2.0` or `nebari-landing v0.2.0`
 - **Description**: Summarize changes (see previous releases for format)
 - Click **Publish release**
 
-### 7. Monitor Release Workflow
+### 4. Monitor Release Workflow
 
 The GitHub Actions workflow will automatically:
 
-1. **Validate** backend and frontend code
+1. **Verify** `Chart.yaml` is pinned to the release tag (the release-prep
+   workflow does this for you; the verification step catches the case where a
+   maintainer tagged manually without running release-prep).
 2. **Build** multi-arch Docker images:
-   - `quay.io/nebari/nebari-webapi:v0.2.0`
-   - `quay.io/nebari/nebari-landing:v0.2.0`
-3. **Publish** images to Quay.io with semver tags
-4. **Release** Go binary via GoReleaser (attached to the GitHub release)
-5. **Package** and attach Helm chart to the release
-6. **Sync** chart to helm-repository via `sync-helm-chart.yml` (opens PR automatically)
+   - `quay.io/nebari/nebari-webapi:0.2.0`
+   - `quay.io/nebari/nebari-landing:0.2.0`
+3. **Publish** images to Quay.io with semver tags (no `v` prefix —
+   docker/metadata-action strips it).
+4. **Release** Go binary via GoReleaser (attached to the GitHub release).
+5. **Package** and attach Helm chart to the release.
+6. **Sync** chart to helm-repository via `sync-helm-chart.yml` (opens PR automatically).
 
 Watch the workflow at:
 https://github.com/nebari-dev/nebari-landing/actions/workflows/release.yml
 
 Expected duration: ~15-20 minutes
 
-### 8. Verify Release Artifacts
+### 5. Verify Release Artifacts
 
 Check that the following were created:
 
 **Docker Images**:
 ```bash
-docker pull quay.io/nebari/nebari-webapi:v0.2.0
-docker pull quay.io/nebari/nebari-landing:v0.2.0
+docker pull quay.io/nebari/nebari-webapi:0.2.0
+docker pull quay.io/nebari/nebari-landing:0.2.0
 ```
 
 **Helm Chart**:
 - Visit your release page: `https://github.com/nebari-dev/nebari-landing/releases/tag/v0.2.0`
-- Verify `nebari-landing-0.2.0.tgz` is attached
+- Verify `nebari-landing-0.2.0.tgz` is attached.
+- Extract it and confirm `appVersion: "0.2.0"` in `Chart.yaml` and empty
+  `image.tag` for both nebari images in `values.yaml` (the deployment
+  templates resolve them via the AppVersion fallback at install time).
 
 **helm-repository PR**:
 - Visit https://github.com/nebari-dev/helm-repository/pulls
 - Find PR titled "feat: add nebari-landing v0.2.0"
-- Review and merge the PR
+- Review and merge the PR.
 
-### 9. Test the Release
+### 6. Test the Release
 
 **Via Helm repository** (after helm-repository PR is merged):
 ```bash
@@ -133,7 +107,7 @@ helm install nebari-landing \
   https://github.com/nebari-dev/nebari-landing/releases/download/v0.2.0/nebari-landing-0.2.0.tgz
 ```
 
-### 10. Update Documentation (if needed)
+### 7. Update Documentation (if needed)
 
 If this release includes breaking changes or new features:
 - [ ] Update README.md
@@ -167,7 +141,7 @@ Common issues:
 
 **Chart packaging failure**: Run `helm lint charts/nebari-landing/` locally
 
-**helm-repository sync failure**: Verify `NEBARI_BOT_ TOKEN` secret has correct permissions
+**helm-repository sync failure**: Verify `NEBARI_HELM_REPO_TOKEN` secret has correct permissions
 
 ### helm-repository PR not created
 
@@ -192,18 +166,46 @@ Then check the manifest jobs ran successfully.
 
 After a successful release:
 
-1. **Merge back to main** (if you made documentation changes on the release branch)
-2. **Announce the release** in relevant channels
-3. **Update nebari-infrastructure-core** if this release contains changes that affect the Nebari Operator
+1. **Announce the release** in relevant channels.
+2. **Update nebari-infrastructure-core** if this release contains changes that affect the Nebari Operator.
 
 ## Release Checklist Summary
 
-- [ ] Created and pushed release tag
-- [ ] Ran `make prepare-release`
-- [ ] Committed chart version changes
-- [ ] Published GitHub release
-- [ ] Verified images built successfully
-- [ ] Verified Helm chart attached to release
-- [ ] Merged helm-repository PR
-- [ ] Tested chart installation
-- [ ] Updated documentation (if needed)
+- [ ] Ran **Release prep** workflow with the new version.
+- [ ] Verified the workflow pushed the `v<version>` tag (no release branch is created).
+- [ ] Published GitHub release at the new tag.
+- [ ] Verified images built successfully (`:0.2.0` exists on Quay).
+- [ ] Verified Helm chart `.tgz` attached to release with the right `appVersion`.
+- [ ] Merged helm-repository PR.
+- [ ] Tested chart installation.
+- [ ] Updated documentation (if needed).
+
+## How It Works
+
+Three pieces drive the release flow:
+
+1. **`values.yaml` image tags are empty.** Both `webapi.image.tag` and `frontend.image.tag` default to `""` — not `"latest"`.
+2. **Deployment templates fall back to `.Chart.AppVersion`.** The image string renders as `{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}`. When the tag is empty, Helm fills it in from `Chart.yaml`.
+3. **`appVersion` is the per-release knob.** `main` carries `appVersion: "latest"` so non-release commits resolve to the floating image. Each release tag carries a single commit that bumps `appVersion` to the real version.
+
+Same files in both states; only `Chart.yaml` differs:
+
+| File | On `main` | On `v0.1.0-alpha.6` |
+| --- | --- | --- |
+| `Chart.yaml` `appVersion` | `"latest"` | `"0.1.0-alpha.6"` |
+| `values.yaml` image tags | `""` | `""` (unchanged) |
+| `templates/.../deployment.yaml` | template expression | template expression (unchanged) |
+
+**When the substitution happens.** Not at release time. `release.yml` runs `helm package` against the tagged source and ships the templates as-is in the `.tgz`. Helm evaluates the `default` fallback at install time, when a consumer runs `helm install` or ArgoCD reconciles. So the chart artifact stays generic; the appVersion at the tag drives the result.
+
+**Three consumer scenarios:**
+
+| Scenario | What the consumer sets | Rendered image |
+| --- | --- | --- |
+| `main`, no overrides | (defaults) | `quay.io/nebari/nebari-{webapi,landing}:latest` |
+| Release tag, no overrides | (defaults) | `quay.io/nebari/nebari-{webapi,landing}:0.1.0-alpha.6` |
+| Explicit override | `--set webapi.image.tag=feat-foo` | `quay.io/nebari/nebari-webapi:feat-foo` |
+
+The first two scenarios share the same code path — both rely on the `AppVersion` fallback. The third bypasses the fallback because `.tag` is non-empty (used for testing PR builds or pinning to a specific main commit; available tags come from `webapi.yml`'s per-PR and per-SHA builds).
+
+**Why no release branch.** Tags carry commits independently of branches, and no part of the build pipeline triggers on `release/*` (image builds fire on push-to-main and on `release: published`). `release-prep` makes the bump commit on a detached HEAD and pushes only the tag; git's push protocol bundles the otherwise-unreachable commit along with it. The branch list stays clean and there's no post-release cleanup step.

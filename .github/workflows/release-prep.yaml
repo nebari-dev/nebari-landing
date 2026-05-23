@@ -1,0 +1,107 @@
+# Release prep — orchestrates a chart release without manual sed-ing.
+#
+# Inputs a release version (e.g. "0.1.0-alpha.6", no leading v). The workflow:
+#   1. Validates the version against a semver pattern.
+#   2. Refuses to overwrite an existing tag.
+#   3. Bumps charts/nebari-landing/Chart.yaml on a detached HEAD: version and
+#      appVersion to the release version (no v prefix — matches the Quay tag
+#      scheme set by docker/metadata-action's type=semver,pattern={{version}}).
+#   4. Commits "chore: prepare chart for v<version>" on the detached HEAD.
+#   5. Tags v<version> at the bump commit and pushes only the tag — git's push
+#      protocol bundles the otherwise-unreachable commit along with the tag, so
+#      no branch ref is left on the remote.
+#   6. Publishing a GitHub Release against the new tag triggers release.yml,
+#      which builds Quay images and packages the Helm chart from the tagged
+#      source — values.yaml's empty tag fields fall back to .Chart.AppVersion =
+#      <version>, pinning the image references in the published .tgz.
+#
+# main is intentionally untouched. The release commit is reachable only via
+# the tag, which is the source-of-truth artifact downstream consumers care
+# about. No release/v<version> branch is created.
+
+name: Release prep
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, no leading v (e.g. 0.1.0-alpha.6)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  prep:
+    name: Bump chart and tag release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+            echo "✗ '$VERSION' is not a valid semver (e.g. 0.1.0 or 0.1.0-alpha.6)."
+            echo "  Drop any leading 'v' — the workflow adds it when creating the tag."
+            exit 1
+          fi
+          echo "✔ version $VERSION is valid"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Refuse to overwrite an existing tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null \
+             || git ls-remote --exit-code --tags origin "${TAG}" >/dev/null 2>&1; then
+            echo "✗ tag ${TAG} already exists"
+            exit 1
+          fi
+          echo "✔ tag ${TAG} is available"
+
+      - name: Bump Chart.yaml on detached HEAD
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Detached HEAD so the bump commit is reachable only via the tag we
+          # create below — no release/v<version> branch is left on the remote.
+          git checkout --detach main
+
+          sed -i -E "s/^version: .*/version: ${VERSION}/" charts/nebari-landing/Chart.yaml
+          sed -i -E "s/^appVersion: .*/appVersion: \"${VERSION}\"/" charts/nebari-landing/Chart.yaml
+
+          echo "--- Chart.yaml after bump ---"
+          grep -E "^(version|appVersion):" charts/nebari-landing/Chart.yaml
+
+          git add charts/nebari-landing/Chart.yaml
+          git commit -m "chore: prepare chart for v${VERSION}"
+
+      - name: Tag and push
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          git tag -a "${TAG}" -m "Release ${VERSION}"
+          # Pushing the tag also pushes the (otherwise unreachable) bump commit
+          # it points at — no branch push needed.
+          git push origin "refs/tags/${TAG}"
+          echo "✔ pushed ${TAG}"
+          echo ""
+          echo "Publish a GitHub Release against ${TAG} to trigger release.yml, which produces:"
+          echo "  - quay.io/nebari/nebari-webapi:${VERSION}"
+          echo "  - quay.io/nebari/nebari-landing:${VERSION}"
+          echo "  - the GoReleaser binaries"
+          echo "  - charts/nebari-landing-${VERSION}.tgz attached to the GitHub release"

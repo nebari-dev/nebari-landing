@@ -178,26 +178,40 @@ jobs:
             crd/nebariapps.reconcilers.nebari.dev \
             --timeout=60s
 
-      # ── Preflight: wait for the realm-setup Job to complete ──────────────────
+      # ── Preflight: wait for the Keycloak ArgoCD app's PostSync hook ──────────
       # The sandbox waits for the keycloak pod to be Ready, which only covers
-      # "the chart deployed".  The nebari realm itself comes from a separate
-      # post-sync Job (NIC: pkg/argocd/templates/manifests/keycloak/realm-setup-job.yaml)
-      # that ArgoCD doesn't gate the keycloak app's Healthy status on, so we
-      # have to wait on the Job directly. On failure we dump pod logs so the
-      # CI run shows why provisioning didn't finish instead of just timing out.
+      # "the chart deployed". The nebari realm itself comes from a PostSync
+      # Job (NIC: pkg/argocd/templates/manifests/keycloak/realm-setup-job.yaml).
+      # That Job carries argocd.argoproj.io/hook-delete-policy: HookSucceeded,
+      # so ArgoCD deletes it the moment it succeeds — polling for the Job is
+      # racy (we either catch it running or miss it entirely after completion).
+      #
+      # The right signal is the ArgoCD application's operationState.phase:
+      # ArgoCD only marks the operation Succeeded once all PostSync hooks have
+      # finished, so reaching Synced + Succeeded means the realm is provisioned.
       #
       # Drop this step once nebari-dev/action-nebari-sandbox#27 lands and the
       # sandbox itself can wait for realm-readiness.
-      - name: Wait for Keycloak realm-setup Job
+      - name: Wait for Keycloak realm-setup (PostSync hook)
         run: |
-          if ! kubectl wait --for=condition=complete \
-                 job/keycloak-realm-setup -n keycloak --timeout=10m; then
-            echo "✗  keycloak-realm-setup did not complete; dumping diagnostics:"
-            kubectl describe job/keycloak-realm-setup -n keycloak || true
-            kubectl logs -n keycloak job/keycloak-realm-setup --tail=200 || true
-            exit 1
-          fi
-          echo "✔  keycloak-realm-setup Job complete — nebari realm is provisioned"
+          for i in $(seq 1 60); do
+            sync=$(kubectl get application/keycloak -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "")
+            phase=$(kubectl get application/keycloak -n argocd -o jsonpath='{.status.operationState.phase}' 2>/dev/null || echo "")
+            if [ "$sync" = "Synced" ] && [ "$phase" = "Succeeded" ]; then
+              echo "✔  keycloak ArgoCD app reached Synced/Succeeded — nebari realm is provisioned"
+              exit 0
+            fi
+            if [ "$i" = "60" ]; then
+              echo "✗  keycloak app did not reach Synced/Succeeded within 5 min (sync=$sync, phase=$phase); dumping diagnostics:"
+              kubectl get applications -n argocd -o wide || true
+              kubectl describe application/keycloak -n argocd | tail -100 || true
+              # The Job is auto-deleted on success; if it's still here, dump its logs.
+              kubectl logs -n keycloak job/keycloak-realm-setup --tail=200 2>/dev/null || echo "(realm-setup Job not present)"
+              exit 1
+            fi
+            echo "waiting for keycloak app (sync=$sync, phase=$phase, attempt $i/60)..."
+            sleep 5
+          done
 
       # ── Preflight: wait for the operator-provisioned OIDC client secret ──────
       # nebari-operator creates nebari-landing-oidc-client when it reconciles

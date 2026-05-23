@@ -249,15 +249,13 @@ make pf
 ### Helm chart targets
 
 ```sh
-# Package the chart into dist/
+# Package the chart into dist/ (useful for local linting; not the release path)
 make helm-package
-
-# Update Chart.yaml version and appVersion (does NOT commit values.yaml — CI pins image tags)
-make helm-chart-version VERSION=0.2.0 APP_VERSION=v0.2.0
-
-# Full release preparation (must be on a release tag)
-make prepare-release
 ```
+
+> Releases are produced by the [Release prep](.github/workflows/release-prep.yaml)
+> workflow — see [docs/maintainers/release-checklist.md](docs/maintainers/release-checklist.md).
+> There are no local `make` targets for cutting a release.
 
 ### Run the frontend in watch mode
 
