@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/api/client", () => ({ apiFetch: vi.fn() }));
 vi.mock("@/api/listServices", () => ({ listServices: vi.fn().mockResolvedValue([]) }));
@@ -49,7 +49,7 @@ describe("useLaunchpadData ws-ticket exchange", () => {
       new Response(JSON.stringify({ ticket: "hex-ticket-1" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     renderHook(() => useLaunchpadData({ name: "alice" }));
@@ -65,9 +65,7 @@ describe("useLaunchpadData ws-ticket exchange", () => {
   });
 
   it("connects without a ticket when /ws-ticket returns non-OK", async () => {
-    mockedApiFetch.mockResolvedValueOnce(
-      new Response("Unauthorized", { status: 401 })
-    );
+    mockedApiFetch.mockResolvedValueOnce(new Response("Unauthorized", { status: 401 }));
 
     renderHook(() => useLaunchpadData(null));
 

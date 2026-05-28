@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch } from './client';
 
 export type Service = {
   id: string;
@@ -13,7 +13,7 @@ export type Service = {
 
 export async function getServiceById(serviceId: string): Promise<Service> {
   if (!serviceId) {
-    throw new Error("serviceId is required");
+    throw new Error('serviceId is required');
   }
 
   const resp = await apiFetch(`/services/${serviceId}`);

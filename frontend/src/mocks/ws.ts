@@ -5,27 +5,25 @@
 // connection we send one mocked notification and one "modified" service
 // event so the UI demonstrates incoming realtime activity.
 
-import { ws } from "msw";
-import { store } from "./store";
+import { ws } from 'msw';
+import { store } from './store';
 
-const api = ws.link("ws://*/api/v1/ws");
+const api = ws.link('ws://*/api/v1/ws');
 
 export const wsHandlers = [
-  api.addEventListener("connection", ({ client }) => {
+  api.addEventListener('connection', ({ client }) => {
     // Push one mocked notification a moment after the socket opens.
     setTimeout(() => {
       const notification = {
         id: `ntf-mock-${Date.now()}`,
-        image: "",
-        title: "Realtime mock event",
+        image: '',
+        title: 'Realtime mock event',
         message: "This frame was sent by MSW's WebSocket interceptor.",
         read: false,
         createdAt: new Date().toISOString(),
       };
       store.notifications.unshift(notification);
-      client.send(
-        JSON.stringify({ type: "notification.created", notification })
-      );
+      client.send(JSON.stringify({ type: 'notification.created', notification }));
     }, 1500);
 
     // Push a "modified" service event so the launchpad reflects realtime
@@ -35,24 +33,24 @@ export const wsHandlers = [
       if (!svc) return;
       client.send(
         JSON.stringify({
-          type: "modified",
+          type: 'modified',
           service: {
             uid: svc.id,
             name: svc.name,
-            namespace: "default",
+            namespace: 'default',
             displayName: svc.name,
             description: svc.description,
             url: svc.url,
             icon: svc.image,
-            category: svc.category[0] ?? "",
+            category: svc.category[0] ?? '',
             priority: 0,
-            visibility: "public",
+            visibility: 'public',
             health: {
               status: svc.status,
               lastCheck: new Date().toISOString(),
             },
           },
-        })
+        }),
       );
     }, 3000);
   }),

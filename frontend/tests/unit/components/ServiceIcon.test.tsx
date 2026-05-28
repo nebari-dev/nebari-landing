@@ -4,9 +4,7 @@ import { ServiceIcon } from "@/components/ServiceIcon";
 
 describe("ServiceIcon", () => {
   it("renders the provided image", () => {
-    const { container } = render(
-      <ServiceIcon imageUrl="/images/test-service.svg" />
-    );
+    const { container } = render(<ServiceIcon imageUrl="/images/test-service.svg" />);
 
     const image = container.querySelector("img");
     expect(image).toBeInTheDocument();

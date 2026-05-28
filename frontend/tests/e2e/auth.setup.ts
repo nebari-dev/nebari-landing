@@ -1,23 +1,20 @@
-import { test as setup, expect } from "./fixtures/e2e"
+import { expect, test as setup } from './fixtures/e2e';
 
-const authFile = ".playwright/auth/user.json";
+const authFile = '.playwright/auth/user.json';
 
-setup("authenticate with Keycloak", async ({ page }, testInfo) => {
+setup('authenticate with Keycloak', async ({ page }, testInfo) => {
   setup.setTimeout(90_000);
 
   const username = process.env.E2E_USERNAME;
   const password = process.env.E2E_PASSWORD;
 
   if (!username || !password) {
-    throw new Error("Missing E2E_USERNAME or E2E_PASSWORD");
+    throw new Error('Missing E2E_USERNAME or E2E_PASSWORD');
   }
 
-  await page.goto("/", { waitUntil: "commit" }).catch((error) => {
+  await page.goto('/', { waitUntil: 'commit' }).catch((error) => {
     const message = String(error);
-    if (
-      message.includes("ERR_ABORTED") ||
-      message.includes("frame was detached")
-    ) {
+    if (message.includes('ERR_ABORTED') || message.includes('frame was detached')) {
       return;
     }
     throw error;
@@ -29,7 +26,7 @@ setup("authenticate with Keycloak", async ({ page }, testInfo) => {
   // Wait until either the login form is visible, or the app is already visible.
   await Promise.race([
     expect(usernameField).toBeVisible({ timeout: 30_000 }),
-    expect(page.locator("header")).toBeVisible({ timeout: 30_000 }),
+    expect(page.locator('header')).toBeVisible({ timeout: 30_000 }),
   ]).catch(() => {
     throw new Error(`Neither login form nor app became visible. Current URL: ${page.url()}`);
   });
@@ -38,7 +35,7 @@ setup("authenticate with Keycloak", async ({ page }, testInfo) => {
   if (await usernameField.isVisible().catch(() => false)) {
     await usernameField.fill(username);
     await passwordField.fill(password);
-    await page.getByRole("button", { name: /sign in|log in/i }).click();
+    await page.getByRole('button', { name: /sign in|log in/i }).click();
   }
 
   // Handle the occasional 403 recovery page.
@@ -52,15 +49,20 @@ setup("authenticate with Keycloak", async ({ page }, testInfo) => {
     .poll(
       async () => {
         const candidates = [
-          page.getByRole("button", { name: /notifications/i }),
-          page.getByText("Pinned services"),
-          page.getByRole("button", { name: /all services/i }),
-          page.locator("header"),
-          page.locator("main"),
+          page.getByRole('button', { name: /notifications/i }),
+          page.getByText('Pinned services'),
+          page.getByRole('button', { name: /all services/i }),
+          page.locator('header'),
+          page.locator('main'),
         ];
 
         for (const locator of candidates) {
-          if (await locator.first().isVisible().catch(() => false)) {
+          if (
+            await locator
+              .first()
+              .isVisible()
+              .catch(() => false)
+          ) {
             return true;
           }
         }
@@ -70,13 +72,13 @@ setup("authenticate with Keycloak", async ({ page }, testInfo) => {
       {
         timeout: 30_000,
         message: `Waiting for authenticated app. Current URL: ${page.url()}`,
-      }
+      },
     )
     .toBe(true);
 
-  await testInfo.attach("post-login-url", {
+  await testInfo.attach('post-login-url', {
     body: page.url(),
-    contentType: "text/plain",
+    contentType: 'text/plain',
   });
 
   await page.context().storageState({ path: authFile });
