@@ -32,14 +32,12 @@ describe("ServicesAccordion", () => {
         pinnedServices={services.filter((service) => service.pinned)}
         services={services}
         onTogglePin={vi.fn()}
-      />
+      />,
     );
 
     expect(screen.getByText("Pinned services")).toBeInTheDocument();
     expect(screen.getByText("All services")).toBeInTheDocument();
-    expect(
-      screen.getByText("Quick access to your most-used tools")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Quick access to your most-used tools")).toBeInTheDocument();
   });
 
   it("renders pinned services in the pinned section by default", () => {
@@ -48,7 +46,7 @@ describe("ServicesAccordion", () => {
         pinnedServices={services.filter((service) => service.pinned)}
         services={services}
         onTogglePin={vi.fn()}
-      />
+      />,
     );
 
     expect(screen.getAllByText("JupyterHub")).toHaveLength(2);
@@ -60,7 +58,7 @@ describe("ServicesAccordion", () => {
         pinnedServices={services.filter((service) => service.pinned)}
         services={services}
         onTogglePin={vi.fn()}
-      />
+      />,
     );
 
     expect(screen.getAllByText("JupyterHub")).toHaveLength(2);

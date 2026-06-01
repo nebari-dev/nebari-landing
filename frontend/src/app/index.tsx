@@ -1,24 +1,17 @@
-import { Header } from "../components/Header";
-import { Content } from "../components/Content";
 import { signOut } from "@/auth/keycloak";
 import { useUser } from "@/auth/user";
-
-import { useThemePreference } from "../hooks/useThemePreference"
-import { useLaunchpadData } from "../hooks/useLaunchpadData"
-import { getAppConfig } from "./config"
-
+import { Content } from "../components/Content";
+import { Header } from "../components/Header";
+import { useLaunchpadData } from "../hooks/useLaunchpadData";
+import { useThemePreference } from "../hooks/useThemePreference";
+import { getAppConfig } from "./config";
 
 export default function App() {
-  const { isDarkMode, toggleTheme } = useThemePreference()
-  const { user } = useUser()
-  const {
-    services,
-    notifications,
-    onNotificationsViewed,
-    onTogglePin,
-  } = useLaunchpadData(user)
+  const { isDarkMode, toggleTheme } = useThemePreference();
+  const { user } = useUser();
+  const { services, notifications, onNotificationsViewed, onTogglePin } = useLaunchpadData(user);
 
-  const config = getAppConfig()
+  const config = getAppConfig();
 
   return (
     <main className="w-full">
@@ -34,5 +27,5 @@ export default function App() {
 
       <Content services={services} onTogglePin={onTogglePin} />
     </main>
-  )
+  );
 }

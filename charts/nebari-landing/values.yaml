@@ -215,6 +215,13 @@ httpRoute:
   # TLS is terminated by the Gateway; set to true when the Gateway listener
   # uses HTTPS so the route is only matched on the TLS listener.
   tls: true
+  # Name of a pre-provisioned TLS Secret in the gateway namespace to terminate
+  # TLS with. When set, the operator uses this Secret instead of issuing a
+  # cert through cert-manager — point this at an enterprise-CA-signed wildcard
+  # cert on clusters where the cert-manager selfsigned-issuer flow yields a
+  # browser-untrusted cert. Leave empty to keep the cert-manager behaviour.
+  # Requires nebari-operator >= v0.1.0-alpha.20 (routing.tls.secretName support).
+  tlsSecretName: ""
 
 # ---------------------------------------------------------------------------
 # Redis subchart (bitnami/redis 23.1.1)

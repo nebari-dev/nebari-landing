@@ -54,12 +54,12 @@ export function getAppConfig(): AppConfig | null {
 
 // Block CSS injection vectors: rule terminators, braces, HTML chars, url()/expression()/javascript:
 const UNSAFE_CSS = /[;<>{}"'\\]|url\s*\(|expression\s*\(|javascript:/i;
-const toKebab = (s: string) => s.replace(/([A-Z])/g, '-$1').toLowerCase();
+const toKebab = (s: string) => s.replace(/([A-Z])/g, "-$1").toLowerCase();
 const toCssVars = (tokens: Record<string, string>) =>
   Object.entries(tokens)
     .filter(([, v]) => v && !UNSAFE_CSS.test(v))
     .map(([k, v]) => `  --${toKebab(k)}: ${v};`)
-    .join('\n');
+    .join("\n");
 
 /**
  * Apply the loaded config to the document (title, favicon, theme CSS vars).
@@ -72,13 +72,13 @@ export function applyAppConfig(config: AppConfig): void {
 
   if (config.faviconUrl) {
     const link = (document.querySelector("link[rel~='icon']") ??
-      Object.assign(document.createElement('link'), { rel: 'icon' })) as HTMLLinkElement;
+      Object.assign(document.createElement("link"), { rel: "icon" })) as HTMLLinkElement;
     link.href = config.faviconUrl;
     document.head.appendChild(link);
   }
 
   if (config.theme) {
-    let css = '';
+    let css = "";
     if (config.theme.light) {
       const vars = toCssVars(config.theme.light as Record<string, string>);
       if (vars) css += `:root {\n${vars}\n}\n`;
@@ -88,7 +88,7 @@ export function applyAppConfig(config: AppConfig): void {
       if (vars) css += `.dark {\n${vars}\n}\n`;
     }
     if (css) {
-      const style = document.createElement('style');
+      const style = document.createElement("style");
       style.textContent = css;
       document.head.appendChild(style);
     }

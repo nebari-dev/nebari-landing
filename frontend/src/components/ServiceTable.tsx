@@ -1,8 +1,5 @@
-import { PinIcon, UnpinIcon } from "./PinIcon"
-import type { Service } from "../api/listServices"
-import { StatusBadge } from "./StatusBadge"
-import { Button } from "../components/ui/button"
-import { ServiceIcon } from "./ServiceIcon"
+import type { Service } from "../api/listServices";
+import { Button } from "../components/ui/button";
 import {
   Table,
   TableBody,
@@ -10,17 +7,17 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../components/ui/table"
+} from "../components/ui/table";
+import { PinIcon, UnpinIcon } from "./PinIcon";
+import { ServiceIcon } from "./ServiceIcon";
+import { StatusBadge } from "./StatusBadge";
 
 type ServicesTableProps = {
-  services: Service[]
-  onTogglePin?: (serviceId: string, nextPinned: boolean) => void
-}
+  services: Service[];
+  onTogglePin?: (serviceId: string, nextPinned: boolean) => void;
+};
 
-export function ServicesTable({
-  services,
-  onTogglePin,
-}: ServicesTableProps) {
+export function ServicesTable({ services, onTogglePin }: ServicesTableProps) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-background transition-none">
       <Table className="min-w-140 table-fixed">
@@ -50,35 +47,31 @@ export function ServicesTable({
 
         <TableBody>
           {services.map((service) => (
-            <ServiceRow
-              key={service.id}
-              service={service}
-              onTogglePin={onTogglePin}
-            />
+            <ServiceRow key={service.id} service={service} onTogglePin={onTogglePin} />
           ))}
         </TableBody>
       </Table>
     </div>
-  )
+  );
 }
 
 function ServiceRow({
   service,
   onTogglePin,
 }: {
-  service: Service
-  onTogglePin?: (serviceId: string, nextPinned: boolean) => void
+  service: Service;
+  onTogglePin?: (serviceId: string, nextPinned: boolean) => void;
 }) {
   const openService = () => {
-    window.open(service.url, "_blank", "noopener,noreferrer")
-  }
+    window.open(service.url, "_blank", "noopener,noreferrer");
+  };
 
   const handleRowKeyDown = (event: React.KeyboardEvent<HTMLTableRowElement>) => {
     if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault()
-      openService()
+      event.preventDefault();
+      openService();
     }
-  }
+  };
 
   return (
     <TableRow
@@ -130,21 +123,22 @@ function ServiceRow({
           size="icon"
           className="h-8 w-8 transition-none"
           onClick={(event) => {
-            event.stopPropagation()
-            onTogglePin?.(service.id, !service.pinned)
+            event.stopPropagation();
+            onTogglePin?.(service.id, !service.pinned);
           }}
           onKeyDown={(event) => {
-            event.stopPropagation()
+            event.stopPropagation();
           }}
           title={service.pinned ? "Unpin service" : "Pin service"}
           aria-label={service.pinned ? "Unpin service" : "Pin service"}
         >
-          {service.pinned
-            ? <UnpinIcon className="h-4 w-4 text-primary" />
-            : <PinIcon className="h-4 w-4 text-muted-foreground" />
-          }
+          {service.pinned ? (
+            <UnpinIcon className="h-4 w-4 text-primary" />
+          ) : (
+            <PinIcon className="h-4 w-4 text-muted-foreground" />
+          )}
         </Button>
       </TableCell>
     </TableRow>
-  )
+  );
 }

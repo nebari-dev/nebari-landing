@@ -6,11 +6,11 @@
 import type { Service } from "../api/listServices";
 import type { Notification } from "../api/notifications";
 import {
+  type AccessRequest,
   seedAccessRequests,
   seedCategories,
   seedNotifications,
   seedServices,
-  type AccessRequest,
 } from "./fixtures";
 
 type Store = {

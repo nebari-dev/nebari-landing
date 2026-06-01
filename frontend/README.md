@@ -1,73 +1,37 @@
-# React + TypeScript + Vite
+# Frontend (React + TypeScript + Vite)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The Nebari landing-page SPA. Built with React, TypeScript, Vite, and shadcn/ui.
+Talks to the Go webapi (in this same repo) over `/api/v1`.
 
 ## React Compiler
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Not enabled, due to its impact on dev/build performance. To opt in, see the
+[React Compiler installation guide](https://react.dev/learn/react-compiler/installation).
 
-## Expanding the ESLint configuration
+## Lint and format
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Linting and formatting are unified under [Biome](https://biomejs.dev/). The
+configuration lives in [`biome.json`](./biome.json). Scripts:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- `npm run lint` — `biome check .` (lint + format diagnostics, read-only)
+- `npm run lint:fix` — apply safe autofixes
+- `npm run format` / `npm run format:write` — format-only (read-only / write)
+- `npm run ci` — strict CI variant (`biome ci`), used by the workflow
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Coverage gap: type-checked lint rules
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Biome is a **syntactic** linter — it parses source files but does not run the
+TypeScript type checker. Rules that need full type information are therefore
+unavailable here, including:
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+- `no-floating-promises` — unhandled `Promise<T>` return values
+- `no-misused-promises` — async callbacks passed where a non-Promise is expected
+  (e.g. `<button onClick={async () => …}>`)
+- `await-thenable`, `no-unnecessary-type-assertion`, and the `no-unsafe-*` family
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+The previous ESLint config (`tseslint.configs.recommended`) did not enable these
+either, so nothing was actively lost in the Biome migration. They are noted here
+so contributors don't assume the lint pass catches them — rely on code review
+and TypeScript's `strict` mode instead. Biome ships heuristic versions of the
+promise rules in its `nursery` group; revisit enabling them once they leave
+nursery.

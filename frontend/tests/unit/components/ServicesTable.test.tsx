@@ -53,11 +53,11 @@ describe("ServicesTable", () => {
     render(<ServicesTable services={services} onTogglePin={vi.fn()} />);
 
     expect(
-      screen.getByRole("link", { name: /jupyterhub \(opens in a new tab\)/i })
+      screen.getByRole("link", { name: /jupyterhub \(opens in a new tab\)/i }),
     ).toBeInTheDocument();
 
     expect(
-      screen.getByRole("link", { name: /grafana \(opens in a new tab\)/i })
+      screen.getByRole("link", { name: /grafana \(opens in a new tab\)/i }),
     ).toBeInTheDocument();
   });
 
@@ -67,14 +67,12 @@ describe("ServicesTable", () => {
 
     render(<ServicesTable services={services} onTogglePin={vi.fn()} />);
 
-    await user.click(
-      screen.getByRole("link", { name: /jupyterhub \(opens in a new tab\)/i })
-    );
+    await user.click(screen.getByRole("link", { name: /jupyterhub \(opens in a new tab\)/i }));
 
     expect(openSpy).toHaveBeenCalledWith(
       "https://example.com/jupyterhub",
       "_blank",
-      "noopener,noreferrer"
+      "noopener,noreferrer",
     );
   });
 

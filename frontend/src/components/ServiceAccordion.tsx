@@ -1,19 +1,19 @@
+import type { Service } from "../api/listServices";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "../components/ui/accordion"
-import type { Service } from "../api/listServices"
-import { cn } from "../lib/cn"
-import { PinnedServicesGrid } from "./PinnedServicesGrid"
-import { ServicesSection } from "./ServicesSection"
+} from "../components/ui/accordion";
+import { cn } from "../lib/cn";
+import { PinnedServicesGrid } from "./PinnedServicesGrid";
+import { ServicesSection } from "./ServicesSection";
 
 type ServicesAccordionProps = {
-  pinnedServices: Service[]
-  services: Service[]
-  onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>
-}
+  pinnedServices: Service[];
+  services: Service[];
+  onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>;
+};
 
 export function ServicesAccordion({
   pinnedServices,
@@ -35,13 +35,11 @@ export function ServicesAccordion({
             "rounded-md py-4 pr-0",
             "transition-none hover:no-underline",
             "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-            "[&>svg]:order-first [&>svg]:shrink-0"
+            "[&>svg]:order-first [&>svg]:shrink-0",
           )}
         >
           <div className="text-left">
-            <div className="text-sm font-semibold text-(--text-secondary)">
-              Pinned services
-            </div>
+            <div className="text-sm font-semibold text-(--text-secondary)">Pinned services</div>
             <p className="mt-1 text-sm font-normal text-(--text-secondary)">
               Quick access to your most-used tools
             </p>
@@ -62,13 +60,11 @@ export function ServicesAccordion({
             "rounded-md py-4 pr-0",
             "transition-none hover:no-underline",
             "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-            "[&>svg]:order-first [&>svg]:shrink-0"
+            "[&>svg]:order-first [&>svg]:shrink-0",
           )}
         >
           <div className="text-left">
-            <div className="text-sm font-semibold text-(--text-secondary)">
-              All services
-            </div>
+            <div className="text-sm font-semibold text-(--text-secondary)">All services</div>
           </div>
         </AccordionTrigger>
 
@@ -77,5 +73,5 @@ export function ServicesAccordion({
         </AccordionContent>
       </AccordionItem>
     </Accordion>
-  )
+  );
 }

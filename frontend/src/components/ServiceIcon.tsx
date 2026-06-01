@@ -1,12 +1,12 @@
-import { useState } from "react"
-import fallbackServiceImage from "../assets/Nebari.svg"
+import { useState } from "react";
+import fallbackServiceImage from "../assets/Nebari.svg";
 
 type ServiceIconProps = {
-  imageUrl?: string
-}
+  imageUrl?: string;
+};
 
 export function ServiceIcon({ imageUrl }: ServiceIconProps) {
-  const [src, setSrc] = useState(imageUrl || fallbackServiceImage)
+  const [src, setSrc] = useState(imageUrl || fallbackServiceImage);
 
   return (
     <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-muted">
@@ -18,5 +18,5 @@ export function ServiceIcon({ imageUrl }: ServiceIconProps) {
         onError={() => setSrc(fallbackServiceImage)}
       />
     </div>
-  )
+  );
 }

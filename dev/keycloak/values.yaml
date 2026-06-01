@@ -86,9 +86,16 @@ startupProbe: |
   failureThreshold: 60
 
 service:
-  # MetalLB LoadBalancer — pinned to 192.168.49.100, exposed on port 80
+  # MetalLB LoadBalancer — pinned to 192.168.49.100. Service port matches the
+  # pod's targetPort (8080) so the in-cluster URL the webapi uses
+  # (http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080) resolves
+  # identically to what NIC's keycloakx chart values produce in production. See
+  # nebari-infrastructure-core/pkg/argocd/templates/apps/keycloak.yaml — same
+  # service.httpPort: 8080 there. End-user browser access still goes through
+  # the localhost:8180 port-forward set up by `make port-forward`, so the
+  # external-port change is invisible to anyone following dev/QUICKSTART.md.
   type: LoadBalancer
-  httpPort: 80
+  httpPort: 8080
   loadBalancerIP: "192.168.49.100"
 
 ingress:

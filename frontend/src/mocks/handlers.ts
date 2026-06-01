@@ -3,7 +3,7 @@
 // request access, approve/deny). Anything not listed here falls through to
 // the generated layer in ./generated/handlers.ts.
 
-import { http, HttpResponse } from "msw";
+import { HttpResponse, http } from "msw";
 import { generatedHandlers } from "./generated/handlers";
 import { store } from "./store";
 import { wsHandlers } from "./ws";
@@ -18,7 +18,7 @@ const overrides = [
       name: "Dev User",
       email: "dev@example.com",
       groups: ["/users", "/admin"],
-    })
+    }),
   ),
 
   http.get("/api/v1/categories", () => HttpResponse.json(store.categories)),
@@ -93,7 +93,7 @@ const overrides = [
   // The webapi issues a short-lived single-use ticket the SPA puts on the WS
   // upgrade URL. Any opaque string works against MSW's ws interceptor.
   http.post("/api/v1/ws-ticket", () =>
-    HttpResponse.json({ ticket: `mock-${Math.random().toString(36).slice(2, 10)}` })
+    HttpResponse.json({ ticket: `mock-${Math.random().toString(36).slice(2, 10)}` }),
   ),
 
   http.get("/api/v1/admin/access-requests", ({ request }) => {

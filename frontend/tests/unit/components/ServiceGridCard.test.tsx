@@ -16,9 +16,7 @@ const baseService = {
 
 describe("ServiceGridCard", () => {
   it("renders the service name, description, and category", () => {
-    render(
-      <ServiceGridCard service={baseService} onTogglePin={vi.fn()} />
-    );
+    render(<ServiceGridCard service={baseService} onTogglePin={vi.fn()} />);
 
     expect(screen.getByText("JupyterHub")).toBeInTheDocument();
     expect(screen.getByText("Notebook platform")).toBeInTheDocument();
@@ -26,9 +24,7 @@ describe("ServiceGridCard", () => {
   });
 
   it("renders the outer card link", () => {
-    render(
-      <ServiceGridCard service={baseService} onTogglePin={vi.fn()} />
-    );
+    render(<ServiceGridCard service={baseService} onTogglePin={vi.fn()} />);
 
     const link = screen.getByRole("link");
     expect(link).toHaveAttribute("href", "https://example.com/jupyterhub");
@@ -39,12 +35,7 @@ describe("ServiceGridCard", () => {
     const user = userEvent.setup();
     const onTogglePin = vi.fn();
 
-    render(
-      <ServiceGridCard
-        service={baseService}
-        onTogglePin={onTogglePin}
-      />
-    );
+    render(<ServiceGridCard service={baseService} onTogglePin={onTogglePin} />);
 
     await user.click(screen.getByRole("button", { name: /pin service/i }));
 
@@ -56,10 +47,7 @@ describe("ServiceGridCard", () => {
     const onTogglePin = vi.fn();
 
     render(
-      <ServiceGridCard
-        service={{ ...baseService, pinned: true }}
-        onTogglePin={onTogglePin}
-      />
+      <ServiceGridCard service={{ ...baseService, pinned: true }} onTogglePin={onTogglePin} />,
     );
 
     await user.click(screen.getByRole("button", { name: /unpin service/i }));

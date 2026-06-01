@@ -1,6 +1,6 @@
 # Sync Helm Chart to nebari-dev/helm-repository
 #
-# On every published GitHub release this workflow:
+# When called by release.yml or run manually, this workflow:
 #
 #   1. Bumps Chart.yaml version + appVersion to match the release tag.
 #   2. Pins nebari image tags (quay.io/nebari/*) in values.yaml to the
@@ -18,21 +18,33 @@
 name: Sync Helm Chart to nebari-dev/helm-repository
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to sync (e.g. v0.2.0)"
+        required: true
+        type: string
+      dry-run:
+        description: "Lint only; skip PR creation"
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      NEBARI_HELM_REPO_TOKEN:
+        required: false
 
   # Allow manual runs from the Actions tab (useful for testing).
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to sync (e.g. v0.2.0) — required when not triggered by a release event"
+        description: "Release tag to sync (e.g. v0.2.0)"
         required: false
         default: ''
         type: string
       dry-run:
-        description: "Lint only — skip PR creation"
+        description: "Lint only; skip PR creation"
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 jobs:
@@ -47,14 +59,14 @@ jobs:
       - uses: actions/checkout@v6
 
       # ── Resolve the release tag ───────────────────────────────────────────
-      # On release events use tag_name; on workflow_dispatch fall back to the
-      # manually supplied 'tag' input so dry-run / manual testing works.
+      # Called runs pass the release tag from release.yml. Manual runs use the
+      # supplied 'tag' input so dry-run / manual testing works.
       - name: Resolve release tag
         id: tag
         run: |
-          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          TAG="${{ inputs.tag }}"
           if [[ -z "$TAG" ]]; then
-            echo "::error::No release tag found. When using workflow_dispatch, provide the 'tag' input (e.g. v0.2.0)."
+            echo "::error::No release tag found. Provide the 'tag' input (e.g. v0.2.0)."
             exit 1
           fi
           echo "value=${TAG}" >> "$GITHUB_OUTPUT"
@@ -97,11 +109,11 @@ jobs:
 
       # ── Update chart dependencies ─────────────────────────────────────────
       - name: Install Helm
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true'
+        if: ${{ inputs['dry-run'] != true }}
         uses: azure/setup-helm@v4
 
       - name: Update Helm dependencies
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true'
+        if: ${{ inputs['dry-run'] != true }}
         run: helm dependency update charts/nebari-landing
 
       # ── Sync to nebari-dev/helm-repository ────────────────────────────────
@@ -109,7 +121,7 @@ jobs:
       # If this action fails, check https://github.com/nebari-dev/helm-repository
       # for updates and update the commit SHA below.
       - name: Sync chart to helm-repository
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true'
+        if: ${{ inputs['dry-run'] != true }}
         uses: nebari-dev/helm-repository/.github/actions/sync-chart@main  # TODO: Pin to working commit SHA
         with:
           chart-path: charts/nebari-landing
@@ -118,13 +130,13 @@ jobs:
 
       # ── Dry-run path: lint only ────────────────────────────────────────────
       - name: Install Helm (dry-run)
-        if: github.event.inputs.dry-run == 'true'
+        if: ${{ inputs['dry-run'] == true }}
         uses: azure/setup-helm@v4
 
       - name: Update Helm dependencies (dry-run)
-        if: github.event.inputs.dry-run == 'true'
+        if: ${{ inputs['dry-run'] == true }}
         run: helm dependency update charts/nebari-landing
 
       - name: Lint chart (dry-run)
-        if: github.event.inputs.dry-run == 'true'
+        if: ${{ inputs['dry-run'] == true }}
         run: helm lint charts/nebari-landing

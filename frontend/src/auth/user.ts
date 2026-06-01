@@ -15,11 +15,7 @@ export function useUser(): { user: User | null; loading: boolean } {
     if (!kc?.authenticated || !kc.idTokenParsed) return null;
 
     const parsed = kc.idTokenParsed as Record<string, string>;
-    const name =
-      parsed["name"] ||
-      parsed["preferred_username"] ||
-      parsed["sub"] ||
-      "User";
+    const name = parsed["name"] || parsed["preferred_username"] || parsed["sub"] || "User";
     const email = parsed["email"] || "";
 
     return { name, email };

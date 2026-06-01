@@ -1,4 +1,4 @@
-import { test, expect } from "./axe-test";
+import { expect, test } from "./axe-test";
 
 test("light theme has no automatically detectable WCAG A/AA violations", async ({
   page,
