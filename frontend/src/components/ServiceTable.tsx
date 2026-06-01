@@ -1,5 +1,5 @@
-import type { Service } from '../api/listServices';
-import { Button } from '../components/ui/button';
+import type { Service } from "../api/listServices";
+import { Button } from "../components/ui/button";
 import {
   Table,
   TableBody,
@@ -7,10 +7,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../components/ui/table';
-import { PinIcon, UnpinIcon } from './PinIcon';
-import { ServiceIcon } from './ServiceIcon';
-import { StatusBadge } from './StatusBadge';
+} from "../components/ui/table";
+import { PinIcon, UnpinIcon } from "./PinIcon";
+import { ServiceIcon } from "./ServiceIcon";
+import { StatusBadge } from "./StatusBadge";
 
 type ServicesTableProps = {
   services: Service[];
@@ -63,11 +63,11 @@ function ServiceRow({
   onTogglePin?: (serviceId: string, nextPinned: boolean) => void;
 }) {
   const openService = () => {
-    window.open(service.url, '_blank', 'noopener,noreferrer');
+    window.open(service.url, "_blank", "noopener,noreferrer");
   };
 
   const handleRowKeyDown = (event: React.KeyboardEvent<HTMLTableRowElement>) => {
-    if (event.key === 'Enter' || event.key === ' ') {
+    if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       openService();
     }
@@ -129,8 +129,8 @@ function ServiceRow({
           onKeyDown={(event) => {
             event.stopPropagation();
           }}
-          title={service.pinned ? 'Unpin service' : 'Pin service'}
-          aria-label={service.pinned ? 'Unpin service' : 'Pin service'}
+          title={service.pinned ? "Unpin service" : "Pin service"}
+          aria-label={service.pinned ? "Unpin service" : "Pin service"}
         >
           {service.pinned ? (
             <UnpinIcon className="h-4 w-4 text-primary" />

@@ -1,9 +1,9 @@
-import { expect, test } from './fixtures/e2e';
+import { expect, test } from "./fixtures/e2e";
 
-test('header accessibility tree stays stable', async ({ page }) => {
-  await page.goto('/');
+test("header accessibility tree stays stable", async ({ page }) => {
+  await page.goto("/");
 
-  const header = page.locator('header');
+  const header = page.locator("header");
   await expect(header).toBeVisible();
 
   await expect(header).toMatchAriaSnapshot(`
@@ -13,10 +13,10 @@ test('header accessibility tree stays stable', async ({ page }) => {
   `);
 });
 
-test('services controls accessibility tree stays stable', async ({ page }) => {
-  await page.goto('/');
+test("services controls accessibility tree stays stable", async ({ page }) => {
+  await page.goto("/");
 
-  const allServicesRegion = page.getByRole('region', { name: /All services/i });
+  const allServicesRegion = page.getByRole("region", { name: /All services/i });
   await expect(allServicesRegion).toBeVisible();
 
   await expect(allServicesRegion).toMatchAriaSnapshot(`

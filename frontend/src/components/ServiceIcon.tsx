@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import fallbackServiceImage from '../assets/Nebari.svg';
+import { useState } from "react";
+import fallbackServiceImage from "../assets/Nebari.svg";
 
 type ServiceIconProps = {
   imageUrl?: string;

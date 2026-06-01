@@ -3,15 +3,15 @@
 // load. There is no persistence — refreshing the page rehydrates from the
 // seed fixtures.
 
-import type { Service } from '../api/listServices';
-import type { Notification } from '../api/notifications';
+import type { Service } from "../api/listServices";
+import type { Notification } from "../api/notifications";
 import {
   type AccessRequest,
   seedAccessRequests,
   seedCategories,
   seedNotifications,
   seedServices,
-} from './fixtures';
+} from "./fixtures";
 
 type Store = {
   services: Service[];

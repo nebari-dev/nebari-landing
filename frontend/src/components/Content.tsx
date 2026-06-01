@@ -1,6 +1,6 @@
-import type { Service } from '../api/listServices';
+import type { Service } from "../api/listServices";
 
-import { ServicesAccordion } from './ServiceAccordion';
+import { ServicesAccordion } from "./ServiceAccordion";
 
 type ContentProps = {
   services: Service[];

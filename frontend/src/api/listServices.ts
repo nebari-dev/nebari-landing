@@ -1,4 +1,4 @@
-import { apiFetch } from './client';
+import { apiFetch } from "./client";
 
 export type Service = {
   id: string;
@@ -18,7 +18,7 @@ export type Service = {
  * inside the pod — no cross-origin request, no CORS issues.
  */
 export async function listServices(): Promise<Service[]> {
-  const resp = await apiFetch('/services');
+  const resp = await apiFetch("/services");
 
   if (!resp.ok) {
     throw new Error(`Response: ${resp.status} ${resp.statusText}`);

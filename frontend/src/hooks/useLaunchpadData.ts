@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '../api/client';
-import { listServices, type Service } from '../api/listServices';
-import { mapService } from '../api/mapServices';
-import { listNotifications, markNotificationRead, type Notification } from '../api/notifications';
-import type { NotificationSocketMessage } from '../api/notificationsSocket';
-import { deletePin, putPin } from '../api/pin';
-import type { ServiceSocketMessage } from '../api/servicesSocket';
-import { createWebSocketClient } from '../api/ws';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "../api/client";
+import { listServices, type Service } from "../api/listServices";
+import { mapService } from "../api/mapServices";
+import { listNotifications, markNotificationRead, type Notification } from "../api/notifications";
+import type { NotificationSocketMessage } from "../api/notificationsSocket";
+import { deletePin, putPin } from "../api/pin";
+import type { ServiceSocketMessage } from "../api/servicesSocket";
+import { createWebSocketClient } from "../api/ws";
 
 type AppSocketMessage = ServiceSocketMessage | NotificationSocketMessage;
 
@@ -32,7 +32,7 @@ export function useLaunchpadData(user: unknown) {
     try {
       await Promise.all(uniqueIds.map((id) => markNotificationRead(id)));
     } catch (err) {
-      console.error('markNotificationRead failed', err);
+      console.error("markNotificationRead failed", err);
       setNotifications((prev) =>
         prev.map((notification) =>
           uniqueIds.includes(notification.id) ? { ...notification, read: false } : notification,
@@ -61,7 +61,7 @@ export function useLaunchpadData(user: unknown) {
         await deletePin(serviceId);
       }
     } catch (err) {
-      console.error('toggle pin failed', err);
+      console.error("toggle pin failed", err);
 
       if (previousPinned === undefined) return;
 
@@ -85,14 +85,14 @@ export function useLaunchpadData(user: unknown) {
     const isAuthenticated = Boolean(user);
 
     return createWebSocketClient<AppSocketMessage>({
-      path: '/ws',
+      path: "/ws",
       // Fetch a fresh single-use ticket before each connect (and each reconnect).
       // Browsers cannot send Authorization headers on WebSocket upgrade requests,
       // so the webapi accepts a short-lived ticket as an alternative.
       // When the exchange fails (e.g. auth disabled in dev), connect without a ticket.
       getQueryParams: async () => {
         try {
-          const resp = await apiFetch('/ws-ticket', { method: 'POST' });
+          const resp = await apiFetch("/ws-ticket", { method: "POST" });
           if (resp.ok) {
             const data = (await resp.json()) as { ticket: string };
             return { ticket: data.ticket };
@@ -102,17 +102,17 @@ export function useLaunchpadData(user: unknown) {
         }
         return {};
       },
-      onOpen: () => console.log('app websocket connected', { authenticated: isAuthenticated }),
-      onClose: () => console.log('app websocket disconnected'),
-      onError: (event) => console.error('app websocket error', event),
+      onOpen: () => console.log("app websocket connected", { authenticated: isAuthenticated }),
+      onClose: () => console.log("app websocket disconnected"),
+      onError: (event) => console.error("app websocket error", event),
       onMessage: (message) => {
-        if (message.type === 'notification.created') {
+        if (message.type === "notification.created") {
           const nextNotification: Notification = {
             id: message.notification.id,
             title: message.notification.title,
             message: message.notification.message,
             createdAt: message.notification.createdAt,
-            image: message.notification.image ?? '',
+            image: message.notification.image ?? "",
             read: message.notification.read ?? false,
           };
 
@@ -128,7 +128,7 @@ export function useLaunchpadData(user: unknown) {
 
         setServices((prev) => {
           switch (message.type) {
-            case 'added': {
+            case "added": {
               const exists = prev.some((service) => service.id === nextService.id);
 
               if (exists) {
@@ -142,7 +142,7 @@ export function useLaunchpadData(user: unknown) {
               return [nextService, ...prev];
             }
 
-            case 'modified':
+            case "modified":
               if (prev.some((service) => service.id === nextService.id)) {
                 return prev.map((service) =>
                   service.id === nextService.id
@@ -156,7 +156,7 @@ export function useLaunchpadData(user: unknown) {
               // without requiring a page refresh.
               return [nextService, ...prev];
 
-            case 'deleted':
+            case "deleted":
               return prev.filter((service) => service.id !== nextService.id);
 
             default:

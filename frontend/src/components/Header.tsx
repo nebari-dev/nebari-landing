@@ -1,15 +1,15 @@
-import { Bell, ChevronDown, Moon, Sun } from 'lucide-react';
-import type { ReactNode } from 'react';
-import logoUrlDark from '../assets/nebari-logo_dark.svg';
-import logoUrlLight from '../assets/nebari-logo_light.svg';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-import { Button } from './ui/button';
+import { Bell, ChevronDown, Moon, Sun } from "lucide-react";
+import type { ReactNode } from "react";
+import logoUrlDark from "../assets/nebari-logo_dark.svg";
+import logoUrlLight from "../assets/nebari-logo_light.svg";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { Button } from "./ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from './ui/dropdown-menu';
+} from "./ui/dropdown-menu";
 
 type Notification = {
   id: string;
@@ -40,7 +40,7 @@ export type HeaderProps = {
 
 export function Header(props: HeaderProps): ReactNode {
   const {
-    homeHref = '/',
+    homeHref = "/",
     isDarkMode = false,
     onToggleTheme,
     user,
@@ -80,9 +80,9 @@ export function Header(props: HeaderProps): ReactNode {
           variant="ghost"
           size="icon"
           className="relative h-9 w-9 rounded-[8px] border border-border bg-background text-muted-foreground transition-none hover:bg-accent"
-          aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
           aria-pressed={isDarkMode}
-          title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
           onClick={onToggleTheme}
         >
           {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
@@ -154,14 +154,14 @@ export function Header(props: HeaderProps): ReactNode {
                 className="flex items-center gap-3 rounded-md px-1 py-1 transition-none hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               >
                 <Avatar className="h-8 w-8">
-                  {user.image ? <AvatarImage src={user.image} alt={user.name ?? 'User'} /> : null}
+                  {user.image ? <AvatarImage src={user.image} alt={user.name ?? "User"} /> : null}
                   <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
 
                 <span className="text-sm font-medium text-foreground">
-                  {user.name ?? user.email ?? 'Account'}
+                  {user.name ?? user.email ?? "Account"}
                 </span>
 
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -170,7 +170,7 @@ export function Header(props: HeaderProps): ReactNode {
 
             <DropdownMenuContent align="end" className="w-56">
               <div className="border-b px-3 py-2">
-                <p className="text-sm font-medium text-foreground">{user.name ?? 'Signed in'}</p>
+                <p className="text-sm font-medium text-foreground">{user.name ?? "Signed in"}</p>
                 {user.email ? <p className="text-xs text-muted-foreground">{user.email}</p> : null}
               </div>
 
@@ -207,5 +207,5 @@ function getUserInitials(name?: string, email?: string) {
     return email.slice(0, 2).toUpperCase();
   }
 
-  return 'U';
+  return "U";
 }

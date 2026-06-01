@@ -1,13 +1,13 @@
-import type { Service } from '../api/listServices';
+import type { Service } from "../api/listServices";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from '../components/ui/accordion';
-import { cn } from '../lib/cn';
-import { PinnedServicesGrid } from './PinnedServicesGrid';
-import { ServicesSection } from './ServicesSection';
+} from "../components/ui/accordion";
+import { cn } from "../lib/cn";
+import { PinnedServicesGrid } from "./PinnedServicesGrid";
+import { ServicesSection } from "./ServicesSection";
 
 type ServicesAccordionProps = {
   pinnedServices: Service[];
@@ -23,19 +23,19 @@ export function ServicesAccordion({
   return (
     <Accordion
       type="multiple"
-      defaultValue={['pinned-services', 'all-services']}
+      defaultValue={["pinned-services", "all-services"]}
       className="w-full"
     >
       <AccordionItem value="pinned-services" className="border-0">
         <AccordionTrigger
           className={cn(
-            'relative z-10',
-            'w-fit flex-none',
-            'justify-start gap-3',
-            'rounded-md py-4 pr-0',
-            'transition-none hover:no-underline',
-            'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-            '[&>svg]:order-first [&>svg]:shrink-0',
+            "relative z-10",
+            "w-fit flex-none",
+            "justify-start gap-3",
+            "rounded-md py-4 pr-0",
+            "transition-none hover:no-underline",
+            "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            "[&>svg]:order-first [&>svg]:shrink-0",
           )}
         >
           <div className="text-left">
@@ -54,13 +54,13 @@ export function ServicesAccordion({
       <AccordionItem value="all-services" className="border-0">
         <AccordionTrigger
           className={cn(
-            'relative z-10',
-            'w-fit flex-none',
-            'justify-start gap-3',
-            'rounded-md py-4 pr-0',
-            'transition-none hover:no-underline',
-            'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-            '[&>svg]:order-first [&>svg]:shrink-0',
+            "relative z-10",
+            "w-fit flex-none",
+            "justify-start gap-3",
+            "rounded-md py-4 pr-0",
+            "transition-none hover:no-underline",
+            "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            "[&>svg]:order-first [&>svg]:shrink-0",
           )}
         >
           <div className="text-left">

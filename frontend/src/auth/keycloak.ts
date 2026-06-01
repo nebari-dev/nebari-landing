@@ -1,5 +1,5 @@
-import Keycloak from 'keycloak-js';
-import { loadAppConfig } from '../app/config';
+import Keycloak from "keycloak-js";
+import { loadAppConfig } from "../app/config";
 
 declare global {
   interface Window {
@@ -17,7 +17,7 @@ export async function initKeycloak(): Promise<Keycloak> {
   if (_keycloak) return _keycloak;
 
   const injected = window.__PW_E2E_AUTH__;
-  if (import.meta.env.MODE !== 'production' && injected?.authenticated) {
+  if (import.meta.env.MODE !== "production" && injected?.authenticated) {
     _keycloak = {
       authenticated: true,
       token: injected.token,
@@ -35,8 +35,8 @@ export async function initKeycloak(): Promise<Keycloak> {
   const kc = new Keycloak({ url: cfg.url, realm: cfg.realm, clientId: cfg.clientId });
 
   await kc.init({
-    onLoad: 'login-required',
-    pkceMethod: 'S256',
+    onLoad: "login-required",
+    pkceMethod: "S256",
     checkLoginIframe: false,
   });
 
@@ -57,8 +57,8 @@ export function getKeycloakInstance(): Keycloak | null {
  */
 export class SessionExpiredError extends Error {
   constructor() {
-    super('Session expired — redirecting to login');
-    this.name = 'SessionExpiredError';
+    super("Session expired — redirecting to login");
+    this.name = "SessionExpiredError";
   }
 }
 
@@ -79,16 +79,16 @@ export async function getToken(): Promise<string> {
 
 export function signIn() {
   if (_keycloak) {
-    _keycloak.login({ redirectUri: window.location.origin + '/' });
+    _keycloak.login({ redirectUri: window.location.origin + "/" });
   } else {
-    window.location.href = '/';
+    window.location.href = "/";
   }
 }
 
 export function signOut() {
   if (_keycloak) {
-    _keycloak.logout({ redirectUri: window.location.origin + '/' });
+    _keycloak.logout({ redirectUri: window.location.origin + "/" });
   } else {
-    window.location.href = '/';
+    window.location.href = "/";
   }
 }

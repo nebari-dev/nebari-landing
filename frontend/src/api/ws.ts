@@ -2,7 +2,7 @@ type WebSocketMessageHandler<TMessage = unknown> = (message: TMessage) => void;
 type WebSocketEventHandler = () => void;
 type WebSocketErrorHandler = (event: Event) => void;
 
-const API_BASE = '/api/v1';
+const API_BASE = "/api/v1";
 
 export type CreateWebSocketClientOptions<TMessage = unknown> = {
   path: string;
@@ -35,8 +35,8 @@ function buildWebSocketUrl(
   path: string,
   queryParams?: Record<string, string | number | boolean | undefined>,
 ): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const fullPath = `${API_BASE}${normalizedPath}`;
 
   const url = new URL(`${protocol}//${window.location.host}${fullPath}`);
@@ -87,20 +87,20 @@ export function createWebSocketClient<TMessage = unknown>(
     const url = buildWebSocketUrl(path, params);
     socket = protocols ? new WebSocket(url, protocols) : new WebSocket(url);
 
-    socket.addEventListener('open', () => {
+    socket.addEventListener("open", () => {
       onOpen?.();
     });
 
-    socket.addEventListener('message', (event) => {
+    socket.addEventListener("message", (event) => {
       try {
         const parsed = parseMessage(event.data);
         onMessage?.(parsed);
       } catch (error) {
-        console.error('Failed to parse websocket message', error, event.data);
+        console.error("Failed to parse websocket message", error, event.data);
       }
     });
 
-    socket.addEventListener('close', () => {
+    socket.addEventListener("close", () => {
       onClose?.();
       socket = null;
 
@@ -111,7 +111,7 @@ export function createWebSocketClient<TMessage = unknown>(
       }
     });
 
-    socket.addEventListener('error', (event) => {
+    socket.addEventListener("error", (event) => {
       onError?.(event);
     });
   };
@@ -125,7 +125,7 @@ export function createWebSocketClient<TMessage = unknown>(
 
   const send = (data: string) => {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      throw new Error('WebSocket is not connected');
+      throw new Error("WebSocket is not connected");
     }
 
     socket.send(data);

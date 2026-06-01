@@ -1,5 +1,5 @@
-import type { Service } from '../api/listServices';
-import { PinnedServiceCard } from './PinnedServiceCard';
+import type { Service } from "../api/listServices";
+import { PinnedServiceCard } from "./PinnedServiceCard";
 
 type PinnedServicesGridProps = {
   services: Service[];

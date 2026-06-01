@@ -1,11 +1,11 @@
-import { LayoutGrid, List, Search } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Service } from '../api/listServices';
-import { Input } from '../components/ui/input';
-import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group';
-import { ServicesGrid } from './ServicesGrid';
-import { ServicesTable } from './ServiceTable';
-import { Button } from './ui/button';
+import { LayoutGrid, List, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Service } from "../api/listServices";
+import { Input } from "../components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
+import { ServicesGrid } from "./ServicesGrid";
+import { ServicesTable } from "./ServiceTable";
+import { Button } from "./ui/button";
 
 type ServicesSectionProps = {
   services: Service[];
@@ -13,13 +13,13 @@ type ServicesSectionProps = {
 };
 
 export function ServicesSection({ services, onTogglePin }: ServicesSectionProps) {
-  const [query, setQuery] = useState('');
-  const [view, setView] = useState<'table' | 'grid'>('table');
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<"table" | "grid">("table");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const isShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k';
+      const isShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k";
 
       if (!isShortcut) return;
 
@@ -28,8 +28,8 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
       inputRef.current?.select();
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const filteredServices = useMemo(() => {
@@ -38,7 +38,7 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
 
     return services.filter((service) => {
       const haystack = [service.name, service.description, ...service.category]
-        .join(' ')
+        .join(" ")
         .toLowerCase();
 
       return haystack.includes(normalizedQuery);
@@ -71,7 +71,7 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
           type="single"
           value={view}
           onValueChange={(value) => {
-            if (value === 'table' || value === 'grid') {
+            if (value === "table" || value === "grid") {
               setView(value);
             }
           }}
@@ -96,7 +96,7 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
       </div>
 
       <div className="px-1">
-        {view === 'table' ? (
+        {view === "table" ? (
           <ServicesTable services={filteredServices} onTogglePin={onTogglePin} />
         ) : (
           <ServicesGrid services={filteredServices} onTogglePin={onTogglePin} />

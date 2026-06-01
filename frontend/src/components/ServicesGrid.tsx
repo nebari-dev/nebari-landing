@@ -1,5 +1,5 @@
-import type { Service } from '../api/listServices';
-import { ServiceGridCard } from './ServiceGridCard';
+import type { Service } from "../api/listServices";
+import { ServiceGridCard } from "./ServiceGridCard";
 
 type ServicesGridProps = {
   services: Service[];

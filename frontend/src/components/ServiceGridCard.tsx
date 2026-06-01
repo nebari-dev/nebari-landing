@@ -1,9 +1,9 @@
-import type { Service } from '../api/listServices';
-import { PinIcon, UnpinIcon } from './PinIcon';
-import { ServiceIcon } from './ServiceIcon';
-import { StatusBadge } from './StatusBadge';
-import { Button } from './ui/button';
-import { Card, CardContent } from './ui/card';
+import type { Service } from "../api/listServices";
+import { PinIcon, UnpinIcon } from "./PinIcon";
+import { ServiceIcon } from "./ServiceIcon";
+import { StatusBadge } from "./StatusBadge";
+import { Button } from "./ui/button";
+import { Card, CardContent } from "./ui/card";
 
 type ServiceGridCardProps = {
   service: Service;
@@ -60,8 +60,8 @@ export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) 
                 event.stopPropagation();
                 void onTogglePin(service.id, !service.pinned);
               }}
-              title={service.pinned ? 'Unpin service' : 'Pin service'}
-              aria-label={service.pinned ? 'Unpin service' : 'Pin service'}
+              title={service.pinned ? "Unpin service" : "Pin service"}
+              aria-label={service.pinned ? "Unpin service" : "Pin service"}
             >
               {service.pinned ? (
                 <UnpinIcon className="h-4 w-4 text-primary" />

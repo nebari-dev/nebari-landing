@@ -1,4 +1,4 @@
-import { apiFetch } from './client';
+import { apiFetch } from "./client";
 
 export type Pin = {
   id: string;
@@ -6,7 +6,7 @@ export type Pin = {
 
 export async function getPinById(serviceId: string): Promise<Pin> {
   if (!serviceId) {
-    throw new Error('serviceId is required');
+    throw new Error("serviceId is required");
   }
 
   const resp = await apiFetch(`/pins/${serviceId}`);
@@ -20,11 +20,11 @@ export async function getPinById(serviceId: string): Promise<Pin> {
 
 export async function putPin(serviceId: string): Promise<void> {
   if (!serviceId) {
-    throw new Error('serviceId is required');
+    throw new Error("serviceId is required");
   }
 
   const resp = await apiFetch(`/pins/${serviceId}`, {
-    method: 'PUT',
+    method: "PUT",
   });
 
   if (!resp.ok) {
@@ -34,11 +34,11 @@ export async function putPin(serviceId: string): Promise<void> {
 
 export async function deletePin(serviceId: string): Promise<void> {
   if (!serviceId) {
-    throw new Error('serviceId is required');
+    throw new Error("serviceId is required");
   }
 
   const resp = await apiFetch(`/pins/${serviceId}`, {
-    method: 'DELETE',
+    method: "DELETE",
   });
 
   if (!resp.ok) {

@@ -8,16 +8,17 @@
 //
 // Run via `npm run mocks:generate` (also wired into `make docs`).
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const SPEC_PATH = resolve(__dirname, '../../internal/api/docs/swagger.json');
-const OUT_PATH = resolve(__dirname, '../src/mocks/generated/handlers.ts');
-const API_BASE = '/api/v1';
+const SPEC_PATH = resolve(__dirname, "../../internal/api/docs/swagger.json");
+const OUT_PATH = resolve(__dirname, "../src/mocks/generated/handlers.ts");
+const API_BASE = "/api/v1";
 
 type JsonObject = { [k: string]: unknown };
 type Schema = JsonObject;
@@ -26,25 +27,25 @@ type Operation = {
   responses?: Record<string, { content?: Record<string, { schema?: Schema }> }>;
 };
 
-type PathItem = Partial<Record<'get' | 'post' | 'put' | 'delete' | 'patch', Operation>>;
+type PathItem = Partial<Record<"get" | "post" | "put" | "delete" | "patch", Operation>>;
 
 type Spec = {
   paths: Record<string, PathItem>;
   components?: { schemas?: Record<string, Schema> };
 };
 
-const spec = JSON.parse(readFileSync(SPEC_PATH, 'utf8')) as Spec;
+const spec = JSON.parse(readFileSync(SPEC_PATH, "utf8")) as Spec;
 const schemas = spec.components?.schemas ?? {};
 
 // Build a deterministic example for a schema, following $refs and respecting
 // enums / types. Visited refs short-circuit to avoid infinite recursion.
 function exampleFor(schema: Schema | undefined, visited = new Set<string>()): unknown {
-  if (!schema || typeof schema !== 'object') return null;
+  if (!schema || typeof schema !== "object") return null;
 
-  if (typeof schema.$ref === 'string') {
+  if (typeof schema.$ref === "string") {
     const ref = schema.$ref;
     if (visited.has(ref)) return null;
-    const name = ref.replace(/^#\/components\/schemas\//, '');
+    const name = ref.replace(/^#\/components\/schemas\//, "");
     const target = schemas[name];
     if (!target) return null;
     return exampleFor(target, new Set([...visited, ref]));
@@ -61,24 +62,24 @@ function exampleFor(schema: Schema | undefined, visited = new Set<string>()): un
     const merged: JsonObject = {};
     for (const part of schema.allOf as Schema[]) {
       const v = exampleFor(part, visited);
-      if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(merged, v);
+      if (v && typeof v === "object" && !Array.isArray(v)) Object.assign(merged, v);
     }
     return merged;
   }
 
   switch (schema.type) {
-    case 'string':
-      if (schema.format === 'date-time') return new Date(0).toISOString();
-      if (schema.format === 'uuid') return '00000000-0000-0000-0000-000000000000';
-      return '';
-    case 'integer':
-    case 'number':
+    case "string":
+      if (schema.format === "date-time") return new Date(0).toISOString();
+      if (schema.format === "uuid") return "00000000-0000-0000-0000-000000000000";
+      return "";
+    case "integer":
+    case "number":
       return 0;
-    case 'boolean':
+    case "boolean":
       return false;
-    case 'array':
+    case "array":
       return [];
-    case 'object':
+    case "object":
     default: {
       const out: JsonObject = {};
       const props = (schema.properties ?? {}) as Record<string, Schema>;
@@ -92,10 +93,10 @@ function exampleFor(schema: Schema | undefined, visited = new Set<string>()): un
 
 function pickResponseSchema(op: Operation): Schema | undefined {
   const responses = op.responses ?? {};
-  for (const code of ['200', '201', '202', '204']) {
+  for (const code of ["200", "201", "202", "204"]) {
     const r = responses[code];
-    if (r?.content?.['application/json']?.schema) {
-      return r.content['application/json'].schema;
+    if (r?.content?.["application/json"]?.schema) {
+      return r.content["application/json"].schema;
     }
   }
   return undefined;
@@ -104,11 +105,11 @@ function pickResponseSchema(op: Operation): Schema | undefined {
 // Convert OpenAPI path templating ("/services/{id}") into MSW's path param
 // syntax ("/services/:id").
 function toMswPath(path: string): string {
-  return API_BASE + path.replace(/\{(\w+)\}/g, ':$1');
+  return API_BASE + path.replace(/\{(\w+)\}/g, ":$1");
 }
 
 type GeneratedHandler = {
-  method: 'get' | 'post' | 'put' | 'delete' | 'patch';
+  method: "get" | "post" | "put" | "delete" | "patch";
   path: string;
   mswPath: string;
   body: unknown;
@@ -116,7 +117,7 @@ type GeneratedHandler = {
 };
 
 const handlers: GeneratedHandler[] = [];
-const methods = ['get', 'post', 'put', 'delete', 'patch'] as const;
+const methods = ["get", "post", "put", "delete", "patch"] as const;
 
 for (const [path, item] of Object.entries(spec.paths)) {
   for (const method of methods) {
@@ -124,7 +125,7 @@ for (const [path, item] of Object.entries(spec.paths)) {
     if (!op) continue;
     const schema = pickResponseSchema(op);
     const body = schema ? exampleFor(schema) : null;
-    const status = op.responses?.['201'] ? 201 : op.responses?.['204'] ? 204 : 200;
+    const status = op.responses?.["201"] ? 201 : op.responses?.["204"] ? 204 : 200;
     handlers.push({ method, path, mswPath: toMswPath(path), body, status });
   }
 }
@@ -134,18 +135,20 @@ handlers.sort((a, b) =>
 );
 
 const lines: string[] = [];
-lines.push('// Code generated by frontend/scripts/generate-msw-handlers.ts. DO NOT EDIT.');
-lines.push('// Source: internal/api/docs/swagger.json. Regenerate with `make docs` or');
-lines.push('// `npm --prefix frontend run mocks:generate`.');
-lines.push('');
-lines.push('import { http, HttpResponse } from "msw";');
-lines.push('');
-lines.push('export const generatedHandlers = [');
+lines.push("// Code generated by frontend/scripts/generate-msw-handlers.ts. DO NOT EDIT.");
+lines.push("// Source: internal/api/docs/swagger.json. Regenerate with `make docs` or");
+lines.push("// `npm --prefix frontend run mocks:generate`.");
+lines.push("");
+// Imports emitted in Biome's organize-imports order (capitals first,
+// alphabetical) so `make docs` output is stable under `biome check`.
+lines.push('import { HttpResponse, http } from "msw";');
+lines.push("");
+lines.push("export const generatedHandlers = [");
 for (const h of handlers) {
   const bodyLiteral = JSON.stringify(h.body, null, 2)
-    .split('\n')
-    .map((line, i) => (i === 0 ? line : '    ' + line))
-    .join('\n');
+    .split("\n")
+    .map((line, i) => (i === 0 ? line : "    " + line))
+    .join("\n");
   if (h.status === 204) {
     lines.push(
       `  http.${h.method}(${JSON.stringify(h.mswPath)}, () => new HttpResponse(null, { status: 204 })),`,
@@ -153,15 +156,26 @@ for (const h of handlers) {
   } else {
     lines.push(`  http.${h.method}(${JSON.stringify(h.mswPath)}, () =>`);
     lines.push(
-      `    HttpResponse.json(${bodyLiteral}${h.status === 200 ? '' : `, { status: ${h.status} }`})`,
+      `    HttpResponse.json(${bodyLiteral}${h.status === 200 ? "" : `, { status: ${h.status} }`})`,
     );
     lines.push(`  ),`);
   }
 }
-lines.push('];');
-lines.push('');
+lines.push("];");
+lines.push("");
 
 mkdirSync(dirname(OUT_PATH), { recursive: true });
-writeFileSync(OUT_PATH, lines.join('\n'), 'utf8');
+writeFileSync(OUT_PATH, lines.join("\n"), "utf8");
+
+// Post-format through Biome so the committed file is a fixed point under
+// `biome check`. Without this, the generator's multiline JSON literals
+// differ from what Biome would produce (single-line where they fit), so
+// every `make docs` would trigger drift CI even though no handler changed.
+const biome = spawnSync("npx", ["biome", "format", "--write", OUT_PATH], {
+  stdio: "inherit",
+});
+if (biome.status !== 0) {
+  throw new Error(`biome format exited with status ${biome.status}`);
+}
 
 console.log(`generated ${handlers.length} handlers → ${OUT_PATH}`);

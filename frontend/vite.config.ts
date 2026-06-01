@@ -1,19 +1,19 @@
 /// <reference types="vitest/config" />
 
-import tailwindcss from '@tailwindcss/vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
-  const usePolling = env.VITE_USE_POLLING === 'true';
-  const useMocks = env.VITE_USE_MOCKS === '1';
+  const env = loadEnv(mode, process.cwd(), "");
+  const usePolling = env.VITE_USE_POLLING === "true";
+  const useMocks = env.VITE_USE_MOCKS === "1";
   const webapiTarget =
     env.WEBAPI_URL ??
     (usePolling
-      ? 'http://nebari-landing-webapi.nebari-system.svc.cluster.local:8080'
-      : 'http://localhost:8080');
+      ? "http://nebari-landing-webapi.nebari-system.svc.cluster.local:8080"
+      : "http://localhost:8080");
 
   return {
     // Enable both React and Tailwind's Vite plugin.
@@ -25,7 +25,7 @@ export default defineConfig(({ mode }) => {
       alias: {
         // shadcn uses the @ alias for generated imports such as "@/components"
         // and "@/lib/utils", so we map @ to the src directory here.
-        '@': path.resolve(__dirname, './src'),
+        "@": path.resolve(__dirname, "./src"),
       },
     },
 
@@ -36,7 +36,7 @@ export default defineConfig(({ mode }) => {
       // ClusterIP unless WEBAPI_URL overrides it.
       proxy: !useMocks
         ? {
-            '/api': {
+            "/api": {
               target: webapiTarget,
               changeOrigin: true,
               // Forward WebSocket connections for the notifications hub.
@@ -53,10 +53,10 @@ export default defineConfig(({ mode }) => {
         usePolling,
         interval: 500,
         ignored: [
-          '**/.playwright/**',
-          '**/test-results/**',
-          '**/playwright-report/**',
-          '**/.playwright-artifacts-*/**',
+          "**/.playwright/**",
+          "**/test-results/**",
+          "**/playwright-report/**",
+          "**/.playwright-artifacts-*/**",
         ],
       },
 
@@ -70,12 +70,12 @@ export default defineConfig(({ mode }) => {
     },
 
     test: {
-      environment: 'jsdom',
+      environment: "jsdom",
       globals: true,
-      setupFiles: './src/test/setup.ts',
+      setupFiles: "./src/test/setup.ts",
       css: true,
-      include: ['tests/unit/**/*.{test,spec}.ts', 'tests/unit/**/*.{test,spec}.tsx'],
-      exclude: ['tests/e2e/**', 'node_modules/**', 'dist/**'],
+      include: ["tests/unit/**/*.{test,spec}.ts", "tests/unit/**/*.{test,spec}.tsx"],
+      exclude: ["tests/e2e/**", "node_modules/**", "dist/**"],
     },
 
     // No SCSS preprocessor configuration is needed for shadcn/Tailwind.

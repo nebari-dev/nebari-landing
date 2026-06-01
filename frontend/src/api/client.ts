@@ -10,11 +10,11 @@
  * to the webapi running on localhost. Set VITE_WEBAPI_URL to override.
  */
 
-import { getToken } from '../auth/keycloak';
+import { getToken } from "../auth/keycloak";
 
-const API_BASE = '/api/v1';
+const API_BASE = "/api/v1";
 
-type RequestOptions = Omit<RequestInit, 'headers'> & {
+type RequestOptions = Omit<RequestInit, "headers"> & {
   headers?: Record<string, string>;
 };
 
@@ -28,14 +28,14 @@ type RequestOptions = Omit<RequestInit, 'headers'> & {
  * is fully expired (refresh token gone), keycloak-js redirects to login.
  */
 export async function apiFetch(path: string, options: RequestOptions = {}): Promise<Response> {
-  const url = `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+  const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 
   const doFetch = async () => {
     const token = await getToken();
     return fetch(url, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
         ...options.headers,
       },

@@ -1,4 +1,4 @@
-import { createWebSocketClient } from './ws';
+import { createWebSocketClient } from "./ws";
 
 export type BackendSocketService = {
   uid: string;
@@ -19,7 +19,7 @@ export type BackendSocketService = {
 };
 
 export type ServiceSocketMessage = {
-  type: 'added' | 'modified' | 'deleted';
+  type: "added" | "modified" | "deleted";
   service: BackendSocketService;
 };
 
@@ -32,7 +32,7 @@ type ServiceSocketHandlers = {
 
 export function createServicesSocket(handlers: ServiceSocketHandlers) {
   return createWebSocketClient<ServiceSocketMessage>({
-    path: '/ws',
+    path: "/ws",
     onMessage: handlers.onMessage,
     onOpen: handlers.onOpen,
     onClose: handlers.onClose,

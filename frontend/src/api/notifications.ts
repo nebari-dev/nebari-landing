@@ -1,4 +1,4 @@
-import { apiFetch } from './client';
+import { apiFetch } from "./client";
 
 export type Notification = {
   id: string;
@@ -13,7 +13,7 @@ export type Notification = {
  * Fetches notifications from the webapi.
  */
 export async function listNotifications(): Promise<Notification[]> {
-  const resp = await apiFetch('/notifications');
+  const resp = await apiFetch("/notifications");
 
   if (!resp.ok) {
     throw new Error(`Response: ${resp.status} ${resp.statusText}`);
@@ -28,11 +28,11 @@ export async function listNotifications(): Promise<Notification[]> {
  */
 export async function markNotificationRead(notificationId: string): Promise<void> {
   if (!notificationId) {
-    throw new Error('notificationId is required');
+    throw new Error("notificationId is required");
   }
 
   const resp = await apiFetch(`/notifications/${notificationId}/read`, {
-    method: 'PUT',
+    method: "PUT",
   });
 
   if (!resp.ok) {

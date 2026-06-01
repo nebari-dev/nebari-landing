@@ -2,101 +2,96 @@
 // Source: internal/api/docs/swagger.json. Regenerate with `make docs` or
 // `npm --prefix frontend run mocks:generate`.
 
-import { http, HttpResponse } from "msw";
+import { HttpResponse, http } from "msw";
 
 export const generatedHandlers = [
-  http.get("/api/v1/admin/access-requests", () =>
-    HttpResponse.json([])
-  ),
+  http.get("/api/v1/admin/access-requests", () => HttpResponse.json([])),
   http.put("/api/v1/admin/access-requests/:id/:action", () =>
     HttpResponse.json({
-      "id": "",
-      "message": "",
-      "requestedAt": "",
-      "resolvedAt": "",
-      "resolvedBy": "",
-      "serviceName": "",
-      "serviceUID": "",
-      "status": "pending",
-      "userEmail": "",
-      "userID": ""
-    })
+      id: "",
+      message: "",
+      requestedAt: "",
+      resolvedAt: "",
+      resolvedBy: "",
+      serviceName: "",
+      serviceUID: "",
+      status: "pending",
+      userEmail: "",
+      userID: "",
+    }),
   ),
   http.post("/api/v1/admin/notifications", () =>
-    HttpResponse.json({
-      "createdAt": "",
-      "id": "",
-      "image": "",
-      "message": "",
-      "title": ""
-    }, { status: 201 })
+    HttpResponse.json(
+      {
+        createdAt: "",
+        id: "",
+        image: "",
+        message: "",
+        title: "",
+      },
+      { status: 201 },
+    ),
   ),
   http.get("/api/v1/caller-identity", () =>
     HttpResponse.json({
-      "authenticated": false,
-      "email": "",
-      "groups": [],
-      "name": "",
-      "username": ""
-    })
+      authenticated: false,
+      email: "",
+      groups: [],
+      name: "",
+      username: "",
+    }),
   ),
-  http.get("/api/v1/categories", () =>
-    HttpResponse.json({})
-  ),
+  http.get("/api/v1/categories", () => HttpResponse.json({})),
   http.get("/api/v1/health", () =>
     HttpResponse.json({
-      "status": ""
-    })
+      status: "",
+    }),
   ),
-  http.get("/api/v1/notifications", () =>
-    HttpResponse.json([])
-  ),
+  http.get("/api/v1/notifications", () => HttpResponse.json([])),
   http.put("/api/v1/notifications/:id/read", () => new HttpResponse(null, { status: 204 })),
   http.get("/api/v1/pins", () =>
     HttpResponse.json({
-      "pins": [],
-      "uids": []
-    })
+      pins: [],
+      uids: [],
+    }),
   ),
   http.delete("/api/v1/pins/:uid", () => new HttpResponse(null, { status: 204 })),
   http.put("/api/v1/pins/:uid", () => new HttpResponse(null, { status: 204 })),
   http.get("/api/v1/services", () =>
     HttpResponse.json({
-      "services": []
-    })
+      services: [],
+    }),
   ),
   http.get("/api/v1/services/:id", () =>
     HttpResponse.json({
-      "category": [],
-      "description": "",
-      "id": "",
-      "image": "",
-      "name": "",
-      "pinned": false,
-      "status": "",
-      "url": ""
-    })
+      category: [],
+      description: "",
+      id: "",
+      image: "",
+      name: "",
+      pinned: false,
+      status: "",
+      url: "",
+    }),
   ),
   http.post("/api/v1/services/:id/request_access", () =>
     HttpResponse.json({
-      "id": "",
-      "message": "",
-      "requestedAt": "",
-      "resolvedAt": "",
-      "resolvedBy": "",
-      "serviceName": "",
-      "serviceUID": "",
-      "status": "pending",
-      "userEmail": "",
-      "userID": ""
-    })
+      id: "",
+      message: "",
+      requestedAt: "",
+      resolvedAt: "",
+      resolvedBy: "",
+      serviceName: "",
+      serviceUID: "",
+      status: "pending",
+      userEmail: "",
+      userID: "",
+    }),
   ),
-  http.get("/api/v1/ws", () =>
-    HttpResponse.json(null)
-  ),
+  http.get("/api/v1/ws", () => HttpResponse.json(null)),
   http.post("/api/v1/ws-ticket", () =>
     HttpResponse.json({
-      "ticket": ""
-    })
+      ticket: "",
+    }),
   ),
 ];

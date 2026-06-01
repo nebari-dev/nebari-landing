@@ -1,7 +1,7 @@
-import type { Service } from '../api/listServices';
-import { Card, CardContent } from '../components/ui/card';
-import { ServiceIcon } from './ServiceIcon';
-import { StatusBadge } from './StatusBadge';
+import type { Service } from "../api/listServices";
+import { Card, CardContent } from "../components/ui/card";
+import { ServiceIcon } from "./ServiceIcon";
+import { StatusBadge } from "./StatusBadge";
 
 type PinnedServiceCardProps = {
   service: Service;

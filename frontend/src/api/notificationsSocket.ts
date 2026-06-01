@@ -1,8 +1,8 @@
-import type { Notification } from './notifications';
-import { createWebSocketClient } from './ws';
+import type { Notification } from "./notifications";
+import { createWebSocketClient } from "./ws";
 
 export type NotificationSocketMessage = {
-  type: 'notification.created';
+  type: "notification.created";
   notification: Notification;
 };
 
@@ -15,7 +15,7 @@ type NotificationSocketHandlers = {
 
 export function createNotificationsSocket(handlers: NotificationSocketHandlers) {
   return createWebSocketClient<NotificationSocketMessage>({
-    path: '/ws',
+    path: "/ws",
     onMessage: handlers.onMessage,
     onOpen: handlers.onOpen,
     onClose: handlers.onClose,
