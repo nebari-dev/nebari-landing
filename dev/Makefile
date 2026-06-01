@@ -671,7 +671,7 @@ port-forward:
 	@echo "→  (Re)starting port-forwards in the background …"
 	@pkill -f "kubect[l].*port-forward.*keycloak-keycloakx-http" 2>/dev/null || true
 	@pkill -f "kubect[l].*port-forward.*(nebari-landing-webapi|nebari-landing-frontend)" 2>/dev/null || true
-	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_KC)  port-forward svc/keycloak-keycloakx-http        $(PORT_KEYCLOAK):80   > /tmp/pf-keycloak.log 2>&1 &
+	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_KC)  port-forward svc/keycloak-keycloakx-http        $(PORT_KEYCLOAK):8080 > /tmp/pf-keycloak.log 2>&1 &
 	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-webapi          $(PORT_WEBAPI):8080  > /tmp/pf-webapi.log 2>&1 &
 	@nohup $(KUBECTL_BIN) -n $(NAMESPACE_APP) port-forward svc/$(HELM_RELEASE)-frontend        $(PORT_LANDING):8080 > /tmp/pf-landing.log 2>&1 &
 	@sleep 2

@@ -20,7 +20,7 @@ Prerequisites:
     pip install requests
 
 Port-forwards (run in separate terminals before this script):
-    kubectl -n keycloak      port-forward svc/keycloak-keycloakx-http 8180:80
+    kubectl -n keycloak      port-forward svc/keycloak-keycloakx-http 8180:8080
     kubectl -n nebari-system port-forward svc/nebari-landing-webapi   8090:8080
 
 Also apply test NebariApps:

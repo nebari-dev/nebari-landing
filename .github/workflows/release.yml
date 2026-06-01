@@ -11,8 +11,9 @@
 #   manifest-frontend — stitch arch images → semver-tagged manifest
 #   goreleaser        — build and release Go binary via GoReleaser
 #   publish-chart     — package and attach Helm chart to the GitHub release
+#   sync-helm-chart   — sync the published chart to nebari-dev/helm-repository
 #
-# Note: Helm repository sync is handled by sync-helm-chart.yml
+# Note: Helm repository sync is sequenced after publish-chart.
 
 name: Release
 
@@ -388,3 +389,12 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Platforms**: linux/amd64, linux/arm64" >> "$GITHUB_STEP_SUMMARY"
 
+  # ── Sync Helm chart repository after the release artifact is published ────
+  sync-helm-chart:
+    name: Sync Helm chart repository
+    needs: publish-chart
+    uses: ./.github/workflows/sync-helm-chart.yml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+      dry-run: false
+    secrets: inherit

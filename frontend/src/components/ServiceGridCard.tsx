@@ -19,27 +19,30 @@ export function ServiceGridCard({
       href={service.url}
       target="_blank"
       rel="noreferrer"
-      className="block overflow-visible focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      className="block h-56 overflow-visible focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
-      <Card className="overflow-hidden border border-border bg-background shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
-        <CardContent className="p-4">
+      <Card className="h-full overflow-hidden border border-border bg-background shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
+        <CardContent className="flex h-full flex-col p-4 pb-2">
           <div className="flex items-start justify-between gap-3">
             <ServiceIcon image={service.image} imageLight={service.imageLight} imageDark={service.imageDark} />
 
             <StatusBadge status={service.status} />
           </div>
 
-          <div className="mt-4 block">
+          <div className="mt-4 min-h-0">
             <p className="text-base font-bold text-foreground">{service.name}</p>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p
+              className="mt-1 line-clamp-2 text-sm text-muted-foreground"
+              title={service.description}
+            >
               {service.description}
             </p>
           </div>
 
-          <div className="my-4 border-t" />
+          <div className="mb-2 mt-auto border-t" />
 
           <div className="flex items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex min-w-0 flex-wrap gap-2 overflow-hidden">
               {service.category.map((item) => (
                 <span
                   key={item}

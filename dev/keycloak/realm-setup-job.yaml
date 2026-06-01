@@ -25,7 +25,8 @@ spec:
                   name: nebari-realm-admin-credentials
                   key: password
             - name: KEYCLOAK_URL
-              value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local
+              # Service exposes :8080 (matches NIC's keycloakx chart values)
+              value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080
           command:
             - /bin/bash
             - -c
