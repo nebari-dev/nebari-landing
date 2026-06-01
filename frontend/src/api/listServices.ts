@@ -8,6 +8,8 @@ export type Service = {
   category: string[];
   pinned: boolean;
   image: string;
+  iconLight?: string;
+  iconDark?: string;
   url: string;
 };
 

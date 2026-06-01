@@ -3,9 +3,13 @@ import { PinnedServiceCard } from "./PinnedServiceCard"
 
 type PinnedServicesGridProps = {
   services: Service[]
+  isDarkMode?: boolean
 }
 
-export function PinnedServicesGrid({ services }: PinnedServicesGridProps) {
+export function PinnedServicesGrid({
+  services,
+  isDarkMode = false,
+}: PinnedServicesGridProps) {
   if (services.length === 0) {
     return (
       <p className="text-sm text-(--text-secondary)">
@@ -17,7 +21,11 @@ export function PinnedServicesGrid({ services }: PinnedServicesGridProps) {
   return (
     <div className="grid overflow-visible gap-4 px-1 sm:grid-cols-2 xl:grid-cols-4">
       {services.map((service) => (
-        <PinnedServiceCard key={service.id} service={service} />
+        <PinnedServiceCard
+          key={service.id}
+          service={service}
+          isDarkMode={isDarkMode}
+        />
       ))}
     </div>
   )

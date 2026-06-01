@@ -9,6 +9,8 @@ export type Service = {
   pinned: boolean;
   url: string;
   image: string;
+  iconLight?: string;
+  iconDark?: string;
 };
 
 export async function getServiceById(serviceId: string): Promise<Service> {

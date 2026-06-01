@@ -12,12 +12,14 @@ import { ServicesSection } from "./ServicesSection"
 type ServicesAccordionProps = {
   pinnedServices: Service[]
   services: Service[]
+  isDarkMode?: boolean
   onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>
 }
 
 export function ServicesAccordion({
   pinnedServices,
   services,
+  isDarkMode = false,
   onTogglePin,
 }: ServicesAccordionProps) {
   return (
@@ -49,7 +51,10 @@ export function ServicesAccordion({
         </AccordionTrigger>
 
         <AccordionContent className="pt-2 pb-6">
-          <PinnedServicesGrid services={pinnedServices} />
+          <PinnedServicesGrid
+            services={pinnedServices}
+            isDarkMode={isDarkMode}
+          />
         </AccordionContent>
       </AccordionItem>
 
@@ -73,7 +78,11 @@ export function ServicesAccordion({
         </AccordionTrigger>
 
         <AccordionContent className="pt-2 pb-6">
-          <ServicesSection services={services} onTogglePin={onTogglePin} />
+          <ServicesSection
+            services={services}
+            isDarkMode={isDarkMode}
+            onTogglePin={onTogglePin}
+          />
         </AccordionContent>
       </AccordionItem>
     </Accordion>

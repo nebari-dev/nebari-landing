@@ -3,6 +3,7 @@ import type { Service } from "../api/listServices"
 import { StatusBadge } from "./StatusBadge"
 import { Button } from "../components/ui/button"
 import { ServiceIcon } from "./ServiceIcon"
+import { getServiceImageUrl } from "../lib/serviceImage"
 import {
   Table,
   TableBody,
@@ -14,11 +15,13 @@ import {
 
 type ServicesTableProps = {
   services: Service[]
+  isDarkMode?: boolean
   onTogglePin?: (serviceId: string, nextPinned: boolean) => void
 }
 
 export function ServicesTable({
   services,
+  isDarkMode = false,
   onTogglePin,
 }: ServicesTableProps) {
   return (
@@ -53,6 +56,7 @@ export function ServicesTable({
             <ServiceRow
               key={service.id}
               service={service}
+              isDarkMode={isDarkMode}
               onTogglePin={onTogglePin}
             />
           ))}
@@ -64,9 +68,11 @@ export function ServicesTable({
 
 function ServiceRow({
   service,
+  isDarkMode = false,
   onTogglePin,
 }: {
   service: Service
+  isDarkMode?: boolean
   onTogglePin?: (serviceId: string, nextPinned: boolean) => void
 }) {
   const openService = () => {
@@ -91,7 +97,7 @@ function ServiceRow({
     >
       <TableCell className="py-4 pr-2 pl-5 align-middle whitespace-normal">
         <div className="flex min-w-0 items-start gap-3">
-          <ServiceIcon imageUrl={service.image} />
+          <ServiceIcon imageUrl={getServiceImageUrl(service, isDarkMode)} />
 
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold leading-5 text-foreground">

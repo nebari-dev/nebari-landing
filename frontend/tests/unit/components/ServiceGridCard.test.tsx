@@ -35,6 +35,64 @@ describe("ServiceGridCard", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
+  it("uses the light service icon variant in light mode", () => {
+    const { container } = render(
+      <ServiceGridCard
+        service={{
+          ...baseService,
+          image: "/images/default-service.svg",
+          iconLight: "/images/light-service.svg",
+          iconDark: "/images/dark-service.svg",
+        }}
+        onTogglePin={vi.fn()}
+      />
+    );
+
+    expect(container.querySelector("img")).toHaveAttribute(
+      "src",
+      "/images/light-service.svg"
+    );
+  });
+
+  it("uses the dark service icon variant in dark mode", () => {
+    const { container } = render(
+      <ServiceGridCard
+        service={{
+          ...baseService,
+          image: "/images/default-service.svg",
+          iconLight: "/images/light-service.svg",
+          iconDark: "/images/dark-service.svg",
+        }}
+        isDarkMode
+        onTogglePin={vi.fn()}
+      />
+    );
+
+    expect(container.querySelector("img")).toHaveAttribute(
+      "src",
+      "/images/dark-service.svg"
+    );
+  });
+
+  it("falls back to the default service image when a theme variant is missing", () => {
+    const { container } = render(
+      <ServiceGridCard
+        service={{
+          ...baseService,
+          image: "/images/default-service.svg",
+          iconLight: "/images/light-service.svg",
+        }}
+        isDarkMode
+        onTogglePin={vi.fn()}
+      />
+    );
+
+    expect(container.querySelector("img")).toHaveAttribute(
+      "src",
+      "/images/default-service.svg"
+    );
+  });
+
   it("calls onTogglePin with the next pinned state", async () => {
     const user = userEvent.setup();
     const onTogglePin = vi.fn();

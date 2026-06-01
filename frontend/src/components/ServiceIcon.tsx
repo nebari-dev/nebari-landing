@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import fallbackServiceImage from "../assets/Nebari.svg"
 
 type ServiceIconProps = {
@@ -6,7 +6,12 @@ type ServiceIconProps = {
 }
 
 export function ServiceIcon({ imageUrl }: ServiceIconProps) {
-  const [src, setSrc] = useState(imageUrl || fallbackServiceImage)
+  const resolvedImageUrl = imageUrl || fallbackServiceImage
+  const [src, setSrc] = useState(resolvedImageUrl)
+
+  useEffect(() => {
+    setSrc(resolvedImageUrl)
+  }, [resolvedImageUrl])
 
   return (
     <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-muted">

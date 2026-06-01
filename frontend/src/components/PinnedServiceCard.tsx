@@ -2,12 +2,17 @@ import { Card, CardContent } from "../components/ui/card"
 import { StatusBadge } from "./StatusBadge"
 import { ServiceIcon } from "./ServiceIcon"
 import type { Service } from "../api/listServices"
+import { getServiceImageUrl } from "../lib/serviceImage"
 
 type PinnedServiceCardProps = {
   service: Service
+  isDarkMode?: boolean
 }
 
-export function PinnedServiceCard({ service }: PinnedServiceCardProps) {
+export function PinnedServiceCard({
+  service,
+  isDarkMode = false,
+}: PinnedServiceCardProps) {
   return (
     <a
       href={service.url}
@@ -17,7 +22,7 @@ export function PinnedServiceCard({ service }: PinnedServiceCardProps) {
     >
       <Card className="h-24 border border-border bg-card text-card-foreground shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
         <CardContent className="flex h-full items-center gap-4 p-6">
-          <ServiceIcon imageUrl={service.image} />
+          <ServiceIcon imageUrl={getServiceImageUrl(service, isDarkMode)} />
 
           <div className="min-w-0">
             <p className="truncate text-[16px] font-bold leading-none text-foreground">

@@ -13,6 +13,24 @@ describe("ServiceIcon", () => {
     expect(image).toHaveAttribute("src", "/images/test-service.svg");
   });
 
+  it("updates the rendered image when imageUrl changes", () => {
+    const { container, rerender } = render(
+      <ServiceIcon imageUrl="/images/light-service.svg" />
+    );
+
+    expect(container.querySelector("img")).toHaveAttribute(
+      "src",
+      "/images/light-service.svg"
+    );
+
+    rerender(<ServiceIcon imageUrl="/images/dark-service.svg" />);
+
+    expect(container.querySelector("img")).toHaveAttribute(
+      "src",
+      "/images/dark-service.svg"
+    );
+  });
+
   it("renders the fallback image when no imageUrl is provided", () => {
     const { container } = render(<ServiceIcon />);
 

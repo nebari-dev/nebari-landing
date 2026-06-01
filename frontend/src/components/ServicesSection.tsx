@@ -9,11 +9,13 @@ import { ServicesGrid } from "./ServicesGrid"
 
 type ServicesSectionProps = {
   services: Service[]
+  isDarkMode?: boolean
   onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>
 }
 
 export function ServicesSection({
   services,
+  isDarkMode = false,
   onTogglePin,
 }: ServicesSectionProps) {
   const [query, setQuery] = useState("")
@@ -108,11 +110,13 @@ export function ServicesSection({
         {view === "table" ? (
           <ServicesTable
             services={filteredServices}
+            isDarkMode={isDarkMode}
             onTogglePin={onTogglePin}
           />
         ) : (
           <ServicesGrid
             services={filteredServices}
+            isDarkMode={isDarkMode}
             onTogglePin={onTogglePin}
           />
         )}

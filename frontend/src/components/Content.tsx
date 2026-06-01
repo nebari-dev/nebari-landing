@@ -8,10 +8,15 @@ import {
 
 type ContentProps = {
   services: Service[]
+  isDarkMode?: boolean
   onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>
 }
 
-export function Content({ services, onTogglePin }: ContentProps) {
+export function Content({
+  services,
+  isDarkMode = false,
+  onTogglePin,
+}: ContentProps) {
   const pinnedServices = services.filter((service) => service.pinned)
 
   return (
@@ -19,6 +24,7 @@ export function Content({ services, onTogglePin }: ContentProps) {
       <ServicesAccordion
         pinnedServices={pinnedServices}
         services={services}
+        isDarkMode={isDarkMode}
         onTogglePin={onTogglePin}
       />
     </div>

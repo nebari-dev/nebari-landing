@@ -3,10 +3,15 @@ import { ServiceGridCard } from "./ServiceGridCard"
 
 type ServicesGridProps = {
   services: Service[]
+  isDarkMode?: boolean
   onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>
 }
 
-export function ServicesGrid({ services, onTogglePin }: ServicesGridProps) {
+export function ServicesGrid({
+  services,
+  isDarkMode = false,
+  onTogglePin,
+}: ServicesGridProps) {
   if (services.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -21,6 +26,7 @@ export function ServicesGrid({ services, onTogglePin }: ServicesGridProps) {
         <ServiceGridCard
           key={service.id}
           service={service}
+          isDarkMode={isDarkMode}
           onTogglePin={onTogglePin}
         />
       ))}

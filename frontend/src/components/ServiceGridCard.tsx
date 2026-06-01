@@ -4,14 +4,17 @@ import { Card, CardContent } from "./ui/card"
 import { StatusBadge } from "./StatusBadge"
 import { ServiceIcon } from "./ServiceIcon"
 import { PinIcon, UnpinIcon } from "./PinIcon"
+import { getServiceImageUrl } from "../lib/serviceImage"
 
 type ServiceGridCardProps = {
   service: Service
+  isDarkMode?: boolean
   onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>
 }
 
 export function ServiceGridCard({
   service,
+  isDarkMode = false,
   onTogglePin,
 }: ServiceGridCardProps) {
   return (
@@ -24,7 +27,7 @@ export function ServiceGridCard({
       <Card className="h-full overflow-hidden border border-border bg-background shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
         <CardContent className="flex h-full flex-col p-4 pb-2">
           <div className="flex items-start justify-between gap-3">
-            <ServiceIcon imageUrl={service.image} />
+            <ServiceIcon imageUrl={getServiceImageUrl(service, isDarkMode)} />
 
             <StatusBadge status={service.status} />
           </div>

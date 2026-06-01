@@ -61,6 +61,28 @@ describe("ServicesTable", () => {
     ).toBeInTheDocument();
   });
 
+  it("uses the matching service icon variant for the active theme", () => {
+    const { container } = render(
+      <ServicesTable
+        services={[
+          {
+            ...services[0],
+            image: "/images/default-service.svg",
+            iconLight: "/images/light-service.svg",
+            iconDark: "/images/dark-service.svg",
+          },
+        ]}
+        isDarkMode
+        onTogglePin={vi.fn()}
+      />
+    );
+
+    expect(container.querySelector("tbody img")).toHaveAttribute(
+      "src",
+      "/images/dark-service.svg"
+    );
+  });
+
   it("opens the service url when a row is clicked", async () => {
     const user = userEvent.setup();
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);

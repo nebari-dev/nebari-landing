@@ -32,7 +32,11 @@ export default function App() {
         logoSrc={config?.logoUrl || undefined}
       />
 
-      <Content services={services} onTogglePin={onTogglePin} />
+      <Content
+        services={services}
+        isDarkMode={isDarkMode}
+        onTogglePin={onTogglePin}
+      />
     </main>
   )
 }
