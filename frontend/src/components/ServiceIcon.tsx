@@ -29,5 +29,5 @@ export function ServiceIcon({ image, imageLight, imageDark }: ServiceIconProps) 
         onError={() => setErrorUrl(resolvedUrl)}
       />
     </div>
-  )
+  );
 }

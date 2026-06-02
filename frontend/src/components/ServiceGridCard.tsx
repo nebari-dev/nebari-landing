@@ -1,19 +1,16 @@
-import type { Service } from "../api/listServices"
-import { Button } from "./ui/button"
-import { Card, CardContent } from "./ui/card"
-import { StatusBadge } from "./StatusBadge"
-import { ServiceIcon } from "./ServiceIcon"
-import { PinIcon, UnpinIcon } from "./PinIcon"
+import type { Service } from "../api/listServices";
+import { PinIcon, UnpinIcon } from "./PinIcon";
+import { ServiceIcon } from "./ServiceIcon";
+import { StatusBadge } from "./StatusBadge";
+import { Button } from "./ui/button";
+import { Card, CardContent } from "./ui/card";
 
 type ServiceGridCardProps = {
-  service: Service
-  onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>
-}
+  service: Service;
+  onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>;
+};
 
-export function ServiceGridCard({
-  service,
-  onTogglePin,
-}: ServiceGridCardProps) {
+export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) {
   return (
     <a
       href={service.url}
@@ -59,21 +56,22 @@ export function ServiceGridCard({
               size="icon"
               className="h-8 w-8 shrink-0"
               onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                void onTogglePin(service.id, !service.pinned)
+                event.preventDefault();
+                event.stopPropagation();
+                void onTogglePin(service.id, !service.pinned);
               }}
               title={service.pinned ? "Unpin service" : "Pin service"}
               aria-label={service.pinned ? "Unpin service" : "Pin service"}
             >
-              {service.pinned
-                ? <UnpinIcon className="h-4 w-4 text-primary" />
-                : <PinIcon className="h-4 w-4 text-muted-foreground" />
-              }
+              {service.pinned ? (
+                <UnpinIcon className="h-4 w-4 text-primary" />
+              ) : (
+                <PinIcon className="h-4 w-4 text-muted-foreground" />
+              )}
             </Button>
           </div>
         </CardContent>
       </Card>
     </a>
-  )
+  );
 }

@@ -1,26 +1,20 @@
-import { test, expect } from "./fixtures/e2e"
+import { expect, test } from "./fixtures/e2e";
 
 test("header controls are reachable by keyboard", async ({ page }) => {
   await page.goto("/");
 
-  await expect(
-    page.getByRole("button", { name: /notifications/i })
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /notifications/i })).toBeVisible();
+
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: /go to homepage/i })).toBeFocused();
 
   await page.keyboard.press("Tab");
   await expect(
-    page.getByRole("link", { name: /go to homepage/i })
+    page.getByRole("button", { name: /switch to dark mode|switch to light mode/i }),
   ).toBeFocused();
 
   await page.keyboard.press("Tab");
-  await expect(
-    page.getByRole("button", { name: /switch to dark mode|switch to light mode/i })
-  ).toBeFocused();
-
-  await page.keyboard.press("Tab");
-  await expect(
-    page.getByRole("button", { name: /notifications/i })
-  ).toBeFocused();
+  await expect(page.getByRole("button", { name: /notifications/i })).toBeFocused();
 });
 
 test("Ctrl+K focuses the search input", async ({ page }) => {

@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { test, expect } from "./fixtures/e2e";
+import { expect, test } from "./fixtures/e2e";
 
 const responsiveServices = [
   {
@@ -43,9 +43,7 @@ async function getBox(locator: Locator) {
   return box;
 }
 
-test("services toolbar stays on one row and keeps search text sizing stable", async ({
-  page,
-}) => {
+test("services toolbar stays on one row and keeps search text sizing stable", async ({ page }) => {
   await mockResponsiveServices(page);
 
   const widths = [560, 640, 767, 816, 1024];
@@ -81,9 +79,7 @@ test("services toolbar stays on one row and keeps search text sizing stable", as
   }
 });
 
-test("services table keeps headers and rows in bounds while resizing", async ({
-  page,
-}) => {
+test("services table keeps headers and rows in bounds while resizing", async ({ page }) => {
   await mockResponsiveServices(page);
 
   const widths = [700, 767, 816, 1024];
@@ -98,15 +94,11 @@ test("services table keeps headers and rows in bounds while resizing", async ({
     await expect(allServicesRegion).toBeVisible();
 
     const tableContainer = page.locator('[data-slot="table-container"]').first();
-    const actionsHeader = page
-      .getByRole("columnheader", { name: /Actions/i })
-      .getByText("Actions");
+    const actionsHeader = page.getByRole("columnheader", { name: /Actions/i }).getByText("Actions");
     const pinButton = allServicesRegion.getByRole("button", {
       name: /^Unpin service$/,
     });
-    const longDescription = page.getByText(
-      /Notebook workspace for collaborative data analysis/
-    );
+    const longDescription = page.getByText(/Notebook workspace for collaborative data analysis/);
 
     await expect(actionsHeader).toBeVisible();
     await expect(pinButton).toBeVisible();
@@ -119,12 +111,8 @@ test("services table keeps headers and rows in bounds while resizing", async ({
     const containerRight = containerBox.x + containerBox.width;
 
     expect(actionsHeaderBox.x).toBeGreaterThanOrEqual(containerBox.x - 1);
-    expect(actionsHeaderBox.x + actionsHeaderBox.width).toBeLessThanOrEqual(
-      containerRight + 1
-    );
-    expect(pinButtonBox.x + pinButtonBox.width).toBeLessThanOrEqual(
-      containerRight + 1
-    );
+    expect(actionsHeaderBox.x + actionsHeaderBox.width).toBeLessThanOrEqual(containerRight + 1);
+    expect(pinButtonBox.x + pinButtonBox.width).toBeLessThanOrEqual(containerRight + 1);
 
     const overflow = await tableContainer.evaluate((element) => ({
       clientWidth: element.clientWidth,
@@ -141,8 +129,6 @@ test("services table keeps headers and rows in bounds while resizing", async ({
       };
     });
 
-    expect(descriptionMetrics.height).toBeLessThanOrEqual(
-      descriptionMetrics.lineHeight * 2 + 1
-    );
+    expect(descriptionMetrics.height).toBeLessThanOrEqual(descriptionMetrics.lineHeight * 2 + 1);
   }
 });

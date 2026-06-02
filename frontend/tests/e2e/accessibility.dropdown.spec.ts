@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures/e2e"
+import { expect, test } from "./fixtures/e2e";
 
 test("notifications dropdown opens and closes with keyboard", async ({ page }) => {
   await page.goto("/");

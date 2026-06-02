@@ -33,7 +33,7 @@ export type WebSocketClient = {
 
 function buildWebSocketUrl(
   path: string,
-  queryParams?: Record<string, string | number | boolean | undefined>
+  queryParams?: Record<string, string | number | boolean | undefined>,
 ): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -53,8 +53,8 @@ function buildWebSocketUrl(
 }
 
 export function createWebSocketClient<TMessage = unknown>(
-  options: CreateWebSocketClientOptions<TMessage>
-): WebSocketClient{
+  options: CreateWebSocketClientOptions<TMessage>,
+): WebSocketClient {
   const {
     path,
     protocols,
@@ -92,7 +92,6 @@ export function createWebSocketClient<TMessage = unknown>(
     });
 
     socket.addEventListener("message", (event) => {
-
       try {
         const parsed = parseMessage(event.data);
         onMessage?.(parsed);

@@ -1,17 +1,13 @@
-import type { Service } from "../api/listServices"
-import { PinnedServiceCard } from "./PinnedServiceCard"
+import type { Service } from "../api/listServices";
+import { PinnedServiceCard } from "./PinnedServiceCard";
 
 type PinnedServicesGridProps = {
-  services: Service[]
-}
+  services: Service[];
+};
 
 export function PinnedServicesGrid({ services }: PinnedServicesGridProps) {
   if (services.length === 0) {
-    return (
-      <p className="text-sm text-(--text-secondary)">
-        No pinned services yet.
-      </p>
-    )
+    return <p className="text-sm text-(--text-secondary)">No pinned services yet.</p>;
   }
 
   return (
@@ -20,5 +16,5 @@ export function PinnedServicesGrid({ services }: PinnedServicesGridProps) {
         <PinnedServiceCard key={service.id} service={service} />
       ))}
     </div>
-  )
+  );
 }

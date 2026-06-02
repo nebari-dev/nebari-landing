@@ -1,4 +1,4 @@
-import { createWebSocketClient } from "./ws"
+import { createWebSocketClient } from "./ws";
 
 export type BackendSocketService = {
   uid: string
@@ -14,23 +14,23 @@ export type BackendSocketService = {
   priority: number
   visibility: string
   health: {
-    status: string
-    lastCheck: string
-    message?: string
-  }
-}
+    status: string;
+    lastCheck: string;
+    message?: string;
+  };
+};
 
 export type ServiceSocketMessage = {
-  type: "added" | "modified" | "deleted"
-  service: BackendSocketService
-}
+  type: "added" | "modified" | "deleted";
+  service: BackendSocketService;
+};
 
 type ServiceSocketHandlers = {
-  onMessage: (message: ServiceSocketMessage) => void
-  onOpen?: () => void
-  onClose?: () => void
-  onError?: (event: Event) => void
-}
+  onMessage: (message: ServiceSocketMessage) => void;
+  onOpen?: () => void;
+  onClose?: () => void;
+  onError?: (event: Event) => void;
+};
 
 export function createServicesSocket(handlers: ServiceSocketHandlers) {
   return createWebSocketClient<ServiceSocketMessage>({
@@ -39,5 +39,5 @@ export function createServicesSocket(handlers: ServiceSocketHandlers) {
     onOpen: handlers.onOpen,
     onClose: handlers.onClose,
     onError: handlers.onError,
-  })
+  });
 }

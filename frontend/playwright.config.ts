@@ -4,8 +4,7 @@ import dotenv from "dotenv";
 dotenv.config({ path: ".env" });
 
 const screenshotMode =
-  (process.env.PW_SCREENSHOTS as "off" | "on" | "only-on-failure" | undefined) ??
-  "off";
+  (process.env.PW_SCREENSHOTS as "off" | "on" | "only-on-failure" | undefined) ?? "off";
 
 const outputDir = process.env.PW_OUTPUT_DIR ?? ".playwright/artifacts";
 const E2E_BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:5173";

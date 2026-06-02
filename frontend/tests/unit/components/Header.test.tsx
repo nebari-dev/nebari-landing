@@ -11,12 +11,7 @@ describe("Header", () => {
   });
 
   it("shows user name when signed in", () => {
-    render(
-      <Header
-        user={{ name: "John Doe", email: "john@example.com" }}
-        notifications={[]}
-      />
-    );
+    render(<Header user={{ name: "John Doe", email: "john@example.com" }} notifications={[]} />);
 
     expect(screen.getByText("John Doe")).toBeInTheDocument();
   });
@@ -25,13 +20,7 @@ describe("Header", () => {
     const user = userEvent.setup();
     const onToggleTheme = vi.fn();
 
-    render(
-      <Header
-        isDarkMode={false}
-        onToggleTheme={onToggleTheme}
-        notifications={[]}
-      />
-    );
+    render(<Header isDarkMode={false} onToggleTheme={onToggleTheme} notifications={[]} />);
 
     await user.click(screen.getByRole("button", { name: /switch to dark mode/i }));
     expect(onToggleTheme).toHaveBeenCalledTimes(1);

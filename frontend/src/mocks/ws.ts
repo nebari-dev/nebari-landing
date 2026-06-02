@@ -23,9 +23,7 @@ export const wsHandlers = [
         createdAt: new Date().toISOString(),
       };
       store.notifications.unshift(notification);
-      client.send(
-        JSON.stringify({ type: "notification.created", notification })
-      );
+      client.send(JSON.stringify({ type: "notification.created", notification }));
     }, 1500);
 
     // Push a "modified" service event so the launchpad reflects realtime
@@ -52,7 +50,7 @@ export const wsHandlers = [
               lastCheck: new Date().toISOString(),
             },
           },
-        })
+        }),
       );
     }, 3000);
   }),

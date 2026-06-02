@@ -12,7 +12,7 @@ export type RequestServiceAccessResponse = {
 };
 
 export async function requestServiceAccess(
-  payload: RequestServiceAccessPayload
+  payload: RequestServiceAccessPayload,
 ): Promise<RequestServiceAccessResponse> {
   const { userId, serviceId, timestamp } = payload;
 

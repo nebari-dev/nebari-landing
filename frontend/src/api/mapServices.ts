@@ -1,5 +1,5 @@
-import type { Service } from "./listServices"
-import type { BackendSocketService } from "./servicesSocket"
+import type { Service } from "./listServices";
+import type { BackendSocketService } from "./servicesSocket";
 
 export function mapService(service: BackendSocketService): Service {
   return {
@@ -18,5 +18,5 @@ export function mapService(service: BackendSocketService): Service {
     imageLight: service.iconLight,
     imageDark: service.iconDark,
     url: service.url,
-  }
+  };
 }

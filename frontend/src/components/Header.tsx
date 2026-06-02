@@ -1,48 +1,42 @@
-import { Bell, ChevronDown, Moon, Sun } from "lucide-react"
-import type { ReactNode } from "react"
-
-import { Button } from "./ui/button"
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "./ui/avatar"
+import { Bell, ChevronDown, Moon, Sun } from "lucide-react";
+import type { ReactNode } from "react";
+import logoUrlDark from "../assets/nebari-logo_dark.svg";
+import logoUrlLight from "../assets/nebari-logo_light.svg";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { Button } from "./ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "./ui/dropdown-menu"
-
-import logoUrlDark from "../assets/nebari-logo_dark.svg"
-import logoUrlLight from "../assets/nebari-logo_light.svg"
+} from "./ui/dropdown-menu";
 
 type Notification = {
-  id: string
-  title: string
-  message: string
-  createdAt: string
-  image?: string
-  read?: boolean
-}
+  id: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  image?: string;
+  read?: boolean;
+};
 
 type User = {
-  name?: string
-  email?: string
-  image?: string
-}
+  name?: string;
+  email?: string;
+  image?: string;
+};
 
 export type HeaderProps = {
-  homeHref?: string
-  isDarkMode?: boolean
-  onToggleTheme?: () => void
-  user?: User | null
-  onSignIn?: () => void
-  onSignOut?: () => void
-  notifications?: Notification[]
-  onNotificationsViewed?: (ids: string[]) => void | Promise<void>
-  logoSrc?: string
-}
+  homeHref?: string;
+  isDarkMode?: boolean;
+  onToggleTheme?: () => void;
+  user?: User | null;
+  onSignIn?: () => void;
+  onSignOut?: () => void;
+  notifications?: Notification[];
+  onNotificationsViewed?: (ids: string[]) => void | Promise<void>;
+  logoSrc?: string;
+};
 
 export function Header(props: HeaderProps): ReactNode {
   const {
@@ -55,22 +49,22 @@ export function Header(props: HeaderProps): ReactNode {
     notifications = [],
     onNotificationsViewed,
     logoSrc: logoSrcProp,
-  } = props
+  } = props;
 
-  const unreadNotifications = notifications.filter((item) => !item.read)
-  const unreadCount = unreadNotifications.length
-  const logoSrc = logoSrcProp ?? (isDarkMode ? logoUrlDark : logoUrlLight)
+  const unreadNotifications = notifications.filter((item) => !item.read);
+  const unreadCount = unreadNotifications.length;
+  const logoSrc = logoSrcProp ?? (isDarkMode ? logoUrlDark : logoUrlLight);
 
-  const initials = getUserInitials(user?.name, user?.email)
+  const initials = getUserInitials(user?.name, user?.email);
 
   const handleNotificationsOpen = () => {
-    if (!onNotificationsViewed) return
+    if (!onNotificationsViewed) return;
 
-    const unreadIds = unreadNotifications.map((item) => item.id)
+    const unreadIds = unreadNotifications.map((item) => item.id);
     if (unreadIds.length > 0) {
-      void onNotificationsViewed(unreadIds)
+      void onNotificationsViewed(unreadIds);
     }
-  }
+  };
 
   return (
     <header className="flex h-[60px] w-full items-center justify-between border-b bg-background px-10">
@@ -147,9 +141,7 @@ export function Header(props: HeaderProps): ReactNode {
                 </DropdownMenuItem>
               ))
             ) : (
-              <div className="px-4 py-4 text-sm text-muted-foreground">
-                No notifications
-              </div>
+              <div className="px-4 py-4 text-sm text-muted-foreground">No notifications</div>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -178,12 +170,8 @@ export function Header(props: HeaderProps): ReactNode {
 
             <DropdownMenuContent align="end" className="w-56">
               <div className="border-b px-3 py-2">
-                <p className="text-sm font-medium text-foreground">
-                  {user.name ?? "Signed in"}
-                </p>
-                {user.email ? (
-                  <p className="text-xs text-muted-foreground">{user.email}</p>
-                ) : null}
+                <p className="text-sm font-medium text-foreground">{user.name ?? "Signed in"}</p>
+                {user.email ? <p className="text-xs text-muted-foreground">{user.email}</p> : null}
               </div>
 
               <DropdownMenuItem
@@ -201,23 +189,23 @@ export function Header(props: HeaderProps): ReactNode {
         )}
       </div>
     </header>
-  )
+  );
 }
 
 function getUserInitials(name?: string, email?: string) {
   if (name) {
-    const parts = name.trim().split(/\s+/).filter(Boolean)
+    const parts = name.trim().split(/\s+/).filter(Boolean);
     if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
     }
     if (parts.length === 1) {
-      return parts[0].slice(0, 2).toUpperCase()
+      return parts[0].slice(0, 2).toUpperCase();
     }
   }
 
   if (email) {
-    return email.slice(0, 2).toUpperCase()
+    return email.slice(0, 2).toUpperCase();
   }
 
-  return "U"
+  return "U";
 }

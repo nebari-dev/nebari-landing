@@ -1,4 +1,4 @@
-import { test as setup, expect } from "./fixtures/e2e"
+import { expect, test as setup } from "./fixtures/e2e";
 
 const authFile = ".playwright/auth/user.json";
 
@@ -14,10 +14,7 @@ setup("authenticate with Keycloak", async ({ page }, testInfo) => {
 
   await page.goto("/", { waitUntil: "commit" }).catch((error) => {
     const message = String(error);
-    if (
-      message.includes("ERR_ABORTED") ||
-      message.includes("frame was detached")
-    ) {
+    if (message.includes("ERR_ABORTED") || message.includes("frame was detached")) {
       return;
     }
     throw error;
@@ -60,7 +57,12 @@ setup("authenticate with Keycloak", async ({ page }, testInfo) => {
         ];
 
         for (const locator of candidates) {
-          if (await locator.first().isVisible().catch(() => false)) {
+          if (
+            await locator
+              .first()
+              .isVisible()
+              .catch(() => false)
+          ) {
             return true;
           }
         }
@@ -70,7 +72,7 @@ setup("authenticate with Keycloak", async ({ page }, testInfo) => {
       {
         timeout: 30_000,
         message: `Waiting for authenticated app. Current URL: ${page.url()}`,
-      }
+      },
     )
     .toBe(true);
 

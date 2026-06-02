@@ -1,58 +1,49 @@
-import { Search, List, LayoutGrid } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
-import type { Service } from "../api/listServices"
-import { Input } from "../components/ui/input"
-import { Button } from "./ui/button"
-import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group"
-import { ServicesTable } from "./ServiceTable"
-import { ServicesGrid } from "./ServicesGrid"
+import { LayoutGrid, List, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Service } from "../api/listServices";
+import { Input } from "../components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
+import { ServicesGrid } from "./ServicesGrid";
+import { ServicesTable } from "./ServiceTable";
+import { Button } from "./ui/button";
 
 type ServicesSectionProps = {
-  services: Service[]
-  onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>
-}
+  services: Service[];
+  onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>;
+};
 
-export function ServicesSection({
-  services,
-  onTogglePin,
-}: ServicesSectionProps) {
-  const [query, setQuery] = useState("")
-  const [view, setView] = useState<"table" | "grid">("table")
-  const inputRef = useRef<HTMLInputElement>(null)
+export function ServicesSection({ services, onTogglePin }: ServicesSectionProps) {
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<"table" | "grid">("table");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const isShortcut =
-        (event.ctrlKey || event.metaKey) &&
-        event.key.toLowerCase() === "k"
+      const isShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k";
 
-      if (!isShortcut) return
+      if (!isShortcut) return;
 
-      event.preventDefault()
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    }
+      event.preventDefault();
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
 
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const filteredServices = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase()
-    if (!normalizedQuery) return services
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return services;
 
     return services.filter((service) => {
-      const haystack = [
-        service.name,
-        service.description,
-        ...service.category,
-      ]
+      const haystack = [service.name, service.description, ...service.category]
         .join(" ")
-        .toLowerCase()
+        .toLowerCase();
 
-      return haystack.includes(normalizedQuery)
-    })
-  }, [services, query])
+      return haystack.includes(normalizedQuery);
+    });
+  }, [services, query]);
 
   return (
     <div className="space-y-4">
@@ -81,7 +72,7 @@ export function ServicesSection({
           value={view}
           onValueChange={(value) => {
             if (value === "table" || value === "grid") {
-              setView(value)
+              setView(value);
             }
           }}
           className="h-[46px] shrink-0 gap-1 rounded-[8px] border border-border bg-secondary p-1"
@@ -106,17 +97,11 @@ export function ServicesSection({
 
       <div className="px-1">
         {view === "table" ? (
-          <ServicesTable
-            services={filteredServices}
-            onTogglePin={onTogglePin}
-          />
+          <ServicesTable services={filteredServices} onTogglePin={onTogglePin} />
         ) : (
-          <ServicesGrid
-            services={filteredServices}
-            onTogglePin={onTogglePin}
-          />
+          <ServicesGrid services={filteredServices} onTogglePin={onTogglePin} />
         )}
       </div>
     </div>
-  )
+  );
 }

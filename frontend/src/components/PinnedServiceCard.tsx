@@ -1,11 +1,11 @@
-import { Card, CardContent } from "../components/ui/card"
-import { StatusBadge } from "./StatusBadge"
-import { ServiceIcon } from "./ServiceIcon"
-import type { Service } from "../api/listServices"
+import type { Service } from "../api/listServices";
+import { Card, CardContent } from "../components/ui/card";
+import { ServiceIcon } from "./ServiceIcon";
+import { StatusBadge } from "./StatusBadge";
 
 type PinnedServiceCardProps = {
-  service: Service
-}
+  service: Service;
+};
 
 export function PinnedServiceCard({ service }: PinnedServiceCardProps) {
   return (
@@ -30,5 +30,5 @@ export function PinnedServiceCard({ service }: PinnedServiceCardProps) {
         </CardContent>
       </Card>
     </a>
-  )
+  );
 }
