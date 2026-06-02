@@ -64,17 +64,17 @@ export const generatedHandlers = [
   ),
   http.get("/api/v1/services/:id", () =>
     HttpResponse.json({
-      "category": [],
-      "description": "",
-      "id": "",
-      "image": "",
-      "imageDark": "",
-      "imageLight": "",
-      "name": "",
-      "pinned": false,
-      "status": "",
-      "url": ""
-    })
+      category: [],
+      description: "",
+      id: "",
+      image: "",
+      imageDark: "",
+      imageLight: "",
+      name: "",
+      pinned: false,
+      status: "",
+      url: "",
+    }),
   ),
   http.post("/api/v1/services/:id/request_access", () =>
     HttpResponse.json({

@@ -1,18 +1,18 @@
 import { createWebSocketClient } from "./ws";
 
 export type BackendSocketService = {
-  uid: string
-  name: string
-  namespace: string
-  displayName: string
-  description: string
-  url: string
-  icon?: string
-  iconLight?: string
-  iconDark?: string
-  category: string
-  priority: number
-  visibility: string
+  uid: string;
+  name: string;
+  namespace: string;
+  displayName: string;
+  description: string;
+  url: string;
+  icon?: string;
+  iconLight?: string;
+  iconDark?: string;
+  category: string;
+  priority: number;
+  visibility: string;
   health: {
     status: string;
     lastCheck: string;

@@ -3,11 +3,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { initKeycloak } from "../auth/keycloak";
-
+import { ThemeProvider } from "../hooks/ThemeContext";
 import { applyAppConfig, getAppConfig, loadAppConfig } from "./config.ts";
-
-import App from './index.tsx'
-import { ThemeProvider } from '../hooks/ThemeContext'
+import App from "./index.tsx";
 
 import "./index.css";
 
@@ -44,5 +42,5 @@ createRoot(document.getElementById("root")!).render(
     <ThemeProvider>
       <App />
     </ThemeProvider>
-  </StrictMode>
+  </StrictMode>,
 );
