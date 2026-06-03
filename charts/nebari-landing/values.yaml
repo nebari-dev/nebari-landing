@@ -55,7 +55,7 @@ frontend:
     logoUrl: ""
     # URL to a custom dark-mode logo image. Leave empty to fall back to
     # logoUrl / the built-in Nebari logo.
-    logoUrlDark: "https://github.com/nebari-dev/jhub-apps/blob/main/docs/static/img/logos/jupyter.png"
+    logoUrlDark: ""
     # URL to a custom favicon.
     # Leave empty to use the built-in Nebari favicon.
     faviconUrl: ""
