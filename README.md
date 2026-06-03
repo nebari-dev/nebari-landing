@@ -119,6 +119,7 @@ settings to the document before React mounts. No image rebuild is needed — cha
 | --- | --- | --- |
 | `frontend.branding.title` | string | Browser tab title (default: `"Nebari \| Launchpad"`) |
 | `frontend.branding.logoUrl` | string | URL to a custom header logo image |
+| `frontend.branding.logoUrlDark` | string | URL to a custom dark-mode header logo. Falls back to `logoUrl`, then the built-in logo, when empty |
 | `frontend.branding.faviconUrl` | string | URL to a custom favicon |
 | `frontend.branding.theme.light` | map | CSS variable overrides for light mode |
 | `frontend.branding.theme.dark` | map | CSS variable overrides for dark mode |
@@ -139,6 +140,7 @@ frontend:
   branding:
     title: "My Platform"
     logoUrl: "https://example.com/logo.png"
+    logoUrlDark: "https://example.com/logo-dark.png"
     faviconUrl: "https://example.com/favicon.ico"
     theme:
       light:

@@ -27,6 +27,11 @@ export type AppConfig = {
   title?: string;
   /** Optional URL to a custom logo image rendered in the header. */
   logoUrl?: string;
+  /**
+   * Optional URL to a custom dark-mode logo image rendered in the header.
+   * Falls back to logoUrl (then the built-in Nebari logo) when empty.
+   */
+  logoUrlDark?: string;
   /** Optional URL to a custom favicon. */
   faviconUrl?: string;
   /** Optional CSS variable overrides for light and dark mode. */
@@ -44,7 +49,24 @@ export async function loadAppConfig(): Promise<AppConfig> {
   const res = await fetch("/config.json");
   if (!res.ok) throw new Error(`Failed to load /config.json: ${res.status}`);
   _config = (await res.json()) as AppConfig;
+  // Drop malformed logo URLs so a bad config value can't land in an <img src>
+  // (defence-in-depth, mirroring the theme-token sanitisation below).
+  _config.logoUrl = sanitizeUrl(_config.logoUrl);
+  _config.logoUrlDark = sanitizeUrl(_config.logoUrlDark);
   return _config;
+}
+
+// Accept only non-empty, well-formed http(s) URLs or root-relative paths;
+// anything else (including "") becomes undefined.
+function sanitizeUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (value.startsWith("/")) return value;
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:" ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Returns the cached config, or null if loadAppConfig() has not yet resolved. */

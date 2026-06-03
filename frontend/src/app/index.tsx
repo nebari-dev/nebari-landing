@@ -23,6 +23,7 @@ export default function App() {
         notifications={notifications}
         onNotificationsViewed={onNotificationsViewed}
         logoSrc={config?.logoUrl || undefined}
+        logoSrcDark={config?.logoUrlDark || undefined}
       />
 
       <Content services={services} onTogglePin={onTogglePin} />

@@ -1,7 +1,7 @@
 import { Bell, ChevronDown, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
-import logoUrlDark from "../assets/nebari-logo_dark.svg";
-import logoUrlLight from "../assets/nebari-logo_light.svg";
+import builtInLogoDark from "../assets/nebari-logo_dark.svg";
+import builtInLogoLight from "../assets/nebari-logo_light.svg";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import {
@@ -36,6 +36,7 @@ export type HeaderProps = {
   notifications?: Notification[];
   onNotificationsViewed?: (ids: string[]) => void | Promise<void>;
   logoSrc?: string;
+  logoSrcDark?: string;
 };
 
 export function Header(props: HeaderProps): ReactNode {
@@ -49,11 +50,16 @@ export function Header(props: HeaderProps): ReactNode {
     notifications = [],
     onNotificationsViewed,
     logoSrc: logoSrcProp,
+    logoSrcDark: logoSrcDarkProp,
   } = props;
 
   const unreadNotifications = notifications.filter((item) => !item.read);
   const unreadCount = unreadNotifications.length;
-  const logoSrc = logoSrcProp ?? (isDarkMode ? logoUrlDark : logoUrlLight);
+  // Dark mode prefers the dark logo, then the light/general custom logo, then
+  // the built-in dark logo. Light mode uses the custom logo or the built-in.
+  const logoSrc = isDarkMode
+    ? (logoSrcDarkProp ?? logoSrcProp ?? builtInLogoDark)
+    : (logoSrcProp ?? builtInLogoLight);
 
   const initials = getUserInitials(user?.name, user?.email);
 
