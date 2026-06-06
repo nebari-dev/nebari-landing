@@ -15,8 +15,7 @@
       "tsconfig*.json",
       "vite.config.ts",
       "!!**/dist",
-      "!!public/mockServiceWorker.js",
-      "!**/*.test.{ts,tsx}"
+      "!!public/mockServiceWorker.js"
     ]
   },
 
@@ -34,10 +33,6 @@
 
       "correctness": {
         "noUndeclaredVariables": "error"
-      },
-
-      "style": {
-        "noNamespace": "off"
       }
     }
   },

@@ -16,6 +16,7 @@ import "./index.css";
 for (const cookie of document.cookie.split(";")) {
   const name = cookie.trim().split("=")[0];
   if (name.startsWith("_oauth2_proxy")) {
+    // biome-ignore lint/suspicious/noDocumentCookie: Intentionally expire legacy, script-accessible oauth2-proxy cookies with Max-Age=0.
     document.cookie = `${name}=; Max-Age=0; path=/`;
   }
 }
@@ -38,7 +39,12 @@ await initKeycloak();
 const appConfig = getAppConfig();
 if (appConfig) applyAppConfig(appConfig);
 
-createRoot(document.getElementById("root")!).render(
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("Root element not found");
+}
+
+createRoot(rootElement).render(
   <StrictMode>
     <App />
   </StrictMode>,
