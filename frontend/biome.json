@@ -8,7 +8,15 @@
   },
 
   "files": {
-    "includes": ["**", "!!**/dist", "!!public/mockServiceWorker.js", "!**/*.test.{ts,tsx}"]
+    "includes": [
+      "src/**",
+      "biome.json",
+      "package.json",
+      "tsconfig*.json",
+      "vite.config.ts",
+      "!!**/dist",
+      "!!public/mockServiceWorker.js"
+    ]
   },
 
   "formatter": {
@@ -25,10 +33,6 @@
 
       "correctness": {
         "noUndeclaredVariables": "error"
-      },
-
-      "style": {
-        "noNamespace": "off"
       }
     }
   },
