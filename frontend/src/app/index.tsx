@@ -8,7 +8,7 @@ import { useLaunchpadData } from "../hooks/useLaunchpadData";
 import { getAppConfig } from "./config";
 
 export default function App() {
-  const { isDarkMode, toggleTheme } = useTheme();
+  const { themeMode, isDarkMode, setThemeMode } = useTheme();
   const { user } = useUser();
   const { services, notifications, onNotificationsViewed, onTogglePin } = useLaunchpadData(user);
 
@@ -18,7 +18,8 @@ export default function App() {
     <main className="w-full">
       <Header
         isDarkMode={isDarkMode}
-        onToggleTheme={toggleTheme}
+        themeMode={themeMode}
+        onThemeChange={setThemeMode}
         user={user}
         onSignOut={() => signOut()}
         notifications={notifications}

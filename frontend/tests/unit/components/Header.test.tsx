@@ -16,13 +16,48 @@ describe("Header", () => {
     expect(screen.getByText("John Doe")).toBeInTheDocument();
   });
 
-  it("calls theme toggle when clicked", async () => {
+  it("selects a theme mode from the profile menu", async () => {
     const user = userEvent.setup();
-    const onToggleTheme = vi.fn();
+    const onThemeChange = vi.fn();
 
-    render(<Header isDarkMode={false} onToggleTheme={onToggleTheme} notifications={[]} />);
+    render(
+      <Header
+        user={{ name: "John Doe" }}
+        themeMode="system"
+        onThemeChange={onThemeChange}
+        notifications={[]}
+      />,
+    );
 
-    await user.click(screen.getByRole("button", { name: /switch to dark mode/i }));
-    expect(onToggleTheme).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: /account menu/i }));
+    await user.click(screen.getByRole("button", { name: /dark mode/i }));
+    expect(onThemeChange).toHaveBeenCalledWith("dark");
+
+    await user.click(screen.getByRole("button", { name: /light mode/i }));
+    expect(onThemeChange).toHaveBeenCalledWith("light");
+
+    await user.click(screen.getByRole("button", { name: /system theme/i }));
+    expect(onThemeChange).toHaveBeenCalledWith("system");
+  });
+
+  it("reflects the current theme mode via aria-pressed", async () => {
+    const user = userEvent.setup();
+
+    render(<Header user={{ name: "John Doe" }} themeMode="dark" notifications={[]} />);
+
+    await user.click(screen.getByRole("button", { name: /account menu/i }));
+
+    expect(screen.getByRole("button", { name: /dark mode/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /light mode/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: /system theme/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 });

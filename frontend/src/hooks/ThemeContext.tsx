@@ -1,9 +1,10 @@
 import { createContext, type ReactNode, useContext } from "react";
-import { useThemePreference } from "./useThemePreference";
+import { type ThemeMode, useThemePreference } from "./useThemePreference";
 
 type ThemeContextValue = {
+  themeMode: ThemeMode;
   isDarkMode: boolean;
-  toggleTheme: () => void;
+  setThemeMode: (mode: ThemeMode) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);

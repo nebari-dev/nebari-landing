@@ -8,11 +8,8 @@ test("header controls are reachable by keyboard", async ({ page }) => {
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: /go to homepage/i })).toBeFocused();
 
-  await page.keyboard.press("Tab");
-  await expect(
-    page.getByRole("button", { name: /switch to dark mode|switch to light mode/i }),
-  ).toBeFocused();
-
+  // The theme toggle now lives in the profile menu, so notifications is the
+  // next focusable header control after the logo.
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: /notifications/i })).toBeFocused();
 });

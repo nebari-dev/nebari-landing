@@ -1,13 +1,16 @@
-import { Bell, ChevronDown, Moon, Sun } from "lucide-react";
+import { Bell, ChevronDown, Monitor, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
 import builtInLogoLight from "../assets/nebari-logo_light.svg";
+import type { ThemeMode } from "../hooks/useThemePreference";
+import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
@@ -29,7 +32,8 @@ type User = {
 export type HeaderProps = {
   homeHref?: string;
   isDarkMode?: boolean;
-  onToggleTheme?: () => void;
+  themeMode?: ThemeMode;
+  onThemeChange?: (mode: ThemeMode) => void;
   user?: User | null;
   onSignIn?: () => void;
   onSignOut?: () => void;
@@ -43,7 +47,8 @@ export function Header(props: HeaderProps): ReactNode {
   const {
     homeHref = "/",
     isDarkMode = false,
-    onToggleTheme,
+    themeMode = "system",
+    onThemeChange,
     user,
     onSignIn,
     onSignOut,
@@ -81,19 +86,6 @@ export function Header(props: HeaderProps): ReactNode {
       </div>
 
       <div className="flex items-center gap-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="relative h-9 w-9 rounded-[8px] border border-border bg-background text-muted-foreground transition-none hover:bg-accent"
-          aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-          aria-pressed={isDarkMode}
-          title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-          onClick={onToggleTheme}
-        >
-          {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-        </Button>
-
         <DropdownMenu onOpenChange={(open) => open && handleNotificationsOpen()}>
           <DropdownMenuTrigger asChild>
             <Button
@@ -157,6 +149,7 @@ export function Header(props: HeaderProps): ReactNode {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
+                aria-label="Account menu"
                 className="flex items-center gap-3 rounded-md px-1 py-1 transition-none hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               >
                 <Avatar className="h-8 w-8">
@@ -180,6 +173,39 @@ export function Header(props: HeaderProps): ReactNode {
                 {user.email ? <p className="text-xs text-muted-foreground">{user.email}</p> : null}
               </div>
 
+              <div className="px-2 py-2">
+                <fieldset
+                  aria-label="Theme"
+                  className="flex items-center gap-1 rounded-lg bg-muted p-1"
+                >
+                  <ThemeOption
+                    label="Light mode"
+                    selected={themeMode === "light"}
+                    onSelect={() => onThemeChange?.("light")}
+                  >
+                    <Sun className="h-4 w-4" />
+                  </ThemeOption>
+
+                  <ThemeOption
+                    label="Dark mode"
+                    selected={themeMode === "dark"}
+                    onSelect={() => onThemeChange?.("dark")}
+                  >
+                    <Moon className="h-4 w-4" />
+                  </ThemeOption>
+
+                  <ThemeOption
+                    label="System theme"
+                    selected={themeMode === "system"}
+                    onSelect={() => onThemeChange?.("system")}
+                  >
+                    <Monitor className="h-4 w-4" />
+                  </ThemeOption>
+                </fieldset>
+              </div>
+
+              <DropdownMenuSeparator />
+
               <DropdownMenuItem
                 className="cursor-pointer focus:bg-accent focus:text-accent-foreground focus:outline-none focus:ring-[3px] focus:ring-ring/50"
                 onClick={() => onSignOut?.()}
@@ -195,6 +221,36 @@ export function Header(props: HeaderProps): ReactNode {
         )}
       </div>
     </header>
+  );
+}
+
+function ThemeOption({
+  label,
+  selected,
+  onSelect,
+  children,
+}: {
+  label: string;
+  selected: boolean;
+  onSelect: () => void;
+  children: ReactNode;
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={selected}
+      title={label}
+      onClick={onSelect}
+      className={cn(
+        "flex flex-1 items-center justify-center rounded-md py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        selected
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

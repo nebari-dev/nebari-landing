@@ -5,13 +5,18 @@ test("dark theme loads correctly and has no detectable accessibility violations"
   makeAxeBuilder,
 }, testInfo) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("launchpad:isDarkMode", "true");
+    window.localStorage.setItem("launchpad:themeMode", "dark");
   });
 
   await page.goto("/");
 
   await expect(page.locator("html")).toHaveClass(/dark/);
-  await expect(page.getByRole("button", { name: /switch to light mode/i })).toBeVisible();
+
+  // The theme toggle now lives inside the profile menu.
+  await page.getByRole("button", { name: /account menu/i }).click();
+  const darkOption = page.getByRole("button", { name: /dark mode/i });
+  await expect(darkOption).toBeVisible();
+  await expect(darkOption).toHaveAttribute("aria-pressed", "true");
 
   const results = await makeAxeBuilder().analyze();
 
