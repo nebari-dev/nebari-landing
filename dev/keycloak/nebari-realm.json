@@ -3,7 +3,7 @@
   "enabled": true,
   "displayName": "Nebari",
   "displayNameHtml": "<strong>Nebari</strong>",
-  "sslRequired": "external",
+  "sslRequired": "none",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
