@@ -1260,11 +1260,11 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			adminToken = acquireToken(kcAdminUser, kcAdminPassword)
 			userToken = acquireToken(kcTestUser, kcTestPassword)
 
-			By("Port-forwarding to webapi on :18087 (independent from ticket-exchange Context)")
+			By("Port-forwarding to webapi on :18088 (independent from ticket-exchange and pins Contexts)")
 			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18087:8080")
+				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18088:8080")
 			Expect(pfCmd.Start()).NotTo(HaveOccurred())
-			webapiBase = "http://localhost:18087"
+			webapiBase = "http://localhost:18088"
 
 			Eventually(func() error {
 				resp, err := http.Get(webapiBase + "/api/v1/health")
@@ -1274,7 +1274,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				resp.Body.Close()
 				return nil
 			}, 30*time.Second, time.Second).Should(Succeed(),
-				"webapi must respond on :18087 before running filter tests")
+				"webapi must respond on :18088 before running filter tests")
 		})
 
 		AfterAll(func() {
@@ -1309,8 +1309,14 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				if json.NewDecoder(resp.Body).Decode(&body) != nil {
 					return false
 				}
+				// /api/v1/services collapses cache.ServiceInfo.Name with
+				// DisplayName fallback (via toServiceView in handlers.go),
+				// so the value here is the rendered displayName from
+				// newNebariApp ("Test Service <resource-name>"). Match
+				// against that, mirroring the existing Service Discovery
+				// specs at lines 504/533/546.
 				for _, n := range serviceNames(body) {
-					if n == "e2e-ws-filter-sanity" {
+					if n == "Test Service e2e-ws-filter-sanity" {
 						return true
 					}
 				}
@@ -1324,12 +1330,12 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 
 			By("Opening WS connections for both users, before any test NebariApp is created")
 			adminConn, _, err := websocket.DefaultDialer.Dial(
-				"ws://localhost:18087/api/v1/ws?ticket="+adminTicket, nil)
+				"ws://localhost:18088/api/v1/ws?ticket="+adminTicket, nil)
 			Expect(err).NotTo(HaveOccurred(), "admin WS upgrade must succeed")
 			defer adminConn.Close()
 
 			userConn, _, err := websocket.DefaultDialer.Dial(
-				"ws://localhost:18087/api/v1/ws?ticket="+userTicket, nil)
+				"ws://localhost:18088/api/v1/ws?ticket="+userTicket, nil)
 			Expect(err).NotTo(HaveOccurred(), "test-user WS upgrade must succeed")
 			defer userConn.Close()
 
@@ -1375,11 +1381,11 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			adminTicket := mintTicket(webapiBase, adminToken)
 			userTicket := mintTicket(webapiBase, userToken)
 			adminConn, _, err := websocket.DefaultDialer.Dial(
-				"ws://localhost:18087/api/v1/ws?ticket="+adminTicket, nil)
+				"ws://localhost:18088/api/v1/ws?ticket="+adminTicket, nil)
 			Expect(err).NotTo(HaveOccurred())
 			defer adminConn.Close()
 			userConn, _, err := websocket.DefaultDialer.Dial(
-				"ws://localhost:18087/api/v1/ws?ticket="+userTicket, nil)
+				"ws://localhost:18088/api/v1/ws?ticket="+userTicket, nil)
 			Expect(err).NotTo(HaveOccurred())
 			defer userConn.Close()
 
