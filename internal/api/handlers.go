@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
 	"github.com/nebari-dev/nebari-landing/internal/auth"
@@ -246,17 +247,33 @@ func (h *Handler) handleWS(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	ticket := r.URL.Query().Get("ticket")
 
+	var (
+		principal  wshub.Principal
+		sessionEnd time.Time
+	)
+
 	switch {
 	case !authNeeded:
-		// Auth is globally disabled — allow all connections.
+		// Auth is globally disabled — every caller is anonymous. The hub
+		// applies the same policy as the REST path, which means anonymous
+		// clients receive public-visibility events only (REST behaviour
+		// today; see canAccessPolicy).
+		principal = wshub.Principal{}
 	case authHeader != "":
 		// Bearer token: validate via the JWT validator or claimsExtractor.
-		if _, ok := h.requireAuth(w, r); !ok {
+		claims, ok := h.requireAuth(w, r)
+		if !ok {
 			return
 		}
+		principal = principalFromClaims(claims)
+		sessionEnd = expFromClaims(claims)
 	case ticket != "" && h.wsTicketStore != nil:
 		// Single-use ticket exchanged by the browser via POST /api/v1/ws-ticket.
-		if err := h.wsTicketStore.Redeem(r.Context(), ticket); err != nil {
+		// The stored TicketClaims snapshot carries the issuer's identity and the
+		// JWT exp, so the hub can apply the access policy and bound the session
+		// at the same point the underlying token would have expired.
+		tc, err := h.wsTicketStore.Redeem(r.Context(), ticket)
+		if err != nil {
 			// Log at Info so operators can diagnose a "everyone gets 401 on /ws"
 			// outage without enabling debug mode. The Bearer path is already
 			// covered by extractAndValidateJWT's logging.
@@ -264,11 +281,43 @@ func (h *Handler) handleWS(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
+		principal = wshub.Principal{
+			Subject:       tc.Subject,
+			Groups:        tc.Groups,
+			Authenticated: true,
+		}
+		sessionEnd = tc.ExpiresAt
 	default:
 		http.Error(w, "Unauthorized: provide Authorization header or ?ticket", http.StatusUnauthorized)
 		return
 	}
-	h.hub.ServeWS(w, r)
+
+	h.hub.ServeWS(w, r, principal, sessionEnd)
+}
+
+// principalFromClaims projects auth.Claims onto the narrow Principal the hub
+// applies its access policy against. Nil claims (auth disabled or anonymous)
+// produce a zero-value Principal — Authenticated stays false and the policy
+// falls through to public-only semantics.
+func principalFromClaims(claims *auth.Claims) wshub.Principal {
+	if claims == nil {
+		return wshub.Principal{}
+	}
+	return wshub.Principal{
+		Subject:       claims.Subject,
+		Groups:        claims.Groups,
+		Authenticated: true,
+	}
+}
+
+// expFromClaims extracts the JWT exp as a wall-clock Time, or zero if the
+// claim is absent. The hub uses zero to mean "no server-side session bound";
+// real JWTs validated by jwt.ParseWithClaims always carry exp.
+func expFromClaims(claims *auth.Claims) time.Time {
+	if claims == nil || claims.ExpiresAt == nil {
+		return time.Time{}
+	}
+	return claims.ExpiresAt.Time
 }
 
 // WSTicketResponse is the response body for POST /api/v1/ws-ticket.
@@ -304,10 +353,17 @@ func (h *Handler) handleWSTicket(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// The ticket itself does not carry identity (the store does not associate
-	// tickets with users), but we keep claims around so operators can audit
-	// who triggered a failed issuance.
-	ticket, err := h.wsTicketStore.Issue(r.Context())
+	// Snapshot the caller's identity into the ticket value. The WS upgrade
+	// path on the other side of this redemption re-builds a Principal from
+	// these fields without re-touching the JWT validator. ExpiresAt carries
+	// through so the hub can close the WS at the JWT's exp.
+	tc := wsticket.TicketClaims{
+		Subject:           claims.Subject,
+		PreferredUsername: claims.PreferredUsername,
+		Groups:            claims.Groups,
+		ExpiresAt:         expFromClaims(claims),
+	}
+	ticket, err := h.wsTicketStore.Issue(r.Context(), tc)
 	if err != nil {
 		caller := claims.PreferredUsername
 		if caller == "" {
@@ -1112,8 +1168,31 @@ func writeAuthWarmupResponse(w http.ResponseWriter) {
 	http.Error(w, "JWT validator not ready; Keycloak may still be initializing", http.StatusServiceUnavailable)
 }
 
+// canAccessService is the JWT-claims-flavored entry point used by the REST
+// handlers. It delegates to the pure canAccessPolicy helper so REST and the
+// WebSocket fan-out apply the same rule against the same inputs.
 func (h *Handler) canAccessService(service *cache.ServiceInfo, authenticated bool, claims *auth.Claims) bool {
-	switch service.Visibility {
+	var groups []string
+	if claims != nil {
+		groups = claims.Groups
+	}
+	return canAccessPolicy(service.Visibility, authenticated, service.RequiredGroups, groups)
+}
+
+// CanAccessService implements websocket.ServiceAccessPolicy. The hub calls it
+// once per connected client per service event; it must stay allocation-free
+// in the common case. The Principal carries only what the policy needs
+// (groups, authenticated) so the hub does not have to learn the shape of
+// auth.Claims.
+func (h *Handler) CanAccessService(service *cache.ServiceInfo, p wshub.Principal) bool {
+	return canAccessPolicy(service.Visibility, p.Authenticated, service.RequiredGroups, p.Groups)
+}
+
+// canAccessPolicy is the pure access decision shared by the REST and
+// WebSocket paths. Keeping it free of *auth.Claims means the websocket
+// package never needs to import internal/auth.
+func canAccessPolicy(visibility string, authenticated bool, requiredGroups, userGroups []string) bool {
+	switch visibility {
 	case "public":
 		return true
 
@@ -1124,15 +1203,15 @@ func (h *Handler) canAccessService(service *cache.ServiceInfo, authenticated boo
 		if !authenticated {
 			return false
 		}
-		return h.hasRequiredGroups(claims.Groups, service.RequiredGroups)
+		return hasRequiredGroups(userGroups, requiredGroups)
 
 	default:
 		// Unknown / legacy visibility values default to private semantics.
-		return authenticated && h.hasRequiredGroups(claims.Groups, service.RequiredGroups)
+		return authenticated && hasRequiredGroups(userGroups, requiredGroups)
 	}
 }
 
-func (h *Handler) hasRequiredGroups(userGroups, requiredGroups []string) bool {
+func hasRequiredGroups(userGroups, requiredGroups []string) bool {
 	if len(requiredGroups) == 0 {
 		return true
 	}

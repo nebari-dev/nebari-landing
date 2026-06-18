@@ -309,6 +309,11 @@ func main() {
 	}
 
 	handler := api.NewHandler(serviceCache, jwtValidator, enableAuth, hub, pinStore, handlerOpts...)
+	// The hub starts without an access policy because NewHub runs before
+	// NewHandler. Plug the handler's policy in now so WebSocket service-change
+	// broadcasts honor the same canAccessService rule the REST endpoints
+	// already enforce (issue #95).
+	hub.SetAccessPolicy(handler)
 
 	mux := handler.Routes()
 

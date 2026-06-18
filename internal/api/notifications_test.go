@@ -65,22 +65,19 @@ func TestWithKeycloakAdminClient_NilAccepted(t *testing.T) {
 // --- hasRequiredGroups ---
 
 func TestHasRequiredGroups_EmptyRequired_ReturnsTrue(t *testing.T) {
-	h := &Handler{}
-	if !h.hasRequiredGroups(nil, nil) {
+	if !hasRequiredGroups(nil, nil) {
 		t.Error("empty requiredGroups should return true")
 	}
 }
 
 func TestHasRequiredGroups_UserHasGroup_ReturnsTrue(t *testing.T) {
-	h := &Handler{}
-	if !h.hasRequiredGroups([]string{"devs", "admins"}, []string{"admins"}) {
+	if !hasRequiredGroups([]string{"devs", "admins"}, []string{"admins"}) {
 		t.Error("user has required group — expected true")
 	}
 }
 
 func TestHasRequiredGroups_UserMissingGroup_ReturnsFalse(t *testing.T) {
-	h := &Handler{}
-	if h.hasRequiredGroups([]string{"devs"}, []string{"admins"}) {
+	if hasRequiredGroups([]string{"devs"}, []string{"admins"}) {
 		t.Error("user is missing required group — expected false")
 	}
 }
@@ -219,8 +216,13 @@ func TestHandleAdminCreateNotification_PublishesToHub(t *testing.T) {
 	t.Cleanup(cancel)
 	hub := wshub.NewHub(ctx, rdb)
 
-	// Connect a WebSocket client to the hub before the POST.
-	wsSrv := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
+	// Connect a WebSocket client to the hub before the POST. The handler in
+	// production passes a Principal + session-end; this test exercises the
+	// notification fan-out which is policy-agnostic, so a zero Principal is
+	// fine.
+	wsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hub.ServeWS(w, r, wshub.Principal{}, time.Time{})
+	}))
 	t.Cleanup(wsSrv.Close)
 	wsURL := "ws" + strings.TrimPrefix(wsSrv.URL, "http") + "/"
 	wsConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)

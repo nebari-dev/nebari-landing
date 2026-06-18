@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,11 +44,49 @@ func dialWS(t *testing.T, srv *httptest.Server) *websocket.Conn {
 	return conn
 }
 
+// newServer wraps ServeWS for tests that don't care about the per-client
+// principal or session-end. Tests that need to exercise the access-policy
+// filter use newServerWithPrincipal instead.
 func newServer(t *testing.T, hub *wshub.Hub) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
+	return newServerWithPrincipal(t, hub, wshub.Principal{}, time.Time{})
+}
+
+// newServerWithPrincipal serves WS upgrades with a fixed Principal — the
+// production wiring derives it from JWT or ticket; here we inject it.
+func newServerWithPrincipal(t *testing.T, hub *wshub.Hub, p wshub.Principal, sessionEnd time.Time) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hub.ServeWS(w, r, p, sessionEnd)
+	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// groupsPolicy is a minimal ServiceAccessPolicy used by the filter tests.
+// Mirrors api.canAccessPolicy: public services are always allowed; private
+// services require an authenticated client whose Groups intersect
+// service.RequiredGroups.
+type groupsPolicy struct{}
+
+func (groupsPolicy) CanAccessService(svc *landingcache.ServiceInfo, p wshub.Principal) bool {
+	if svc.Visibility == "public" {
+		return true
+	}
+	if !p.Authenticated {
+		return false
+	}
+	if len(svc.RequiredGroups) == 0 {
+		return true
+	}
+	for _, want := range svc.RequiredGroups {
+		for _, have := range p.Groups {
+			if want == have {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestNewHub_StartsEmpty(t *testing.T) {
@@ -106,43 +145,51 @@ func TestHub_BroadcastDeliveredToClient(t *testing.T) {
 	}
 }
 
-func TestHub_PublishMapsEventTypes(t *testing.T) {
-	tests := []struct {
-		input    string
-		wantType wshub.EventType
-	}{
-		{"added", wshub.EventAdded},
-		{"modified", wshub.EventModified},
-		{"deleted", wshub.EventDeleted},
-		{"unknown", wshub.EventModified}, // default
+// --- Publish event-type mapping ---
+
+func publishAndReadType(t *testing.T, input string) wshub.EventType {
+	t.Helper()
+	h := newTestHub(t)
+	srv := newServer(t, h)
+	conn := dialWS(t, srv)
+	t.Cleanup(func() { _ = conn.Close() })
+	time.Sleep(20 * time.Millisecond)
+
+	h.Publish(input, &landingcache.ServiceInfo{Name: "svc"})
+
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, msg, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read: %v", err)
 	}
+	var evt wshub.ServiceEvent
+	if err := json.Unmarshal(msg, &evt); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	return evt.Type
+}
 
-	for _, tc := range tests {
-		t.Run(tc.input, func(t *testing.T) {
-			h := newTestHub(t)
-			srv := newServer(t, h)
+func TestHub_Publish_Added_MapsToEventAdded(t *testing.T) {
+	if got := publishAndReadType(t, "added"); got != wshub.EventAdded {
+		t.Errorf("expected %q, got %q", wshub.EventAdded, got)
+	}
+}
 
-			conn := dialWS(t, srv)
-			defer func() { _ = conn.Close() }()
-			time.Sleep(20 * time.Millisecond)
+func TestHub_Publish_Modified_MapsToEventModified(t *testing.T) {
+	if got := publishAndReadType(t, "modified"); got != wshub.EventModified {
+		t.Errorf("expected %q, got %q", wshub.EventModified, got)
+	}
+}
 
-			svc := &landingcache.ServiceInfo{Name: "svc"}
-			h.Publish(tc.input, svc)
+func TestHub_Publish_Deleted_MapsToEventDeleted(t *testing.T) {
+	if got := publishAndReadType(t, "deleted"); got != wshub.EventDeleted {
+		t.Errorf("expected %q, got %q", wshub.EventDeleted, got)
+	}
+}
 
-			// Allow time for Redis Pub/Sub round-trip.
-			_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-			_, msg, err := conn.ReadMessage()
-			if err != nil {
-				t.Fatalf("read: %v", err)
-			}
-			var evt wshub.ServiceEvent
-			if err := json.Unmarshal(msg, &evt); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			if evt.Type != tc.wantType {
-				t.Errorf("Publish(%q): expected type %q, got %q", tc.input, tc.wantType, evt.Type)
-			}
-		})
+func TestHub_Publish_Unknown_DefaultsToEventModified(t *testing.T) {
+	if got := publishAndReadType(t, "unknown"); got != wshub.EventModified {
+		t.Errorf("expected %q (default), got %q", wshub.EventModified, got)
 	}
 }
 
@@ -164,7 +211,6 @@ func TestHub_BroadcastToMultipleClients(t *testing.T) {
 	h.Publish("modified", svc)
 
 	for i, c := range []*websocket.Conn{conn1, conn2} {
-		// Allow time for Redis Pub/Sub round-trip.
 		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
 		_, msg, err := c.ReadMessage()
 		if err != nil {
@@ -271,8 +317,6 @@ func TestHub_ClientDisconnectMidBroadcast_NoDeadlock(t *testing.T) {
 	conn := dialWS(t, srv)
 	time.Sleep(20 * time.Millisecond)
 
-	// Close the client before the broadcast fires. The hub should handle the dead
-	// connection without panicking or deadlocking.
 	_ = conn.Close()
 	time.Sleep(10 * time.Millisecond)
 
@@ -308,7 +352,6 @@ func TestHub_PublishNotification_DeliveredToClient(t *testing.T) {
 	}
 	h.PublishNotification(n)
 
-	// Allow time for Redis Pub/Sub round-trip + local broadcast.
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	_, msg, err := conn.ReadMessage()
 	if err != nil {
@@ -319,8 +362,8 @@ func TestHub_PublishNotification_DeliveredToClient(t *testing.T) {
 	if err := json.Unmarshal(msg, &evt); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if evt.Type != "notification.created" {
-		t.Errorf("expected type %q, got %q", "notification.created", evt.Type)
+	if evt.Type != wshub.EventNotificationCreate {
+		t.Errorf("expected type %q, got %q", wshub.EventNotificationCreate, evt.Type)
 	}
 	if evt.Notification == nil {
 		t.Fatal("Notification field is nil")
@@ -330,5 +373,194 @@ func TestHub_PublishNotification_DeliveredToClient(t *testing.T) {
 	}
 	if evt.Notification.Title != n.Title {
 		t.Errorf("expected title %q, got %q", n.Title, evt.Notification.Title)
+	}
+}
+
+// --- Per-client access filter (issue #95) ---
+
+// TestHub_BroadcastService_FilteredByPolicy_OnlyEntitledClientReceives drives
+// a private service publish through the real Redis-subscribe → dispatch →
+// broadcastService chain with two clients whose Principals differ in group
+// membership. The policy passes only one of them; the other must NOT see the
+// frame and must read-deadline-expire.
+//
+// This is the regression case for #95.
+func TestHub_BroadcastService_FilteredByPolicy_OnlyEntitledClientReceives(t *testing.T) {
+	h := newTestHub(t)
+	h.SetAccessPolicy(groupsPolicy{})
+
+	srvAdmin := newServerWithPrincipal(t, h,
+		wshub.Principal{Subject: "alice", Groups: []string{"admin"}, Authenticated: true},
+		time.Time{})
+	srvDS := newServerWithPrincipal(t, h,
+		wshub.Principal{Subject: "bob", Groups: []string{"data-science"}, Authenticated: true},
+		time.Time{})
+
+	connAdmin := dialWS(t, srvAdmin)
+	defer func() { _ = connAdmin.Close() }()
+	connDS := dialWS(t, srvDS)
+	defer func() { _ = connDS.Close() }()
+	time.Sleep(30 * time.Millisecond)
+	if h.ClientCount() != 2 {
+		t.Fatalf("expected 2 clients, got %d", h.ClientCount())
+	}
+
+	// Private service requiring "admin" group.
+	svc := &landingcache.ServiceInfo{
+		Name: "grafana", UID: "g-1",
+		Visibility: "private", RequiredGroups: []string{"admin"},
+	}
+	h.Publish("added", svc)
+
+	// Entitled client receives the frame with the actual service UID.
+	_ = connAdmin.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, msg, err := connAdmin.ReadMessage()
+	if err != nil {
+		t.Fatalf("admin client read: %v", err)
+	}
+	var evt wshub.ServiceEvent
+	if err := json.Unmarshal(msg, &evt); err != nil {
+		t.Fatalf("admin client unmarshal: %v", err)
+	}
+	if evt.Service == nil || evt.Service.UID != "g-1" {
+		t.Errorf("admin client got unexpected service: %+v", evt.Service)
+	}
+
+	// Non-entitled client must NOT receive the frame. A short read deadline
+	// confirms this without holding the test up for the broadcast's 10 s
+	// write deadline.
+	_ = connDS.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	_, leak, err := connDS.ReadMessage()
+	if err == nil {
+		t.Fatalf("data-science client received a frame for a private admin-only service: %s", leak)
+	}
+}
+
+// TestHub_BroadcastService_NilPolicy_AllowsAll preserves the test-only
+// back-compat: when no policy is set, every service event reaches every
+// client (existing tests above implicitly rely on this).
+func TestHub_BroadcastService_NilPolicy_AllowsAll(t *testing.T) {
+	h := newTestHub(t)
+	// No SetAccessPolicy call.
+
+	srv := newServerWithPrincipal(t, h,
+		wshub.Principal{Subject: "bob", Groups: []string{"data-science"}, Authenticated: true},
+		time.Time{})
+	conn := dialWS(t, srv)
+	defer func() { _ = conn.Close() }()
+	time.Sleep(20 * time.Millisecond)
+
+	// Private service the principal would normally fail the filter on.
+	svc := &landingcache.ServiceInfo{
+		Name: "secret", Visibility: "private", RequiredGroups: []string{"admin"},
+	}
+	h.Publish("added", svc)
+
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatalf("expected frame to reach client when policy is nil, got: %v", err)
+	}
+}
+
+// TestHub_BroadcastNotification_BypassesPolicy ensures notification events
+// fan out to every client regardless of the configured ServiceAccessPolicy —
+// the policy only applies to ServiceEvent. Filtering notifications is a
+// deferred follow-up (#95 out-of-scope).
+func TestHub_BroadcastNotification_BypassesPolicy(t *testing.T) {
+	h := newTestHub(t)
+	// A policy that would deny everything if consulted.
+	h.SetAccessPolicy(denyAllPolicy{})
+
+	srv := newServerWithPrincipal(t, h,
+		wshub.Principal{Subject: "anyone", Authenticated: true},
+		time.Time{})
+	conn := dialWS(t, srv)
+	defer func() { _ = conn.Close() }()
+	time.Sleep(20 * time.Millisecond)
+
+	h.PublishNotification(&notifications.Notification{ID: "n1", Title: "hi", Message: "."})
+
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatalf("notification should bypass policy, got: %v", err)
+	}
+}
+
+type denyAllPolicy struct{}
+
+func (denyAllPolicy) CanAccessService(*landingcache.ServiceInfo, wshub.Principal) bool {
+	return false
+}
+
+// TestHub_SessionEnd_ClosesConn schedules an immediate session-end and
+// asserts the hub closes the connection by way of the per-connection timer
+// installed in ServeWS. SPA reconnects with a fresh ticket in production;
+// the test just verifies the close fires.
+func TestHub_SessionEnd_ClosesConn(t *testing.T) {
+	h := newTestHub(t)
+	srv := newServerWithPrincipal(t, h,
+		wshub.Principal{Subject: "alice", Authenticated: true},
+		time.Now().Add(50*time.Millisecond))
+
+	conn := dialWS(t, srv)
+	defer func() { _ = conn.Close() }()
+	time.Sleep(20 * time.Millisecond)
+	if h.ClientCount() != 1 {
+		t.Fatalf("expected 1 client, got %d", h.ClientCount())
+	}
+
+	// The hub's timer should close the underlying connection. ReadMessage
+	// returns an error on close — give it generous slack to fire.
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := conn.ReadMessage(); err == nil {
+		t.Fatal("expected ReadMessage to error after session-end close, got nil")
+	}
+	time.Sleep(50 * time.Millisecond)
+	if h.ClientCount() != 0 {
+		t.Errorf("expected 0 clients after session-end close, got %d", h.ClientCount())
+	}
+}
+
+// TestHub_ConcurrentConnectsAndPublishes_NoRace stresses the per-client state
+// added for the filter under `-race`. Concurrent goroutines connect, the hub
+// publishes service events from another goroutine, the policy is consulted
+// per client per event. Any racy mutation under the snapshot lock would trip
+// the detector here.
+func TestHub_ConcurrentConnectsAndPublishes_NoRace(t *testing.T) {
+	h := newTestHub(t)
+	h.SetAccessPolicy(groupsPolicy{})
+	srv := newServerWithPrincipal(t, h,
+		wshub.Principal{Subject: "u", Groups: []string{"admin"}, Authenticated: true},
+		time.Time{})
+
+	const n = 8
+	conns := make([]*websocket.Conn, 0, n)
+	for i := 0; i < n; i++ {
+		c := dialWS(t, srv)
+		conns = append(conns, c)
+	}
+	t.Cleanup(func() {
+		for _, c := range conns {
+			_ = c.Close()
+		}
+	})
+	time.Sleep(30 * time.Millisecond)
+
+	var published atomic.Int32
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 20; i++ {
+			h.Publish("modified", &landingcache.ServiceInfo{
+				Name: "svc", Visibility: "private", RequiredGroups: []string{"admin"},
+			})
+			published.Add(1)
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	<-done
+	if got := published.Load(); got != 20 {
+		t.Errorf("expected 20 publishes, got %d", got)
 	}
 }
