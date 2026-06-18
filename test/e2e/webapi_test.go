@@ -10,10 +10,8 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -1329,19 +1327,21 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			userTicket := mintTicket(webapiBase, userToken)
 
 			By("Opening WS connections for both users, before any test NebariApp is created")
-			adminConn, _, err := websocket.DefaultDialer.Dial(
+			adminRaw, _, err := websocket.DefaultDialer.Dial(
 				"ws://localhost:18088/api/v1/ws?ticket="+adminTicket, nil)
 			Expect(err).NotTo(HaveOccurred(), "admin WS upgrade must succeed")
-			defer adminConn.Close()
+			adminWS := newWSClient(adminRaw)
+			defer adminWS.Close()
 
-			userConn, _, err := websocket.DefaultDialer.Dial(
+			userRaw, _, err := websocket.DefaultDialer.Dial(
 				"ws://localhost:18088/api/v1/ws?ticket="+userTicket, nil)
 			Expect(err).NotTo(HaveOccurred(), "test-user WS upgrade must succeed")
-			defer userConn.Close()
+			userWS := newWSClient(userRaw)
+			defer userWS.Close()
 
 			By("Creating a PUBLIC probe NebariApp to flush the broadcast pipeline")
 			// Sync barrier: both clients must receive the probe's `added`
-			// event. That proves the watcher → publish → subscribe → broadcast
+			// event. That proves the watcher -> publish -> subscribe -> broadcast
 			// chain is live at this moment in the test, so the subsequent
 			// negative-receive on the private app is meaningful (the frame
 			// would have arrived if the filter were broken).
@@ -1350,9 +1350,9 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(k8sClient.Create(ctx, publicApp)).To(Succeed(), "should create public probe NebariApp")
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, publicApp) })
 
-			Expect(waitForServiceEventNamed(adminConn, publicAppKey, "added", 30*time.Second)).
+			Expect(adminWS.waitForNamed(publicAppKey, "added", 30*time.Second)).
 				To(Succeed(), "admin must receive the public probe's added event")
-			Expect(waitForServiceEventNamed(userConn, publicAppKey, "added", 30*time.Second)).
+			Expect(userWS.waitForNamed(publicAppKey, "added", 30*time.Second)).
 				To(Succeed(), "test-user must receive the public probe's added event")
 
 			By("Creating a PRIVATE NebariApp requiring the admin group")
@@ -1362,7 +1362,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, privateApp) })
 
 			By("Asserting the admin connection receives the private added event")
-			Expect(waitForServiceEventNamed(adminConn, privateAppKey, "added", 30*time.Second)).
+			Expect(adminWS.waitForNamed(privateAppKey, "added", 30*time.Second)).
 				To(Succeed(), "admin (in 'admin' group) must receive the private added event")
 
 			By("Asserting the test-user connection does NOT receive the private added event")
@@ -1370,7 +1370,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			// genuine filter regression would deliver this frame within the
 			// same window. We give a generous bound (5s) on top of that to
 			// absorb sandbox jitter.
-			Expect(expectNoServiceEventNamed(userConn, privateAppKey, 5*time.Second)).
+			Expect(userWS.expectNoNamed(privateAppKey, 5*time.Second)).
 				To(Succeed(), "test-user (NOT in 'admin') must not receive the private added event")
 		})
 
@@ -1380,22 +1380,24 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			// have already closed its conns by the time this It runs.
 			adminTicket := mintTicket(webapiBase, adminToken)
 			userTicket := mintTicket(webapiBase, userToken)
-			adminConn, _, err := websocket.DefaultDialer.Dial(
+			adminRaw, _, err := websocket.DefaultDialer.Dial(
 				"ws://localhost:18088/api/v1/ws?ticket="+adminTicket, nil)
 			Expect(err).NotTo(HaveOccurred())
-			defer adminConn.Close()
-			userConn, _, err := websocket.DefaultDialer.Dial(
+			adminWS := newWSClient(adminRaw)
+			defer adminWS.Close()
+			userRaw, _, err := websocket.DefaultDialer.Dial(
 				"ws://localhost:18088/api/v1/ws?ticket="+userTicket, nil)
 			Expect(err).NotTo(HaveOccurred())
-			defer userConn.Close()
+			userWS := newWSClient(userRaw)
+			defer userWS.Close()
 
 			By("Flushing the pipeline with a public probe")
 			probeName := publicAppKey + "-mod"
 			probe := newNebariApp(probeName, e2eNamespace, probeName+".example.com", "public", 100)
 			Expect(k8sClient.Create(ctx, probe)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, probe) })
-			Expect(waitForServiceEventNamed(adminConn, probeName, "added", 30*time.Second)).To(Succeed())
-			Expect(waitForServiceEventNamed(userConn, probeName, "added", 30*time.Second)).To(Succeed())
+			Expect(adminWS.waitForNamed(probeName, "added", 30*time.Second)).To(Succeed())
+			Expect(userWS.waitForNamed(probeName, "added", 30*time.Second)).To(Succeed())
 
 			By("Creating a private admin-only NebariApp and waiting for admin to see the added event")
 			modAppName := privateAppKey + "-mod"
@@ -1403,7 +1405,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				modAppName+".example.com", []string{"admin"}, 100)
 			Expect(k8sClient.Create(ctx, modApp)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, modApp) })
-			Expect(waitForServiceEventNamed(adminConn, modAppName, "added", 30*time.Second)).To(Succeed())
+			Expect(adminWS.waitForNamed(modAppName, "added", 30*time.Second)).To(Succeed())
 
 			By("Patching the private NebariApp's displayName to trigger a modified event")
 			patch := []byte(`{"spec":{"landingPage":{"displayName":"Renamed Private Service"}}}`)
@@ -1412,9 +1414,9 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				"should patch the private NebariApp")
 
 			By("Asserting admin receives the modified event, test-user does not")
-			Expect(waitForServiceEventNamed(adminConn, modAppName, "modified", 30*time.Second)).
+			Expect(adminWS.waitForNamed(modAppName, "modified", 30*time.Second)).
 				To(Succeed(), "admin must receive the modified event for the private app")
-			Expect(expectNoServiceEventNamed(userConn, modAppName, 5*time.Second)).
+			Expect(userWS.expectNoNamed(modAppName, 5*time.Second)).
 				To(Succeed(), "test-user must not receive the modified event for the private app")
 		})
 	})
@@ -1471,85 +1473,115 @@ type wsServiceFrame struct {
 	} `json:"service"`
 }
 
-// perReadDeadline bounds a single ReadMessage call so a slow unrelated
-// frame can't burn the whole budget on one wait. The outer loop owns the
-// total window via its own deadline check.
-const perReadDeadline = 500 * time.Millisecond
-
-// isTimeoutErr reports whether err is a net read-deadline timeout (the
-// expected exit from a deadline-bounded ReadMessage when nothing arrived).
-// Any other error (hub-side close, RST, protocol error) is a real failure
-// the caller must distinguish from "no event arrived."
-func isTimeoutErr(err error) bool {
-	var ne net.Error
-	return errors.As(err, &ne) && ne.Timeout()
+// wsClient wraps a WebSocket connection with a dedicated reader goroutine
+// that drains frames continuously into a buffered channel. This is the
+// correct pattern for the per-client filter tests: gorilla/websocket marks
+// a connection as failed after a SetReadDeadline timeout, so the obvious
+// "set a short deadline, loop, retry on timeout" pattern panics on the
+// second iteration with "repeated read on failed websocket connection".
+// The reader goroutine instead reads without any deadline, blocking until
+// a frame arrives (or the conn closes), and the assertion methods select
+// on the channel against a Timer for their time budget.
+//
+// Frames that fail to decode as wsServiceFrame (notifications,
+// malformed) are silently dropped - the spec only cares about service
+// events whose Service.Name matches the test's NebariApp.
+type wsClient struct {
+	conn   *websocket.Conn
+	frames chan wsServiceFrame
+	errs   chan error
+	stop   chan struct{}
 }
 
-// drainNonMatching reads frames with a short deadline until either the
-// outer deadline fires (returns nil) or a service event matching `name`
-// arrives (returns the event with `found=true`). Unrelated frames are
-// dropped. Non-timeout read errors are returned as `err` and stop the
-// drain — they indicate a real connection problem, not a quiet window.
-func drainNonMatching(conn *websocket.Conn, name string, outerDeadline time.Time) (frame wsServiceFrame, found bool, err error) {
-	for time.Now().Before(outerDeadline) {
-		_ = conn.SetReadDeadline(time.Now().Add(perReadDeadline))
-		_, raw, rerr := conn.ReadMessage()
-		if rerr != nil {
-			if isTimeoutErr(rerr) {
-				continue // expected: no frame in this short window, retry
+// newWSClient takes ownership of an open gorilla/websocket connection and
+// starts the reader goroutine. Close exits the goroutine and closes the
+// underlying conn.
+func newWSClient(conn *websocket.Conn) *wsClient {
+	c := &wsClient{
+		conn:   conn,
+		frames: make(chan wsServiceFrame, 64),
+		errs:   make(chan error, 1),
+		stop:   make(chan struct{}),
+	}
+	go c.readLoop()
+	return c
+}
+
+func (c *wsClient) readLoop() {
+	for {
+		_, raw, err := c.conn.ReadMessage()
+		if err != nil {
+			select {
+			case c.errs <- err:
+			case <-c.stop:
 			}
-			return wsServiceFrame{}, false, fmt.Errorf("ws read: %w", rerr)
+			return
 		}
 		var f wsServiceFrame
 		if jerr := json.Unmarshal(raw, &f); jerr != nil {
-			continue // notification or malformed - skip
+			continue // not a service event (notification, malformed) - skip
 		}
-		if f.Service.Name == name {
-			return f, true, nil
+		select {
+		case c.frames <- f:
+		case <-c.stop:
+			return
 		}
-		// Unrelated service event - skip.
 	}
-	return wsServiceFrame{}, false, nil
 }
 
-// waitForServiceEventNamed drains the connection until a service event with
-// the given name and type arrives, or the outer deadline fires. Each
-// ReadMessage call has a short deadline (perReadDeadline) so one slow
-// unrelated frame can't consume the whole budget. Real connection errors
-// stop the wait; deadline timeouts are absorbed by the outer loop.
-func waitForServiceEventNamed(conn *websocket.Conn, name, eventType string, within time.Duration) error {
-	outer := time.Now().Add(within)
-	for time.Now().Before(outer) {
-		f, found, err := drainNonMatching(conn, name, outer)
-		if err != nil {
-			return fmt.Errorf("waiting for %s event on %q: %w", eventType, name, err)
-		}
-		if !found {
-			break // outer deadline elapsed
-		}
-		if f.Type == eventType {
-			return nil
-		}
-		// Matched name but wrong type (e.g. modified when we wanted added)
-		// - keep looping; subsequent frames for the same name may match.
+// Close stops the reader goroutine and closes the underlying conn. Safe to
+// call once; subsequent calls are no-ops because of the close(stop) guard.
+func (c *wsClient) Close() {
+	select {
+	case <-c.stop:
+		// already closed
+		return
+	default:
 	}
-	return fmt.Errorf("did not receive %s event for %q within %s", eventType, name, within)
+	close(c.stop)
+	_ = c.conn.Close()
 }
 
-// expectNoServiceEventNamed drains the connection for the given window and
-// returns nil only if no service event matching `name` arrives. Real
-// connection errors (close, RST, protocol error) fail the assertion so a
-// hub-side close masquerading as "no event" can't pass silently. Read-
-// deadline timeouts on individual reads are the expected pattern inside
-// the window and are absorbed.
-func expectNoServiceEventNamed(conn *websocket.Conn, name string, within time.Duration) error {
-	outer := time.Now().Add(within)
-	f, found, err := drainNonMatching(conn, name, outer)
-	if err != nil {
-		return fmt.Errorf("ws read failed during negative window for %q: %w", name, err)
+// waitForNamed waits up to `within` for a service event whose Service.Name
+// matches `name` and Type matches `eventType`. Unrelated frames (other
+// services, wrong type for this name) are skipped. A read error on the
+// underlying conn fails the wait immediately.
+func (c *wsClient) waitForNamed(name, eventType string, within time.Duration) error {
+	deadline := time.NewTimer(within)
+	defer deadline.Stop()
+	for {
+		select {
+		case f := <-c.frames:
+			if f.Service.Name == name && f.Type == eventType {
+				return nil
+			}
+			// Unrelated frame or wrong type for this name - keep waiting.
+		case err := <-c.errs:
+			return fmt.Errorf("ws read error waiting for %s event on %q: %w", eventType, name, err)
+		case <-deadline.C:
+			return fmt.Errorf("did not receive %s event for %q within %s", eventType, name, within)
+		}
 	}
-	if found {
-		return fmt.Errorf("unexpected %s event for filtered service %q delivered to a non-entitled client", f.Type, name)
+}
+
+// expectNoNamed asserts no service event with Service.Name == name arrives
+// within `within`. Unrelated frames are tolerated; a read error fails the
+// assertion (so a hub-side close masquerading as "no event" cannot pass
+// silently).
+func (c *wsClient) expectNoNamed(name string, within time.Duration) error {
+	deadline := time.NewTimer(within)
+	defer deadline.Stop()
+	for {
+		select {
+		case f := <-c.frames:
+			if f.Service.Name == name {
+				return fmt.Errorf("unexpected %s event for filtered service %q delivered to a non-entitled client", f.Type, name)
+			}
+			// Unrelated frame - keep watching.
+		case err := <-c.errs:
+			return fmt.Errorf("ws read error during negative window for %q: %w", name, err)
+		case <-deadline.C:
+			return nil // no event arrived
+		}
 	}
-	return nil
 }
