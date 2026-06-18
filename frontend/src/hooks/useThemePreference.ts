@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { getStoredValue, useLocalStorageState } from "./useLocalStorageState";
 
-export type ThemeMode = "light" | "dark" | "system";
+export const THEME_MODES = ["light", "dark", "system"] as const;
+export type ThemeMode = (typeof THEME_MODES)[number];
+
+export function isThemeMode(value: string): value is ThemeMode {
+  return (THEME_MODES as readonly string[]).includes(value);
+}
 
 const THEME_MODE_STORAGE_KEY = "launchpad:themeMode";
 // Legacy boolean key kept only for one-time migration of existing users.
@@ -16,7 +21,7 @@ function prefersDark(): boolean {
 }
 
 function readStoredMode(raw: string | null): ThemeMode {
-  if (raw === "light" || raw === "dark" || raw === "system") {
+  if (raw !== null && isThemeMode(raw)) {
     return raw;
   }
 

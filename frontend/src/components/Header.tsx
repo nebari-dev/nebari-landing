@@ -3,7 +3,7 @@ import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import type { ReactNode } from "react";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
 import builtInLogoLight from "../assets/nebari-logo_light.svg";
-import type { ThemeMode } from "../hooks/useThemePreference";
+import { type ThemeMode, isThemeMode } from "../hooks/useThemePreference";
 import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
@@ -179,7 +179,9 @@ export function Header(props: HeaderProps): ReactNode {
                 <DropdownMenuRadioGroup
                   aria-label="Theme"
                   value={themeMode}
-                  onValueChange={(value) => onThemeChange?.(value as ThemeMode)}
+                  onValueChange={(value) => {
+                    if (isThemeMode(value)) onThemeChange?.(value);
+                  }}
                   className="flex items-center gap-1 rounded-lg bg-muted p-1"
                 >
                   <ThemeOption value="light" label="Light mode" text="Light">
