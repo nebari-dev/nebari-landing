@@ -167,7 +167,7 @@ export function Header(props: HeaderProps): ReactNode {
               </button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuContent align="end" className="w-72">
               <div className="border-b px-3 py-2">
                 <p className="text-sm font-medium text-foreground">{user.name ?? "Signed in"}</p>
                 {user.email ? <p className="text-xs text-muted-foreground">{user.email}</p> : null}
@@ -180,6 +180,7 @@ export function Header(props: HeaderProps): ReactNode {
                 >
                   <ThemeOption
                     label="Light mode"
+                    text="Light"
                     selected={themeMode === "light"}
                     onSelect={() => onThemeChange?.("light")}
                   >
@@ -188,6 +189,7 @@ export function Header(props: HeaderProps): ReactNode {
 
                   <ThemeOption
                     label="Dark mode"
+                    text="Dark"
                     selected={themeMode === "dark"}
                     onSelect={() => onThemeChange?.("dark")}
                   >
@@ -196,6 +198,7 @@ export function Header(props: HeaderProps): ReactNode {
 
                   <ThemeOption
                     label="System theme"
+                    text="System"
                     selected={themeMode === "system"}
                     onSelect={() => onThemeChange?.("system")}
                   >
@@ -226,11 +229,13 @@ export function Header(props: HeaderProps): ReactNode {
 
 function ThemeOption({
   label,
+  text,
   selected,
   onSelect,
   children,
 }: {
   label: string;
+  text: string;
   selected: boolean;
   onSelect: () => void;
   children: ReactNode;
@@ -243,13 +248,14 @@ function ThemeOption({
       title={label}
       onClick={onSelect}
       className={cn(
-        "flex flex-1 items-center justify-center rounded-md py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
         selected
           ? "bg-background text-foreground shadow-sm"
           : "text-muted-foreground hover:text-foreground",
       )}
     >
       {children}
+      <span>{text}</span>
     </button>
   );
 }
