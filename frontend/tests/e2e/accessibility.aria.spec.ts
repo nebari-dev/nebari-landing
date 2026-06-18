@@ -6,10 +6,12 @@ test("header accessibility tree stays stable", async ({ page }) => {
   const header = page.locator("header");
   await expect(header).toBeVisible();
 
+  // The theme toggle moved into the account menu, so the header now exposes
+  // the notifications and account-menu triggers next to the logo.
   await expect(header).toMatchAriaSnapshot(`
     - link "Go to homepage"
-    - button /Switch to (dark|light) mode/
     - button "Notifications"
+    - button "Account menu"
   `);
 });
 

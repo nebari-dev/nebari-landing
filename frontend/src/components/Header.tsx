@@ -1,4 +1,5 @@
 import { Bell, ChevronDown, Monitor, Moon, Sun } from "lucide-react";
+import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import type { ReactNode } from "react";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
 import builtInLogoLight from "../assets/nebari-logo_light.svg";
@@ -10,6 +11,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
@@ -145,7 +147,7 @@ export function Header(props: HeaderProps): ReactNode {
         </DropdownMenu>
 
         {user ? (
-          <DropdownMenu>
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
@@ -174,37 +176,24 @@ export function Header(props: HeaderProps): ReactNode {
               </div>
 
               <div className="px-2 py-2">
-                <fieldset
+                <DropdownMenuRadioGroup
                   aria-label="Theme"
+                  value={themeMode}
+                  onValueChange={(value) => onThemeChange?.(value as ThemeMode)}
                   className="flex items-center gap-1 rounded-lg bg-muted p-1"
                 >
-                  <ThemeOption
-                    label="Light mode"
-                    text="Light"
-                    selected={themeMode === "light"}
-                    onSelect={() => onThemeChange?.("light")}
-                  >
+                  <ThemeOption value="light" label="Light mode" text="Light">
                     <Sun className="h-4 w-4" />
                   </ThemeOption>
 
-                  <ThemeOption
-                    label="Dark mode"
-                    text="Dark"
-                    selected={themeMode === "dark"}
-                    onSelect={() => onThemeChange?.("dark")}
-                  >
+                  <ThemeOption value="dark" label="Dark mode" text="Dark">
                     <Moon className="h-4 w-4" />
                   </ThemeOption>
 
-                  <ThemeOption
-                    label="System theme"
-                    text="System"
-                    selected={themeMode === "system"}
-                    onSelect={() => onThemeChange?.("system")}
-                  >
+                  <ThemeOption value="system" label="System theme" text="System">
                     <Monitor className="h-4 w-4" />
                   </ThemeOption>
-                </fieldset>
+                </DropdownMenuRadioGroup>
               </div>
 
               <DropdownMenuSeparator />
@@ -228,35 +217,32 @@ export function Header(props: HeaderProps): ReactNode {
 }
 
 function ThemeOption({
+  value,
   label,
   text,
-  selected,
-  onSelect,
   children,
 }: {
+  value: ThemeMode;
   label: string;
   text: string;
-  selected: boolean;
-  onSelect: () => void;
   children: ReactNode;
 }): ReactNode {
   return (
-    <button
-      type="button"
+    <DropdownMenuPrimitive.RadioItem
+      value={value}
       aria-label={label}
-      aria-pressed={selected}
       title={label}
-      onClick={onSelect}
+      // Keep the menu open after switching themes so the change is visible.
+      onSelect={(event) => event.preventDefault()}
       className={cn(
-        "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-        selected
-          ? "bg-background text-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground",
+        "flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "text-muted-foreground hover:text-foreground",
+        "data-[state=checked]:bg-background data-[state=checked]:text-foreground data-[state=checked]:shadow-sm",
       )}
     >
       {children}
       <span>{text}</span>
-    </button>
+    </DropdownMenuPrimitive.RadioItem>
   );
 }
 

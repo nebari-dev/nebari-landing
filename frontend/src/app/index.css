@@ -84,7 +84,9 @@
   --secondary-foreground: #f3f5f6;
 
   --muted: #22282f;
-  --muted-foreground: #65748a;
+  /* Lightened from #65748a to meet WCAG AA (4.5:1) for secondary text in dark
+     mode, including the theme toggle labels rendered on the muted background. */
+  --muted-foreground: #909db0;
 
   --accent: #3d4553;
   --accent-foreground: #f3f5f6;

@@ -30,33 +30,33 @@ describe("Header", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
-    await user.click(screen.getByRole("button", { name: /dark mode/i }));
+    await user.click(screen.getByRole("menuitemradio", { name: /dark mode/i }));
     expect(onThemeChange).toHaveBeenCalledWith("dark");
 
-    await user.click(screen.getByRole("button", { name: /light mode/i }));
+    await user.click(screen.getByRole("menuitemradio", { name: /light mode/i }));
     expect(onThemeChange).toHaveBeenCalledWith("light");
 
-    await user.click(screen.getByRole("button", { name: /system theme/i }));
+    await user.click(screen.getByRole("menuitemradio", { name: /system theme/i }));
     expect(onThemeChange).toHaveBeenCalledWith("system");
   });
 
-  it("reflects the current theme mode via aria-pressed", async () => {
+  it("reflects the current theme mode via aria-checked", async () => {
     const user = userEvent.setup();
 
     render(<Header user={{ name: "John Doe" }} themeMode="dark" notifications={[]} />);
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
 
-    expect(screen.getByRole("button", { name: /dark mode/i })).toHaveAttribute(
-      "aria-pressed",
+    expect(screen.getByRole("menuitemradio", { name: /dark mode/i })).toHaveAttribute(
+      "aria-checked",
       "true",
     );
-    expect(screen.getByRole("button", { name: /light mode/i })).toHaveAttribute(
-      "aria-pressed",
+    expect(screen.getByRole("menuitemradio", { name: /light mode/i })).toHaveAttribute(
+      "aria-checked",
       "false",
     );
-    expect(screen.getByRole("button", { name: /system theme/i })).toHaveAttribute(
-      "aria-pressed",
+    expect(screen.getByRole("menuitemradio", { name: /system theme/i })).toHaveAttribute(
+      "aria-checked",
       "false",
     );
   });

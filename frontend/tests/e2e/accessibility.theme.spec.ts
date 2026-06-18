@@ -12,11 +12,11 @@ test("dark theme loads correctly and has no detectable accessibility violations"
 
   await expect(page.locator("html")).toHaveClass(/dark/);
 
-  // The theme toggle now lives inside the profile menu.
+  // The theme toggle now lives inside the profile menu as a radio group.
   await page.getByRole("button", { name: /account menu/i }).click();
-  const darkOption = page.getByRole("button", { name: /dark mode/i });
+  const darkOption = page.getByRole("menuitemradio", { name: /dark mode/i });
   await expect(darkOption).toBeVisible();
-  await expect(darkOption).toHaveAttribute("aria-pressed", "true");
+  await expect(darkOption).toHaveAttribute("aria-checked", "true");
 
   const results = await makeAxeBuilder().analyze();
 
