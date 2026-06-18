@@ -136,6 +136,12 @@ type Hub struct {
 	// "allow all" — preserved for tests that build hubs directly. Production
 	// wiring in cmd/main.go always sets a non-nil policy.
 	policy ServiceAccessPolicy
+	// nilPolicyWarn fires once per Hub lifetime the first time a service event
+	// is broadcast while policy is still nil. The setter pattern means a
+	// future call site could forget SetAccessPolicy and silently reintroduce
+	// the issue #95 fan-out-to-all regression; this turns the silent failure
+	// into a noisy one without breaking the test-time allow-all convenience.
+	nilPolicyWarn sync.Once
 }
 
 // NewHub creates a Hub backed by the given Redis client and starts the
@@ -205,6 +211,14 @@ func (h *Hub) dispatch(payload []byte) {
 				"error", err.Error())
 			return
 		}
+		if ev.Service == nil {
+			// Defensive: a publisher emitting a service-typed envelope with
+			// no `service` field would cause every policy implementation to
+			// nil-deref `svc.Visibility`. Drop and log.
+			log.Info("WebSocket: service event with nil Service field, dropping",
+				"type", ev.Type)
+			return
+		}
 		h.broadcastService(&ev, payload)
 	default:
 		// Notifications and any forward-compat unknown types: fan out to all.
@@ -225,6 +239,12 @@ func (h *Hub) broadcastService(ev *ServiceEvent, raw []byte) {
 		clients = append(clients, c)
 	}
 	h.mu.RUnlock()
+
+	if policy == nil {
+		h.nilPolicyWarn.Do(func() {
+			log.Info("WebSocket: no access policy set — service events will fan out to every client; call Hub.SetAccessPolicy in production wiring (issue #95 regression risk)")
+		})
+	}
 
 	for _, c := range clients {
 		if policy != nil && !policy.CanAccessService(ev.Service, c.principal) {

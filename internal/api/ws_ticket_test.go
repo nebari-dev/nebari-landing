@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
@@ -45,6 +46,13 @@ func dialWS(t *testing.T, srv *httptest.Server, path string, headers http.Header
 	t.Helper()
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + path
 	return websocket.DefaultDialer.Dial(wsURL, headers)
+}
+
+// futureExp returns a jwt.NumericDate pointer one hour in the future.
+// Tests that exercise the WS upgrade path need a valid exp because handleWS
+// rejects tickets whose snapshotted ExpiresAt is zero or already past.
+func futureExp() *jwt.NumericDate {
+	return jwt.NewNumericDate(time.Now().Add(time.Hour))
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -204,7 +212,7 @@ func TestHandleWS_Unauthorized_WhenNoCredentials(t *testing.T) {
 
 func TestHandleWS_Upgrades_WithValidTicket(t *testing.T) {
 	store, _ := newTicketStore(t)
-	ticket, err := store.Issue(context.Background(), wsticket.TicketClaims{Subject: "test-user"})
+	ticket, err := store.Issue(context.Background(), wsticket.TicketClaims{Subject: "test-user", ExpiresAt: time.Now().Add(time.Hour)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +248,7 @@ func TestHandleWS_Unauthorized_WithInvalidTicket(t *testing.T) {
 
 func TestHandleWS_Unauthorized_WithAlreadyUsedTicket(t *testing.T) {
 	store, _ := newTicketStore(t)
-	ticket, err := store.Issue(context.Background(), wsticket.TicketClaims{Subject: "test-user"})
+	ticket, err := store.Issue(context.Background(), wsticket.TicketClaims{Subject: "test-user", ExpiresAt: time.Now().Add(time.Hour)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +276,7 @@ func TestHandleWS_Unauthorized_WithAlreadyUsedTicket(t *testing.T) {
 
 func TestHandleWS_Unauthorized_WithExpiredTicket(t *testing.T) {
 	store, mr := newTicketStore(t)
-	ticket, err := store.Issue(context.Background(), wsticket.TicketClaims{Subject: "test-user"})
+	ticket, err := store.Issue(context.Background(), wsticket.TicketClaims{Subject: "test-user", ExpiresAt: time.Now().Add(time.Hour)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,6 +291,106 @@ func TestHandleWS_Unauthorized_WithExpiredTicket(t *testing.T) {
 	}
 	if resp == nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401 for expired ticket, got %v", resp)
+	}
+}
+
+// TestHandleWS_Unauthorized_WithTicketCarryingExpiredJWTExp guards against
+// the unbounded-session bypass identified in PR review B1: a JWT can be
+// near-exp at ticket-issue time and already past-exp by the time the ticket
+// is redeemed. handleWS must reject upgrades whose snapshotted ExpiresAt is
+// zero or in the past, because the hub's time.AfterFunc skips installation
+// for ttl ≤ 0 and the session would otherwise stay open indefinitely.
+func TestHandleWS_Unauthorized_WithTicketCarryingExpiredJWTExp(t *testing.T) {
+	store, _ := newTicketStore(t)
+	hub := newWSHub(t)
+	h := NewHandler(cache.NewServiceCache(), nil, true, hub, nil,
+		WithWSTicketStore(store),
+		WithClaimsExtractor(func(r *http.Request) (*auth.Claims, bool) {
+			if r.Header.Get("Authorization") == "Bearer near-exp" {
+				return &auth.Claims{
+					PreferredUsername: "alice",
+					Groups:            []string{"admin"},
+					RegisteredClaims: jwt.RegisteredClaims{
+						// Already expired — production JWT validator would
+						// reject this on the Bearer path, but the issue is
+						// that the ticket value is a snapshot taken at issue
+						// time; the redeem-time check is what guards the WS
+						// upgrade.
+						ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
+					},
+				}, true
+			}
+			return nil, false
+		}),
+	)
+	srv := httptest.NewServer(h.Routes())
+	defer srv.Close()
+
+	// Issue the ticket with the past-exp claims (test bypasses real JWT
+	// validation via WithClaimsExtractor).
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/ws-ticket", nil)
+	req.Header.Set("Authorization", "Bearer near-exp")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("ticket request: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from ws-ticket, got %d", resp.StatusCode)
+	}
+	var body WSTicketResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	// Upgrade attempt must fail — the snapshotted exp is in the past.
+	_, wsResp, err := dialWS(t, srv, "/api/v1/ws?ticket="+body.Ticket, nil)
+	if err == nil {
+		t.Fatal("expected upgrade to fail for ticket with past exp")
+	}
+	if wsResp == nil || wsResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %v", wsResp)
+	}
+}
+
+// TestHandleWS_Unauthorized_WithTicketCarryingZeroExp covers the second leg
+// of the staleness bypass: a TicketClaims with a zero-value ExpiresAt (no
+// exp claim on the JWT) would let the hub skip the timer entirely. handleWS
+// rejects this at the upgrade.
+func TestHandleWS_Unauthorized_WithTicketCarryingZeroExp(t *testing.T) {
+	store, _ := newTicketStore(t)
+	hub := newWSHub(t)
+	h := NewHandler(cache.NewServiceCache(), nil, true, hub, nil,
+		WithWSTicketStore(store),
+		WithClaimsExtractor(func(r *http.Request) (*auth.Claims, bool) {
+			// No RegisteredClaims.ExpiresAt → nil → expFromClaims returns zero.
+			return &auth.Claims{PreferredUsername: "alice"}, true
+		}),
+	)
+	srv := httptest.NewServer(h.Routes())
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/ws-ticket", nil)
+	req.Header.Set("Authorization", "Bearer any")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("ticket request: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var body WSTicketResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	_, wsResp, err := dialWS(t, srv, "/api/v1/ws?ticket="+body.Ticket, nil)
+	if err == nil {
+		t.Fatal("expected upgrade to fail for ticket with zero exp")
+	}
+	if wsResp == nil || wsResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %v", wsResp)
 	}
 }
 
@@ -311,7 +419,10 @@ func TestWSTicketExchange_FullFlow_IssueViaHTTP_ThenUpgradeWS(t *testing.T) {
 		WithWSTicketStore(store),
 		WithClaimsExtractor(func(r *http.Request) (*auth.Claims, bool) {
 			if r.Header.Get("Authorization") == "Bearer alice-token" {
-				return &auth.Claims{PreferredUsername: "alice"}, true
+				return &auth.Claims{
+					PreferredUsername: "alice",
+					RegisteredClaims:  jwt.RegisteredClaims{ExpiresAt: futureExp()},
+				}, true
 			}
 			return nil, false
 		}),
@@ -365,7 +476,10 @@ func TestWSTicketExchange_TicketIsNotReusable_AfterSuccessfulUpgrade(t *testing.
 		WithWSTicketStore(store),
 		WithClaimsExtractor(func(r *http.Request) (*auth.Claims, bool) {
 			if r.Header.Get("Authorization") == "Bearer test" {
-				return &auth.Claims{PreferredUsername: "bob"}, true
+				return &auth.Claims{
+					PreferredUsername: "bob",
+					RegisteredClaims:  jwt.RegisteredClaims{ExpiresAt: futureExp()},
+				}, true
 			}
 			return nil, false
 		}),
@@ -434,11 +548,13 @@ func TestWSTicketExchange_FullFlow_FiltersBroadcastByGroups(t *testing.T) {
 				return &auth.Claims{
 					PreferredUsername: "alice",
 					Groups:            []string{"admin"},
+					RegisteredClaims:  jwt.RegisteredClaims{ExpiresAt: futureExp()},
 				}, true
 			case "Bearer bob-ds":
 				return &auth.Claims{
 					PreferredUsername: "bob",
 					Groups:            []string{"data-science"},
+					RegisteredClaims:  jwt.RegisteredClaims{ExpiresAt: futureExp()},
 				}, true
 			}
 			return nil, false

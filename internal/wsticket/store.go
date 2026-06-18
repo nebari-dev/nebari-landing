@@ -13,10 +13,14 @@
 // the live JWT and re-derives claims itself; the ticket path has nothing
 // after redemption, hence the snapshot.
 //
-// Operational note: TicketClaims carries `groups`, which in this product
-// encode organizational structure (admin, data-science, finance, etc.).
-// Deployments should keep the backing Redis instance on a TLS-protected
-// connection and restricted to the webapi ServiceAccount.
+// Operational note: the ticket value contains a Keycloak claims snapshot
+// (Subject, PreferredUsername, Groups, ExpiresAt). Group names in this
+// product encode organizational structure (admin, data-science, finance,
+// …), so the snapshot is a short-lived (30s) per-session credential —
+// **treat the backing Redis instance as a credential store.** Deployments
+// must keep Redis on a TLS-protected connection and restrict access to the
+// webapi ServiceAccount. The 30s TTL bounds blast radius if Redis is ever
+// dumped, not the sensitivity of any single record.
 package wsticket
 
 import (

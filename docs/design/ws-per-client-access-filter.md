@@ -247,10 +247,49 @@ value is the smaller delta.
   paths. The fix is to thread one variable (`claims, authenticated`)
   through `handleWS` regardless of how it was obtained.
 
+## Session-lifetime bound (added during implementation)
+
+The original plan covered the per-client filter only. During implementation
+it became clear that the ticket now carries a claims snapshot that can
+outlive the JWT it was minted from — REST re-validates the JWT on every
+request, but the WS session uses the snapshot for the connection's
+lifetime, which on a long-held tab can be hours. To bound that staleness
+without per-event cost, the hub installs a `time.AfterFunc` keyed on the
+JWT `exp` carried through `TicketClaims.ExpiresAt`. When the timer fires,
+the connection is closed; the SPA reconnects via a fresh ticket, which
+re-validates a fresh JWT. Keycloak's default access-token lifetime (~5
+min) becomes the effective revocation window for WS sessions.
+
+Two guards prevent the timer from silently failing open:
+
+1. `handleWS` rejects the upgrade (401) when `tc.ExpiresAt.IsZero() ||
+   !tc.ExpiresAt.After(time.Now())`. This catches the case where a JWT
+   was near-exp at issue time and is already past-exp at redeem, and the
+   forward-compat case where a future token shape omits `exp`.
+2. `Hub.ServeWS` only installs the timer when `ttl > 0`; combined with
+   (1), an unbounded session at the hub level requires the upgrade guard
+   to be bypassed, which it isn't from any code path.
+
+These were added in response to the post-implementation review (the
+`fail-open under expired exp` finding); they belong to the same security
+control surface as the filter itself.
+
+## Nil-policy regression guard
+
+`NewHub` returns with `policy == nil` and the comment documents this as a
+test-only convenience — production wiring in `cmd/main.go` always calls
+`SetAccessPolicy`. To make the silent-regression case noisy: on the first
+service-event broadcast with `policy == nil`, the hub logs once via
+`sync.Once`. The warning is harmless in tests (which set or don't set the
+policy at construction time) and immediately surfaces a future call site
+that builds a `Hub` and forgets the setter.
+
 ## PR shape
 
 - Branch: `fix/ws-per-client-access-filter`
 - Target: current `main`
 - Title: `fix(ws): apply per-client access filter to service events`
 - Body references #95; closes it.
-- Estimated diff: ~300-400 lines, 7 files.
+- Estimated diff: ~300-400 lines, 7 files (actual implementation grew to
+  ~1100 lines across 10 files after the session-end bound and additional
+  tests landed; see the PR for the final shape).

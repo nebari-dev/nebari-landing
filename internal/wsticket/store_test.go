@@ -163,6 +163,44 @@ func TestRedeem_EmptyTicket_Errors(t *testing.T) {
 	}
 }
 
+// TestIssueRedeem_NilGroupsAndEmptyGroups_RoundtripIdentically covers the
+// edge case where Issue is called with Groups: nil vs Groups: []string{}.
+// JSON marshal+unmarshal collapses both to a zero-length slice (nil for
+// omitempty fields), so downstream policy code (which uses len(groups))
+// treats them identically. Locking this in via a test means a future change
+// to the TicketClaims tags or to hasRequiredGroups can't quietly diverge.
+func TestIssueRedeem_NilGroupsAndEmptyGroups_RoundtripIdentically(t *testing.T) {
+	store, _ := newStore(t)
+	ctx := context.Background()
+
+	// Issue with nil Groups.
+	t1, err := store.Issue(ctx, wsticket.TicketClaims{Subject: "alice", Groups: nil, ExpiresAt: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tc1, err := store.Redeem(ctx, t1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Issue with empty Groups.
+	t2, err := store.Issue(ctx, wsticket.TicketClaims{Subject: "alice", Groups: []string{}, ExpiresAt: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tc2, err := store.Redeem(ctx, t2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(tc1.Groups) != 0 {
+		t.Errorf("nil Groups roundtripped to len=%d, expected 0", len(tc1.Groups))
+	}
+	if len(tc2.Groups) != 0 {
+		t.Errorf("empty Groups roundtripped to len=%d, expected 0", len(tc2.Groups))
+	}
+}
+
 func TestRedeem_MalformedStoredValue_Errors(t *testing.T) {
 	// Forward-compat: if a value somehow ends up in Redis that isn't a valid
 	// JSON-encoded TicketClaims (manual injection, schema mismatch, etc.),

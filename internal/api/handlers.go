@@ -281,6 +281,18 @@ func (h *Handler) handleWS(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
+		// Reject when the snapshotted JWT exp is missing or already in the
+		// past. Without this guard the hub's session-end timer
+		// (time.AfterFunc keyed on tc.ExpiresAt) silently skips its
+		// installation when ttl ≤ 0, leaving the session unbounded — the
+		// staleness ceiling the ticket carries would then fail open. Mirrors
+		// Bearer-with-expired-token semantics.
+		if tc.ExpiresAt.IsZero() || !tc.ExpiresAt.After(time.Now()) {
+			log.Info("WebSocket ticket carries expired or missing exp",
+				"subject", tc.Subject, "exp", tc.ExpiresAt)
+			http.Error(w, "Unauthorized: ticket carries expired credentials", http.StatusUnauthorized)
+			return
+		}
 		principal = wshub.Principal{
 			Subject:       tc.Subject,
 			Groups:        tc.Groups,
