@@ -171,7 +171,9 @@ func TestRedeem_MalformedStoredValue_Errors(t *testing.T) {
 	store, mr := newStore(t)
 	ctx := context.Background()
 	// Write a bogus value directly under the expected key.
-	mr.Set("wsticket:badtick", "this is not json")
+	if err := mr.Set("wsticket:badtick", "this is not json"); err != nil {
+		t.Fatalf("miniredis Set: %v", err)
+	}
 	_, err := store.Redeem(ctx, "badtick")
 	if err == nil {
 		t.Fatal("expected error for malformed stored value, got nil")
