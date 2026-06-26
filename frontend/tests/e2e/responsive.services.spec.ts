@@ -93,6 +93,9 @@ test("services table keeps headers and rows in bounds while resizing", async ({ 
     });
     await expect(allServicesRegion).toBeVisible();
 
+    // Grid is the default view, so switch to the table view this test exercises.
+    await allServicesRegion.getByRole("radio", { name: /Table view/i }).click();
+
     const tableContainer = page.locator('[data-slot="table-container"]').first();
     const actionsHeader = page.getByRole("columnheader", { name: /Actions/i }).getByText("Actions");
     const pinButton = allServicesRegion.getByRole("button", {

@@ -25,7 +25,7 @@ test("services controls accessibility tree stays stable", async ({ page }) => {
     - textbox "Search"
     - button "Search"
     - group:
-      - radio "Table view" [checked]
-      - radio "Grid view"
+      - radio "Grid view" [checked]
+      - radio "Table view"
   `);
 });
