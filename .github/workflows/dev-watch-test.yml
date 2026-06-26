@@ -66,11 +66,11 @@ jobs:
 
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # ── minikube ────────────────────────────────────────────────────────────
       - name: Start minikube
-        uses: medyagh/setup-minikube@v0.0.19
+        uses: medyagh/setup-minikube@v0.0.21
         with:
           minikube-version: latest
           driver: docker

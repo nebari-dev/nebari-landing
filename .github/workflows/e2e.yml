@@ -50,7 +50,7 @@ jobs:
 
     steps:
       # ── Checkout ─────────────────────────────────────────────────────────────
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Go toolchain ─────────────────────────────────────────────────────────
       - uses: actions/setup-go@v6
@@ -61,7 +61,7 @@ jobs:
       # Unified Go cache — covers both e2e test modules and any Go build inside
       # the sandbox action (NIC binary), so the sandbox step benefits too.
       - name: Cache Go modules
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/go/pkg/mod
