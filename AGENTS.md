@@ -52,6 +52,8 @@ Driven by a **separate Makefile**: `make -f dev/Makefile <target>`. `setup` does
 
 ## Conventions
 
+- **Run the e2e suite for any UI change.** Any change to `frontend/` that affects rendered output — components, pages, layout, styling, default view state, accessibility attributes — must pass `npm run e2e` (Playwright, chromium) before it's considered done. These tests assert on the accessibility tree, responsive layout, and default UI state, so they catch regressions vitest does not. Update the affected specs in `frontend/tests/e2e/` in the same change when the new behavior is intentional.
+  - **Local-run caveat:** the e2e suite sets `serviceWorkers: "block"`, but `main.tsx` does `await worker.start()` when `VITE_USE_MOCKS=1` — with both set, the SW never registers, the top-level await hangs, and the app renders blank (every test fails on a white page). CI does not set `VITE_USE_MOCKS`; it relies on the per-test `context.route` mocks in `tests/e2e/fixtures/e2e.ts`. To reproduce CI locally, run the dev server with `VITE_USE_MOCKS` unset, and leave `E2E_BASE_URL` unset (setting it flips the config into real-cluster mode and triggers the Keycloak `auth-setup` step).
 - Frontend uses **Biome** for lint+format (not ESLint/Prettier) — `biome.json`. shadcn/ui components configured in `components.json`. API clients are one-file-per-endpoint under `frontend/src/api/`.
 - `--enable-docs` (env `ENABLE_DOCS=true`, chart `webapi.docsEnabled=true`) exposes the OpenAPI spec + an HTML reference at `/api/v1/docs`. Both routes are absent without the flag — **never enable in production**.
 - Releases are cut by the `release-prep` GitHub Actions workflow, not local make targets. See `docs/maintainers/release-checklist.md`.
