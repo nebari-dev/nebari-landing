@@ -9,7 +9,7 @@ on:
 jobs:
   sync:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}
-    uses: nebari-dev/.github/.github/workflows/sync-project-priority.yaml@main
+    uses: nebari-dev/.github/.github/workflows/sync-project-priority.yaml@6b25f52372a97dd194f4963eaab16e18c32ca3cd # main
     with:
       project-id: PVT_kwDOBd3CI84BKoKt
     secrets:
