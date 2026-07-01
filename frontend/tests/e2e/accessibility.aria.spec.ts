@@ -22,10 +22,18 @@ test("services controls accessibility tree stays stable", async ({ page }) => {
   await expect(allServicesRegion).toBeVisible();
 
   await expect(allServicesRegion).toMatchAriaSnapshot(`
-    - textbox "Search"
-    - button "Search"
-    - group:
-      - radio "Grid view" [checked]
-      - radio "Table view"
+    - region "All services":
+      - textbox "Search"
+      - button "Search"
+      - radiogroup:
+        - radio "Grid view" [checked]
+        - radio "Table view"
+      - link "Healthy JupyterHub Notebook platform Data Science Unpin service":
+        - /url: https://example.com/jupyterhub
+        - text: ""
+        - paragraph: JupyterHub
+        - paragraph: Notebook platform
+        - text: ""
+        - button "Unpin service"
   `);
 });

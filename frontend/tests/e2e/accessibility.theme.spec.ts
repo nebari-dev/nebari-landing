@@ -18,6 +18,12 @@ test("dark theme loads correctly and has no detectable accessibility violations"
   await expect(darkOption).toBeVisible();
   await expect(darkOption).toHaveAttribute("aria-checked", "true");
 
+  // The menu fades in (fade-in-0, duration-100). Wait for it to reach full
+  // opacity so axe measures the settled colors rather than the mid-animation
+  // composite, which reports false color-contrast violations.
+  const menuContent = page.locator('[data-slot="dropdown-menu-content"]');
+  await expect(menuContent).toHaveCSS("opacity", "1");
+
   const results = await makeAxeBuilder().analyze();
 
   await testInfo.attach("axe-dark-results", {
