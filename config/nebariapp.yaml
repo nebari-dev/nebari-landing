@@ -1,0 +1,8 @@
+apiVersion: nebari.dev/v1alpha1
+kind: NebariApp
+metadata:
+  name: nebari-landing
+spec:
+  auth:
+    forwardAccessToken: true
+  # Other configuration options...
