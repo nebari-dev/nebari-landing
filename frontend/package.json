@@ -46,7 +46,7 @@
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.1",
+    "@vitejs/plugin-react": "^6.0.3",
     "dotenv": "^17.4.2",
     "globals": "^17.7.0",
     "jsdom": "^29.1.1",
