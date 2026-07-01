@@ -196,6 +196,12 @@ nebariApp:
     displayName: "Nebari"
     description: "Nebari platform landing page"
     icon: "kubernetes"
+    # Optional dark/light theme icon overrides. Must be defined (empty string)
+    # so the nebariapp.yaml template renders "" rather than YAML null — the
+    # NebariApp CRD types these as string and rejects null. The operator falls
+    # back to `icon` when both are empty.
+    iconDark: ""
+    iconLight: ""
     category: "Platform"
     priority: 0
     visibility: "public"

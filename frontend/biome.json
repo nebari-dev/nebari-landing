@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
 
   "vcs": {
     "enabled": true,
@@ -15,7 +15,8 @@
       "tsconfig*.json",
       "vite.config.ts",
       "!!**/dist",
-      "!!public/mockServiceWorker.js"
+      "!!public/mockServiceWorker.js",
+      "!src/**/*.svg"
     ]
   },
 
@@ -29,7 +30,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
 
       "correctness": {
         "noUndeclaredVariables": "error"
