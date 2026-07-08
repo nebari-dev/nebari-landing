@@ -1,0 +1,87 @@
+# complete code
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nebari-landing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nebari-landing
+  template:
+    metadata:
+      labels:
+        app: nebari-landing
+    spec:
+      containers:
+      - name: nebari-landing
+        image: nebari-landing:latest
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nebari-landing-config
+data:
+  forward-access-token: "true"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nebari-landing-secret
+type: Opaque
+data:
+  forward-access-token: <base64 encoded value of "true">
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nebari-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nebari-operator
+  template:
+    metadata:
+      labels:
+        app: nebari-operator
+    spec:
+      containers:
+      - name: nebari-operator
+        image: nebari-operator:latest
+        env:
+        - name: FORWARD_ACCESS_TOKEN
+          valueFrom:
+            configMapKeyRef:
+              name: nebari-landing-config
+              key: forward-access-token
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nebari-landing
+spec:
+  selector:
+    app: nebari-landing
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nebari-operator
+spec:
+  selector:
+    app: nebari-operator
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  type: LoadBalancer

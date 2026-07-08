@@ -1,0 +1,15 @@
+# complete code
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nebari-operator-config
+data:
+  forward-access-token: "true"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nebari-operator-secret
+type: Opaque
+data:
+  forward-access-token: <base64 encoded value of "true">
