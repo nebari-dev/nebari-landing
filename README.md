@@ -106,7 +106,7 @@ Release artifacts — the Go webapi binary (linux/darwin, amd64/arm64) and the p
 | **SSO-Aware** | keycloak-js PKCE in the browser, JWT validation by the webapi — users land authenticated, admins see admin controls |
 | **Pins & Access Requests** | Users can pin favourite services and request access to restricted ones |
 | **shadcn/ui + Tailwind** | Accessible UI primitives with theme tokens; no design-system runtime to ship |
-| **Runtime Branding** | Custom title, logo, favicon, and CSS theme tokens — no image rebuild required |
+| **Runtime Branding** | Custom title, logo, favicon, CSS theme tokens, and classification banners — no image rebuild required |
 
 ## Branding & Theming
 
@@ -123,6 +123,8 @@ settings to the document before React mounts. No image rebuild is needed — cha
 | `frontend.branding.faviconUrl` | string | URL to a custom favicon |
 | `frontend.branding.theme.light` | map | CSS variable overrides for light mode |
 | `frontend.branding.theme.dark` | map | CSS variable overrides for dark mode |
+| `frontend.branding.banners.top` | map | Classification banner pinned above the header (see below) |
+| `frontend.branding.banners.bottom` | map | Classification banner pinned below the page content (see below) |
 
 ### Supported theme tokens
 
@@ -132,6 +134,36 @@ The `theme.light` and `theme.dark` maps accept any combination of these token na
 
 Each token maps to a CSS custom property on `:root` (light) or `.dark` (dark). For example, `primary: "#0066cc"`
 becomes `--primary: #0066cc;`.
+
+### Classification banners
+
+Deployments in regulated or government environments often require a persistent classification banner (e.g.
+[CUI](https://www.archives.gov/cui)) pinned to the top and bottom of every page. The `banners.top` and
+`banners.bottom` maps each accept:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `text` | string | Banner text, rendered as plain text (HTML is never interpreted). A banner is disabled while its `text` is empty — the default — so standard deployments show no banner and no layout shift |
+| `background` | string | Optional CSS background color. Defaults to the theme foreground color, which follows light/dark mode |
+| `foreground` | string | Optional CSS text color. Defaults to the theme background color, which follows light/dark mode |
+
+```yaml
+frontend:
+  branding:
+    banners:
+      top:
+        text: "CUI"
+        background: "#502b85"
+        foreground: "#ffffff"
+      bottom:
+        text: "CUI"
+        background: "#502b85"
+        foreground: "#ffffff"
+```
+
+The exact text and colors mandated for your environment are policy-specific — this chart provides the mechanism;
+operators supply values per their compliance requirements. Banners are deployment-global (the same on every page)
+and non-interactive.
 
 ### Example
 
@@ -152,8 +184,8 @@ frontend:
         primaryForeground: "#000000"
 ```
 
-> **Security note:** Token values are validated at runtime. Values containing CSS injection vectors (`;`, `{`, `}`,
-> `url()`, `expression()`, `javascript:`, etc.) are silently dropped.
+> **Security note:** Theme token and banner color values are validated at runtime. Values containing CSS injection
+> vectors (`;`, `{`, `}`, `url()`, `expression()`, `javascript:`, etc.) are silently dropped.
 
 ## Helm Install
 
