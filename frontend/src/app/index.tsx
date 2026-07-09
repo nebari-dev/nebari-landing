@@ -1,6 +1,7 @@
 import { signOut } from "@/auth/keycloak";
 import { useUser } from "@/auth/user";
 
+import { Banner } from "../components/Banner";
 import { Content } from "../components/Content";
 import { Header } from "../components/Header";
 import { useTheme } from "../hooks/ThemeContext";
@@ -16,6 +17,7 @@ export default function App() {
 
   return (
     <main className="w-full">
+      <Banner config={config?.banners?.top} />
       <Header
         isDarkMode={isDarkMode}
         themeMode={themeMode}
@@ -29,6 +31,7 @@ export default function App() {
       />
 
       <Content services={services} onTogglePin={onTogglePin} />
+      <Banner config={config?.banners?.bottom} />
     </main>
   );
 }

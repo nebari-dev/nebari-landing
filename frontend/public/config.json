@@ -7,5 +7,9 @@
   "title": "",
   "logoUrl": "",
   "logoUrlDark": "",
-  "faviconUrl": ""
+  "faviconUrl": "",
+  "banners": {
+    "top": {},
+    "bottom": {}
+  }
 }

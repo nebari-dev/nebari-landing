@@ -21,6 +21,15 @@ export type ThemeTokens = {
   radius?: string;
 };
 
+export type BannerConfig = {
+  /** Banner text, rendered as plain text (never HTML). */
+  text: string;
+  /** Optional CSS background color. Falls back to the theme foreground color. */
+  background?: string;
+  /** Optional CSS text color. Falls back to the theme background color. */
+  foreground?: string;
+};
+
 export type AppConfig = {
   keycloak: { url: string; realm: string; clientId: string };
   /** Optional page title override shown in the browser tab. */
@@ -36,6 +45,11 @@ export type AppConfig = {
   faviconUrl?: string;
   /** Optional CSS variable overrides for light and dark mode. */
   theme?: { light?: ThemeTokens; dark?: ThemeTokens };
+  /**
+   * Optional classification banners (e.g. CUI) pinned above the header and
+   * below the page content.
+   */
+  banners?: { top?: BannerConfig; bottom?: BannerConfig };
 };
 
 let _config: AppConfig | null = null;
@@ -76,6 +90,11 @@ export function getAppConfig(): AppConfig | null {
 
 // Block CSS injection vectors: rule terminators, braces, HTML chars, url()/expression()/javascript:
 const UNSAFE_CSS = /[;<>{}"'\\]|url\s*\(|expression\s*\(|javascript:/i;
+
+/** Returns the value unchanged if it is a safe CSS token, otherwise undefined. */
+export function safeCssValue(value: string | undefined): string | undefined {
+  return value && !UNSAFE_CSS.test(value) ? value : undefined;
+}
 const toKebab = (s: string) => s.replace(/([A-Z])/g, "-$1").toLowerCase();
 const toCssVars = (tokens: Record<string, string>) =>
   Object.entries(tokens)

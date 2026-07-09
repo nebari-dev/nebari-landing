@@ -73,6 +73,23 @@ frontend:
     theme:
       light: {}
       dark: {}
+    # Optional classification banners (e.g. U.S. government CUI markings)
+    # rendered full-width above the header (top) and below the page content
+    # (bottom). Rendered into /config.json at runtime — no image rebuild.
+    # A banner is disabled while its text is empty. background/foreground
+    # accept CSS color values; when omitted the banner uses the theme's
+    # inverted colors, which follow light/dark mode.
+    # Example:
+    #   banners:
+    #     top:
+    #       text: "CUI"
+    #       background: "#502b85"
+    #       foreground: "#ffffff"
+    #     bottom:
+    #       text: "CUI"
+    banners:
+      top: {}
+      bottom: {}
 
   resources:
     requests:
