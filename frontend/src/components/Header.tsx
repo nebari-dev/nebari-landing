@@ -80,7 +80,7 @@ export function Header(props: HeaderProps): ReactNode {
   };
 
   return (
-    <header className="flex h-[60px] w-full items-center justify-between border-b bg-background px-10">
+    <header className="flex h-[60px] w-full items-center justify-between border-b bg-header-background px-10">
       <div className="flex items-center">
         <a href={homeHref} className="flex items-center" aria-label="Go to homepage">
           <img src={logoSrc} alt="Nebari" className="h-8 w-auto" />

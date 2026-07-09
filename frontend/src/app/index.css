@@ -9,6 +9,8 @@
   --background: #ffffff;
   --foreground: #1b1b1b;
 
+  --header-background: #f8f8f8;
+
   --card: #ffffff;
   --card-foreground: #1b1b1b;
 
@@ -70,6 +72,8 @@
 .dark {
   --background: #111418;
   --foreground: #f3f5f6;
+
+  --header-background: #353538;
 
   --card: #111418;
   --card-foreground: #f3f5f6;
@@ -171,6 +175,7 @@
 
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-header-background: var(--header-background);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
