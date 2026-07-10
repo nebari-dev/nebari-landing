@@ -1,6 +1,8 @@
 # Nebari Landing docs (Astro + Starlight)
 
-Astro-powered documentation site for `nebari-landing`, built on Starlight with the shared `@nebari/starlight` theme. Mirrors the pattern used by `nebari-dev/llm-serving-pack`.
+Astro-powered documentation site for `nebari-landing`, built on Starlight with the shared `@nebari/starlight` theme. Mirrors the pattern used by `nebari-dev/llm-serving-pack`, but with a simpler GitHub Pages target while the Cloudflare Pages / `packs.nebari.dev` routing is decided in a separate PR.
+
+Deployed at **`https://nebari-dev.github.io/nebari-landing/`** (GitHub Pages project site).
 
 ## Local development
 
@@ -23,6 +25,37 @@ Relative to this directory:
 - `src/plugins/remark-base-links.ts` - rewrites root-absolute links when deployed under a subpath
 - `tests/remark-base-links.test.ts` - vitest for the plugin
 
+Related, at the repo root:
+
+- `.github/workflows/docs.yml` - build, link-check, deploy to GitHub Pages on push-to-main
+- `scripts/check-links.sh` - internal-link validator against `docs/dist/`
+
+## Deploy pipeline
+
+`docs.yml` runs on push-to-main and on PRs touching `docs/**`, `scripts/check-links.sh`, or the workflow itself. Both events run the build job; only `push` to `main` runs the deploy job.
+
+Build job:
+
+1. Node 22, `npm ci` in `docs/`.
+2. Installs Playwright (for `rehype-mermaid`).
+3. Runs `vitest` (the `remark-base-links` plugin test).
+4. Builds with `SITE=https://nebari-dev.github.io` and `BASE=/nebari-landing/` so absolute links resolve correctly under the org-pages subpath. The `remark-base-links` plugin rewrites markdown links at build time.
+5. Runs `scripts/check-links.sh` against `docs/dist/` - every internal `href`/`src` must resolve to a file.
+6. Uploads `docs/dist/` as the Pages artifact.
+
+Deploy job (main only): `actions/deploy-pages` publishes the artifact.
+
+## Prerequisites (one-time)
+
+Before the first push-to-main deploy will succeed, GitHub Pages needs to be enabled on the repo:
+
+1. **Settings -> Pages -> Source: GitHub Actions.** The `pages:write` + `id-token:write` permissions in the workflow rely on this.
+2. On the first successful deploy the URL becomes `https://nebari-dev.github.io/nebari-landing/`.
+
+No secrets required beyond the built-in `GITHUB_TOKEN`. No third-party project setup.
+
+Cloudflare Pages + `packs.nebari.dev/nebari-landing/` routing (via `nebari-dev/software-pack-dashboard`) is a follow-up: once the docs are proven on GitHub Pages, the same build artifact can be redirected to a Cloudflare Pages project and the pack registered upstream.
+
 ## Migration status
 
 Only the initial pages are wired into the sidebar:
@@ -39,12 +72,7 @@ Still to migrate into `src/content/docs/` and into the sidebar in `astro.config.
 
 Each migration is mechanical: add a `title:` and `description:` frontmatter block, move the file into `src/content/docs/`, add a sidebar entry in `astro.config.mjs`, and update any relative links (an absolute link to GitHub is fine while cross-file wiki-linking is not yet configured).
 
-## Deploy target
-
-`BASE` and `SITE` env vars drive the deploy path. Local dev uses `/` (both unset). CI can set them for a subpath deploy - e.g. `SITE=https://packs.nebari.dev BASE=/nebari-landing/`. The `remark-base-links` plugin rewrites root-absolute links accordingly at build time.
-
 ## Not yet added
 
-- CI workflow (`docs.yml`). See `nebari-dev/llm-serving-pack/.github/workflows/docs.yml` for the pattern to mirror when the target host + slug are decided.
-- Favicon and brand assets (currently inherited from `@nebari/starlight`).
-- `make docs` integration - the current target regenerates `docs/api.md`, `docs/assets/api-*.svg`, and frontend MSW handlers. When `api.md` moves into `src/content/docs/`, the swag / gendocs pipeline needs to write there instead (or a symlink `docs/api.md -> src/content/docs/api.md`).
+- `make docs` integration - the current target regenerates `docs/api.md`, `docs/assets/api-*.svg`, and frontend MSW handlers. When `api.md` moves under `src/content/docs/`, the swag / gendocs pipeline needs to write there instead (or a symlink `docs/api.md -> src/content/docs/api.md`).
+- Custom favicon / brand asset overrides beyond what `@nebari/starlight` provides.
