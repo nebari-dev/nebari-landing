@@ -50,10 +50,10 @@ jobs:
 
     steps:
       # ── Checkout ─────────────────────────────────────────────────────────────
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       # ── Go toolchain ─────────────────────────────────────────────────────────
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
           cache: false
@@ -61,7 +61,7 @@ jobs:
       # Unified Go cache — covers both e2e test modules and any Go build inside
       # the sandbox action (NIC binary), so the sandbox step benefits too.
       - name: Cache Go modules
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/go/pkg/mod
@@ -163,7 +163,7 @@ jobs:
       # an argocd-self-heal toggle. Pinned to @main until v1.1+ is cut.
       - name: Setup Nebari Sandbox
         id: sandbox
-        uses: nebari-dev/action-nebari-sandbox@main
+        uses: nebari-dev/action-nebari-sandbox@09f542cdbcb0ed74307f86fee4f8ad0053a4cd8f # main
         with:
           profile: platform
           cluster-name: nebari-e2e
