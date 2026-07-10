@@ -1,4 +1,7 @@
-# Nebari Landing Release Checklist
+---
+title: Release Checklist
+description: Step-by-step instructions for cutting a new nebari-landing release - version bump, tag, GitHub release, images, Helm chart, and helm-repository sync.
+---
 
 This document provides step-by-step instructions for creating a new release of nebari-landing.
 

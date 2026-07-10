@@ -1,4 +1,7 @@
-# Design Document: Nebari Landing Page
+---
+title: Landing Page Design
+description: Design decisions and architecture for the Nebari Landing page - service discovery, auth, SSO integration, and the split between the operator and the landing frontend.
+---
 
 **Status:** Draft **Author:** @viniciusdc **Created:** 2026-01-12 **Last Updated:** 2026-02-24
 
@@ -1901,7 +1904,7 @@ nebari-operator/
 
 ### References
 
-- [nebari-operator README](../../README.md)
+- [nebari-operator README](https://github.com/nebari-dev/nebari-operator/blob/main/README.md)
 - [Kubernetes Operator Pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/)
 - [React 19 Documentation](https://react.dev/)
 - [react-uswds (Trussworks)](https://github.com/trussworks/react-uswds)
