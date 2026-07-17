@@ -213,8 +213,29 @@ components:
         message:
           description: Message is the body text of the notification.
           type: string
+        requiredGroups:
+          description: |-
+            RequiredGroups mirrors ServiceInfo.RequiredGroups when the source
+            service is private. Consumed by canAccessPolicy.
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        serviceUid:
+          description: |-
+            ServiceUID, when non-empty, ties this notification to a specific
+            NebariApp for per-caller access filtering. Producer sites (watcher
+            lifecycle events, health-checker transitions) populate this from the
+            source ServiceInfo; admin-created broadcast notifications leave it
+            empty and route through the fan-out-to-all path.
+          type: string
         title:
           description: Title is the short heading of the notification.
+          type: string
+        visibility:
+          description: |-
+            Visibility mirrors ServiceInfo.Visibility for the source service:
+            "public" | "private" | "" (untagged). Consumed by canAccessPolicy.
           type: string
       type: object
   securitySchemes:

@@ -706,10 +706,23 @@ func (h *Handler) handleGetNotifications(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		// Overlay per-user read state when the caller is authenticated.
+		// Resolve caller identity without forcing auth — notifications are
+		// listable anonymously; when the caller carries a valid token we
+		// overlay per-user read state and honor per-service access filtering.
+		//
+		// Previous revision called requireAuth(), which writes a 401 to the
+		// response for bad-token cases but fell through and then encoded the
+		// full list — that leaked notifications into the same response as a
+		// 401 header (issue #166). Using extractAndValidateJWT keeps the path
+		// anon-tolerant and never double-writes.
+		claims, authenticated, err := h.extractAndValidateJWT(r)
+		if errors.Is(err, auth.ErrNotReady) {
+			writeAuthWarmupResponse(w)
+			return
+		}
+
 		var readSet map[string]bool
-		claims, ok := h.requireAuth(w, r)
-		if ok && claims.PreferredUsername != "_anonymous" {
+		if authenticated && claims != nil && claims.PreferredUsername != "" {
 			readSet, _ = h.notificationStore.ReadSet(claims.PreferredUsername)
 		}
 		if readSet == nil {
@@ -718,6 +731,20 @@ func (h *Handler) handleGetNotifications(w http.ResponseWriter, r *http.Request)
 
 		items = make([]NotificationItem, 0, len(notifs))
 		for _, n := range notifs {
+			// Notifications tied to a source service must respect the same
+			// canAccessPolicy the REST /services endpoint enforces: a private
+			// service's lifecycle notifications must not leak to callers
+			// outside its RequiredGroups. Untagged notifications (admin
+			// broadcast, welcome messages) fall through to everyone.
+			if n.ServiceUID != "" {
+				var groups []string
+				if authenticated && claims != nil {
+					groups = claims.Groups
+				}
+				if !canAccessPolicy(n.Visibility, authenticated, n.RequiredGroups, groups) {
+					continue
+				}
+			}
 			items = append(items, NotificationItem{
 				ID:        n.ID,
 				Image:     n.Image,
