@@ -30,5 +30,13 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
+      - name: Build Helm dependencies
+        run: helm dependency build charts/nebari-landing
+
       - name: Lint Helm chart
         run: helm lint charts/nebari-landing
+
+      - name: Assert rendered resource defaults
+        run: |
+          helm template nebari-landing charts/nebari-landing --namespace nebari-system \
+            | ruby charts/nebari-landing/tests/assert-resource-defaults.rb
