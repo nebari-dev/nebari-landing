@@ -273,3 +273,148 @@ func TestHandleAdminCreateNotification_PublishesToHub(t *testing.T) {
 		t.Errorf("unexpected title %q", frame.Notification.Title)
 	}
 }
+
+// --- GET /api/v1/notifications: per-caller filter (issue #170) ---
+
+// newNotifHandlerWithClaims wires a handler with auth enabled, a claims
+// extractor (so we can simulate authenticated / anonymous / bad-token
+// callers without a live JWT validator), and a notification store.
+func newNotifHandlerWithClaims(sc *cache.ServiceCache, store *notifications.Store, extractor func(*http.Request) (*auth.Claims, bool)) *Handler {
+	return NewHandler(sc, nil, true, nil, nil,
+		WithNotificationStore(store),
+		WithClaimsExtractor(extractor),
+	)
+}
+
+// listNotifs runs GET /api/v1/notifications through the handler and returns
+// the decoded titles in response order (newest first per the store).
+func listNotifs(t *testing.T, h *Handler) (int, []string) {
+	t.Helper()
+	rr := doGet(t, h.Routes(), "/api/v1/notifications")
+	if rr.Code != http.StatusOK {
+		return rr.Code, nil
+	}
+	var body struct {
+		Notifications []NotificationItem `json:"notifications"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	titles := make([]string, 0, len(body.Notifications))
+	for _, n := range body.Notifications {
+		titles = append(titles, n.Title)
+	}
+	return rr.Code, titles
+}
+
+// seedNotifs writes three notifications covering the three access shapes:
+// untagged (broadcast), tagged-public (visible to all), and tagged-private
+// with a required group (visible only to callers in that group). Titles are
+// used by the assertions.
+func seedNotifs(t *testing.T, s *notifications.Store) {
+	t.Helper()
+	if _, err := s.CreateDraft(notifications.Draft{Title: "welcome"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateDraft(notifications.Draft{Title: "public-lifecycle", ServiceUID: "svc-pub", Visibility: "public"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateDraft(notifications.Draft{Title: "private-lifecycle", ServiceUID: "svc-priv", Visibility: "private", RequiredGroups: []string{"argocd-admins"}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHandleGetNotifications_MemberInGroup_SeesAll(t *testing.T) {
+	store := newNotifStore(t)
+	seedNotifs(t, store)
+	claims := &auth.Claims{PreferredUsername: "admin", Groups: []string{"argocd-admins"}}
+	h := newNotifHandlerWithClaims(cache.NewServiceCache(), store,
+		func(_ *http.Request) (*auth.Claims, bool) { return claims, true })
+	code, titles := listNotifs(t, h)
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	if len(titles) != 3 {
+		t.Errorf("group member should see all 3 notifications, got %v", titles)
+	}
+}
+
+func TestHandleGetNotifications_NonMember_PrivateFiltered(t *testing.T) {
+	// This is the #170 regression guard: Alice was in argocd-viewers only,
+	// received the private-service lifecycle notification because REST list
+	// had no filter, and the SPA rendered it in her feed even though the
+	// service card itself was correctly hidden.
+	store := newNotifStore(t)
+	seedNotifs(t, store)
+	claims := &auth.Claims{PreferredUsername: "alice", Groups: []string{"argocd-viewers"}}
+	h := newNotifHandlerWithClaims(cache.NewServiceCache(), store,
+		func(_ *http.Request) (*auth.Claims, bool) { return claims, true })
+	code, titles := listNotifs(t, h)
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	got := map[string]bool{}
+	for _, tt := range titles {
+		got[tt] = true
+	}
+	if got["private-lifecycle"] {
+		t.Errorf("non-member alice must NOT see private-lifecycle; got titles=%v", titles)
+	}
+	if !got["welcome"] || !got["public-lifecycle"] {
+		t.Errorf("alice should still see untagged + public; got titles=%v", titles)
+	}
+}
+
+func TestHandleGetNotifications_Anonymous_OnlyPublicAndUntagged(t *testing.T) {
+	// Anonymous callers (no valid claims) may only see notifications that
+	// canAccessPolicy would allow: untagged broadcasts and tagged-public.
+	// Tagged-private is authenticated-only regardless of RequiredGroups.
+	store := newNotifStore(t)
+	seedNotifs(t, store)
+	h := newNotifHandlerWithClaims(cache.NewServiceCache(), store,
+		func(_ *http.Request) (*auth.Claims, bool) { return nil, false })
+	code, titles := listNotifs(t, h)
+	if code != http.StatusOK {
+		t.Fatalf("expected 200 for anon, got %d", code)
+	}
+	got := map[string]bool{}
+	for _, tt := range titles {
+		got[tt] = true
+	}
+	if got["private-lifecycle"] {
+		t.Errorf("anon must NOT see private notifications; got titles=%v", titles)
+	}
+	if !got["welcome"] || !got["public-lifecycle"] {
+		t.Errorf("anon should see untagged + public; got titles=%v", titles)
+	}
+}
+
+func TestHandleGetNotifications_AuthFailure_DoesNotLeakList(t *testing.T) {
+	// Issue #166: handleGetNotifications previously called requireAuth,
+	// which writes a 401 for a bad token but the handler fell through and
+	// then encoded the full list into the same response. This test locks
+	// in that the handler stops at the auth-failure point and never emits
+	// the list body afterwards.
+	//
+	// The new implementation uses extractAndValidateJWT (not requireAuth),
+	// which returns authenticated=false without writing a 401 for bad-token
+	// cases. Bad-token callers are then treated exactly like anonymous
+	// callers: they get untagged + tagged-public only, never tagged-private.
+	// That behavior is asserted here.
+	store := newNotifStore(t)
+	seedNotifs(t, store)
+	// Simulate a bad token: extractor reports "not ok" (as extractAndValidateJWT
+	// does for an invalid Bearer). Handler must treat as anonymous, not leak
+	// private notifications.
+	h := newNotifHandlerWithClaims(cache.NewServiceCache(), store,
+		func(_ *http.Request) (*auth.Claims, bool) { return nil, false })
+	code, titles := listNotifs(t, h)
+	if code != http.StatusOK {
+		t.Fatalf("expected 200 (bad-token treated as anon), got %d", code)
+	}
+	for _, tt := range titles {
+		if tt == "private-lifecycle" {
+			t.Errorf("bad-token caller must not receive tagged-private notifications; got %v", titles)
+		}
+	}
+}

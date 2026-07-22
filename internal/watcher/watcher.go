@@ -104,13 +104,21 @@ func (w *NebariAppWatcher) SetNotificationPublisher(p NotificationPublisher) {
 	w.notifPublisher = p
 }
 
-// postNotif creates a notification and broadcasts it to WebSocket clients.
-// Errors are logged but not propagated.
-func (w *NebariAppWatcher) postNotif(image, title, message string) {
+// postNotif creates a notification tied to a source service (for per-caller
+// access filtering) and broadcasts it to WebSocket clients. svc must be
+// non-nil; the caller has already resolved it from cache. Errors are logged
+// but not propagated.
+func (w *NebariAppWatcher) postNotif(svc *landingcache.ServiceInfo, image, title, message string) {
 	if w.notifStore == nil {
 		return
 	}
-	n, err := w.notifStore.Create(image, title, message)
+	d := notifications.Draft{Image: image, Title: title, Message: message}
+	if svc != nil {
+		d.ServiceUID = svc.UID
+		d.Visibility = svc.Visibility
+		d.RequiredGroups = svc.RequiredGroups
+	}
+	n, err := w.notifStore.CreateDraft(d)
 	if err != nil {
 		log.Error(err, "Failed to post automatic notification", "title", title)
 		return
@@ -247,7 +255,7 @@ func (w *NebariAppWatcher) onAdd(obj interface{}) {
 				}
 				icon = svc.IconURL()
 			}
-			w.postNotif(icon,
+			w.postNotif(svc, icon,
 				fmt.Sprintf("%s is now available", name),
 				fmt.Sprintf("%s has been added to Nebari and is ready to use.", name),
 			)
@@ -290,7 +298,7 @@ func (w *NebariAppWatcher) onUpdate(_, newObj interface{}) {
 			if name == "" {
 				name = svc.Name
 			}
-			w.postNotif(svc.IconURL(),
+			w.postNotif(svc, svc.IconURL(),
 				fmt.Sprintf("%s has been removed", name),
 				fmt.Sprintf("%s is no longer available on this Nebari deployment.", name),
 			)
@@ -320,7 +328,7 @@ func (w *NebariAppWatcher) onDelete(obj interface{}) {
 		if name == "" {
 			name = svc.Name
 		}
-		w.postNotif(svc.IconURL(),
+		w.postNotif(svc, svc.IconURL(),
 			fmt.Sprintf("%s has been removed", name),
 			fmt.Sprintf("%s is no longer available on this Nebari deployment.", name),
 		)

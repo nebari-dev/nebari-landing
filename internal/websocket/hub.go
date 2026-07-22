@@ -29,8 +29,11 @@
 // ServiceAccessPolicy supplied through SetAccessPolicy. The handler that owns
 // the per-request policy (`api.Handler.CanAccessService`) is the natural
 // implementer; the hub stays identity-agnostic by taking a small Principal
-// value type rather than importing the JWT package. NotificationEvent stays
-// fan-out-to-all — the hub does not need to know who should see notifications.
+// value type rather than importing the JWT package. NotificationEvent applies
+// the same policy for notifications tied to a source service (ServiceUID set)
+// by synthesizing a ServiceInfo carrying the source service's Visibility and
+// RequiredGroups; untagged notifications (admin broadcasts) still fan out to
+// every connected client.
 //
 // Conventions
 //
@@ -220,9 +223,21 @@ func (h *Hub) dispatch(payload []byte) {
 			return
 		}
 		h.broadcastService(&ev, payload)
+	case EventNotificationCreate:
+		var ev NotificationEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Info("WebSocket: malformed notification event, dropping",
+				"error", err.Error())
+			return
+		}
+		if ev.Notification == nil {
+			log.Info("WebSocket: notification event with nil Notification field, dropping")
+			return
+		}
+		h.broadcastNotification(&ev, payload)
 	default:
-		// Notifications and any forward-compat unknown types: fan out to all.
-		// Filtering notifications is a separate follow-up (#95 out-of-scope).
+		// Forward-compat unknown types: fan out to all so a newer publisher
+		// stays deliverable through an older hub.
 		h.broadcastAll(payload)
 	}
 }
@@ -254,8 +269,54 @@ func (h *Hub) broadcastService(ev *ServiceEvent, raw []byte) {
 	}
 }
 
+// broadcastNotification delivers a notification-created event with the same
+// per-client access filtering the service-event path applies. Notifications
+// tied to a source service (ServiceUID set) are gated by the shared
+// ServiceAccessPolicy against a synthesized ServiceInfo carrying the source
+// service's Visibility and RequiredGroups; untagged notifications (admin
+// broadcasts, welcome messages) fan out to every connected client.
+//
+// The synthesized ServiceInfo is enough because the policy consumes only
+// Visibility and RequiredGroups — cheaper than plumbing a second policy
+// method and keeps the "REST and WS see the same decision" invariant.
+func (h *Hub) broadcastNotification(ev *NotificationEvent, raw []byte) {
+	h.mu.RLock()
+	policy := h.policy
+	clients := make([]*client, 0, len(h.clients))
+	for c := range h.clients {
+		clients = append(clients, c)
+	}
+	h.mu.RUnlock()
+
+	// Untagged notifications: fan out to all. No policy consultation needed.
+	if ev.Notification.ServiceUID == "" {
+		for _, c := range clients {
+			h.writeOrDrop(c, raw)
+		}
+		return
+	}
+
+	if policy == nil {
+		h.nilPolicyWarn.Do(func() {
+			log.Info("WebSocket: no access policy set — notification events will fan out to every client; call Hub.SetAccessPolicy in production wiring (issue #170 regression risk)")
+		})
+	}
+
+	proxy := &landingcache.ServiceInfo{
+		UID:            ev.Notification.ServiceUID,
+		Visibility:     ev.Notification.Visibility,
+		RequiredGroups: ev.Notification.RequiredGroups,
+	}
+	for _, c := range clients {
+		if policy != nil && !policy.CanAccessService(proxy, c.principal) {
+			continue
+		}
+		h.writeOrDrop(c, raw)
+	}
+}
+
 // broadcastAll delivers a frame to every connected client unconditionally.
-// Used for NotificationEvent and any unknown event types (forward-compat).
+// Used for forward-compat unknown event types only.
 func (h *Hub) broadcastAll(raw []byte) {
 	h.mu.RLock()
 	clients := make([]*client, 0, len(h.clients))
