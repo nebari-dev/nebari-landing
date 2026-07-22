@@ -61,7 +61,7 @@ test("services toolbar stays on one row and keeps search text sizing stable", as
     const searchButton = allServicesRegion.getByRole("button", {
       name: /^Search$/,
     });
-    const viewToggle = allServicesRegion.getByRole("group");
+    const viewToggle = allServicesRegion.getByRole("radiogroup");
 
     const inputBox = await getBox(searchInput);
     const buttonBox = await getBox(searchButton);
@@ -92,6 +92,9 @@ test("services table keeps headers and rows in bounds while resizing", async ({ 
       name: /All services/i,
     });
     await expect(allServicesRegion).toBeVisible();
+
+    // Grid is the default view, so switch to the table view this test exercises.
+    await allServicesRegion.getByRole("radio", { name: /Table view/i }).click();
 
     const tableContainer = page.locator('[data-slot="table-container"]').first();
     const actionsHeader = page.getByRole("columnheader", { name: /Actions/i }).getByText("Actions");

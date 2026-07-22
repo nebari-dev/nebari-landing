@@ -57,8 +57,14 @@ type LandingPage struct {
 	// Description is supplementary text for the service card.
 	Description string
 
-	// Icon identifies the service icon (built-in name or image URL).
+	// Icon is the default service icon URL, shown in both light and dark mode.
 	Icon string
+
+	// IconLight overrides Icon when the UI is in light mode.
+	IconLight string
+
+	// IconDark overrides Icon when the UI is in dark mode.
+	IconDark string
 
 	// Category groups related services on the landing page.
 	Category string

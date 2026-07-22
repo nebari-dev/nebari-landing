@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { renderWithProviders as render } from "@/test/render";
+import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ServicesAccordion } from "@/components/ServiceAccordion";
 

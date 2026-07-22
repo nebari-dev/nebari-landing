@@ -74,12 +74,18 @@ export async function getToken(): Promise<string> {
     throw new SessionExpiredError();
   }
 
-  return _keycloak.token!;
+  const token = _keycloak.token;
+  if (!token) {
+    _keycloak.login();
+    throw new SessionExpiredError();
+  }
+
+  return token;
 }
 
 export function signIn() {
   if (_keycloak) {
-    _keycloak.login({ redirectUri: window.location.origin + "/" });
+    _keycloak.login({ redirectUri: `${window.location.origin}/` });
   } else {
     window.location.href = "/";
   }
@@ -87,7 +93,7 @@ export function signIn() {
 
 export function signOut() {
   if (_keycloak) {
-    _keycloak.logout({ redirectUri: window.location.origin + "/" });
+    _keycloak.logout({ redirectUri: `${window.location.origin}/` });
   } else {
     window.location.href = "/";
   }

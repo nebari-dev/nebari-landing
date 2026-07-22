@@ -17,7 +17,11 @@ export function PinnedServiceCard({ service }: PinnedServiceCardProps) {
     >
       <Card className="h-24 border border-border bg-card text-card-foreground shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
         <CardContent className="flex h-full items-center gap-4 p-6">
-          <ServiceIcon imageUrl={service.image} />
+          <ServiceIcon
+            image={service.image}
+            imageLight={service.imageLight}
+            imageDark={service.imageDark}
+          />
 
           <div className="min-w-0">
             <p className="truncate text-[16px] font-bold leading-none text-foreground">

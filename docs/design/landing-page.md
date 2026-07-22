@@ -1582,6 +1582,9 @@ The landing page supports runtime branding without requiring a container image r
    - Sets `document.title` if `title` is provided.
    - Creates/updates the `<link rel="icon">` element if `faviconUrl` is provided.
    - Injects a `<style>` tag with CSS custom property overrides for `:root` (light) and `.dark` (dark) if `theme` tokens are provided.
+4. The cached config (`getAppConfig()`) exposes `logoUrl` and `logoUrlDark` to the `Header`, which renders the dark logo
+   in dark mode, falling back to `logoUrl` and then the built-in Nebari logo when either is empty. Logo URLs are
+   validated as well-formed http(s) (or root-relative) URLs at load time — malformed values are dropped.
 
 ### Configuration reference
 
@@ -1592,6 +1595,9 @@ frontend:
     title: ""
     # URL to a custom logo image shown in the header.
     logoUrl: ""
+    # URL to a custom dark-mode logo image. Falls back to logoUrl, then the
+    # built-in Nebari logo, when empty.
+    logoUrlDark: ""
     # URL to a custom favicon.
     faviconUrl: ""
     # CSS variable overrides — applied at runtime, no rebuild needed.
@@ -1610,6 +1616,7 @@ frontend:
   branding:
     title: "My Platform"
     logoUrl: "https://cdn.example.com/logo.png"
+    logoUrlDark: "https://cdn.example.com/logo-dark.png"
     faviconUrl: "https://cdn.example.com/favicon.ico"
     theme:
       light:

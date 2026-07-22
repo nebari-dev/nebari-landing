@@ -6,5 +6,10 @@
   },
   "title": "",
   "logoUrl": "",
-  "faviconUrl": ""
+  "logoUrlDark": "",
+  "faviconUrl": "",
+  "banners": {
+    "top": {},
+    "bottom": {}
+  }
 }

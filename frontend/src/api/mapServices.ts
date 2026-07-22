@@ -15,6 +15,8 @@ export function mapService(service: BackendSocketService): Service {
     category: service.category ? [service.category] : [],
     pinned: false,
     image: service.icon,
+    imageLight: service.iconLight,
+    imageDark: service.iconDark,
     url: service.url,
   };
 }

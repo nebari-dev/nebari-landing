@@ -41,7 +41,8 @@ spec:
     enabled: true
     displayName: "JupyterHub"
     description: "Interactive Python notebooks for data science"
-    icon: "https://jupyter.org/assets/homepage/main-logo.svg"
+    iconLight: https://raw.githubusercontent.com/nebari-dev/nebari-data-science-pack/main/assets/icons/jupyter-icon-light.svg
+    iconDark: https://raw.githubusercontent.com/nebari-dev/nebari-data-science-pack/main/assets/icons/jupyter-icon-dark.svg
     category: "Data Science"
     priority: 1
     healthCheck:

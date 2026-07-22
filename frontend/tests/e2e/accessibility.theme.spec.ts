@@ -5,13 +5,24 @@ test("dark theme loads correctly and has no detectable accessibility violations"
   makeAxeBuilder,
 }, testInfo) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("launchpad:isDarkMode", "true");
+    window.localStorage.setItem("launchpad:themeMode", "dark");
   });
 
   await page.goto("/");
 
   await expect(page.locator("html")).toHaveClass(/dark/);
-  await expect(page.getByRole("button", { name: /switch to light mode/i })).toBeVisible();
+
+  // The theme toggle now lives inside the profile menu as a radio group.
+  await page.getByRole("button", { name: /account menu/i }).click();
+  const darkOption = page.getByRole("menuitemradio", { name: /dark mode/i });
+  await expect(darkOption).toBeVisible();
+  await expect(darkOption).toHaveAttribute("aria-checked", "true");
+
+  // The menu fades in (fade-in-0, duration-100). Wait for it to reach full
+  // opacity so axe measures the settled colors rather than the mid-animation
+  // composite, which reports false color-contrast violations.
+  const menuContent = page.locator('[data-slot="dropdown-menu-content"]');
+  await expect(menuContent).toHaveCSS("opacity", "1");
 
   const results = await makeAxeBuilder().analyze();
 

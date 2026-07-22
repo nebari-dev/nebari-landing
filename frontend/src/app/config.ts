@@ -21,16 +21,35 @@ export type ThemeTokens = {
   radius?: string;
 };
 
+export type BannerConfig = {
+  /** Banner text, rendered as plain text (never HTML). */
+  text: string;
+  /** Optional CSS background color. Falls back to the theme foreground color. */
+  background?: string;
+  /** Optional CSS text color. Falls back to the theme background color. */
+  foreground?: string;
+};
+
 export type AppConfig = {
   keycloak: { url: string; realm: string; clientId: string };
   /** Optional page title override shown in the browser tab. */
   title?: string;
   /** Optional URL to a custom logo image rendered in the header. */
   logoUrl?: string;
+  /**
+   * Optional URL to a custom dark-mode logo image rendered in the header.
+   * Falls back to logoUrl (then the built-in Nebari logo) when empty.
+   */
+  logoUrlDark?: string;
   /** Optional URL to a custom favicon. */
   faviconUrl?: string;
   /** Optional CSS variable overrides for light and dark mode. */
   theme?: { light?: ThemeTokens; dark?: ThemeTokens };
+  /**
+   * Optional classification banners (e.g. CUI) pinned above the header and
+   * below the page content.
+   */
+  banners?: { top?: BannerConfig; bottom?: BannerConfig };
 };
 
 let _config: AppConfig | null = null;
@@ -44,7 +63,24 @@ export async function loadAppConfig(): Promise<AppConfig> {
   const res = await fetch("/config.json");
   if (!res.ok) throw new Error(`Failed to load /config.json: ${res.status}`);
   _config = (await res.json()) as AppConfig;
+  // Drop malformed logo URLs so a bad config value can't land in an <img src>
+  // (defence-in-depth, mirroring the theme-token sanitisation below).
+  _config.logoUrl = sanitizeUrl(_config.logoUrl);
+  _config.logoUrlDark = sanitizeUrl(_config.logoUrlDark);
   return _config;
+}
+
+// Accept only non-empty, well-formed http(s) URLs or root-relative paths;
+// anything else (including "") becomes undefined.
+function sanitizeUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (value.startsWith("/")) return value;
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:" ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Returns the cached config, or null if loadAppConfig() has not yet resolved. */
@@ -54,6 +90,11 @@ export function getAppConfig(): AppConfig | null {
 
 // Block CSS injection vectors: rule terminators, braces, HTML chars, url()/expression()/javascript:
 const UNSAFE_CSS = /[;<>{}"'\\]|url\s*\(|expression\s*\(|javascript:/i;
+
+/** Returns the value unchanged if it is a safe CSS token, otherwise undefined. */
+export function safeCssValue(value: string | undefined): string | undefined {
+  return value && !UNSAFE_CSS.test(value) ? value : undefined;
+}
 const toKebab = (s: string) => s.replace(/([A-Z])/g, "-$1").toLowerCase();
 const toCssVars = (tokens: Record<string, string>) =>
   Object.entries(tokens)

@@ -56,7 +56,7 @@ jobs:
       contents: read  # to check out this repository
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       # ── Resolve the release tag ───────────────────────────────────────────
       # Called runs pass the release tag from release.yml. Manual runs use the
@@ -110,7 +110,7 @@ jobs:
       # ── Update chart dependencies ─────────────────────────────────────────
       - name: Install Helm
         if: ${{ inputs['dry-run'] != true }}
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
       - name: Update Helm dependencies
         if: ${{ inputs['dry-run'] != true }}
@@ -122,7 +122,7 @@ jobs:
       # for updates and update the commit SHA below.
       - name: Sync chart to helm-repository
         if: ${{ inputs['dry-run'] != true }}
-        uses: nebari-dev/helm-repository/.github/actions/sync-chart@main  # TODO: Pin to working commit SHA
+        uses: nebari-dev/helm-repository/.github/actions/sync-chart@50e534337149dd70209a14047c2cbbb3319f074d # main
         with:
           chart-path: charts/nebari-landing
           token: ${{ secrets.NEBARI_HELM_REPO_TOKEN }}
@@ -131,7 +131,7 @@ jobs:
       # ── Dry-run path: lint only ────────────────────────────────────────────
       - name: Install Helm (dry-run)
         if: ${{ inputs['dry-run'] == true }}
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
       - name: Update Helm dependencies (dry-run)
         if: ${{ inputs['dry-run'] == true }}

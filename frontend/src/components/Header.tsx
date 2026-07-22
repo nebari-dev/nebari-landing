@@ -1,13 +1,18 @@
-import { Bell, ChevronDown, Moon, Sun } from "lucide-react";
+import { Bell, ChevronDown, Monitor, Moon, Sun } from "lucide-react";
+import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import type { ReactNode } from "react";
-import logoUrlDark from "../assets/nebari-logo_dark.svg";
-import logoUrlLight from "../assets/nebari-logo_light.svg";
+import builtInLogoDark from "../assets/nebari-logo_dark.svg";
+import builtInLogoLight from "../assets/nebari-logo_light.svg";
+import { isThemeMode, type ThemeMode } from "../hooks/useThemePreference";
+import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
@@ -29,31 +34,39 @@ type User = {
 export type HeaderProps = {
   homeHref?: string;
   isDarkMode?: boolean;
-  onToggleTheme?: () => void;
+  themeMode?: ThemeMode;
+  onThemeChange?: (mode: ThemeMode) => void;
   user?: User | null;
   onSignIn?: () => void;
   onSignOut?: () => void;
   notifications?: Notification[];
   onNotificationsViewed?: (ids: string[]) => void | Promise<void>;
   logoSrc?: string;
+  logoSrcDark?: string;
 };
 
 export function Header(props: HeaderProps): ReactNode {
   const {
     homeHref = "/",
     isDarkMode = false,
-    onToggleTheme,
+    themeMode = "system",
+    onThemeChange,
     user,
     onSignIn,
     onSignOut,
     notifications = [],
     onNotificationsViewed,
     logoSrc: logoSrcProp,
+    logoSrcDark: logoSrcDarkProp,
   } = props;
 
   const unreadNotifications = notifications.filter((item) => !item.read);
   const unreadCount = unreadNotifications.length;
-  const logoSrc = logoSrcProp ?? (isDarkMode ? logoUrlDark : logoUrlLight);
+  // Dark mode prefers the dark logo, then the light/general custom logo, then
+  // the built-in dark logo. Light mode uses the custom logo or the built-in.
+  const logoSrc = isDarkMode
+    ? (logoSrcDarkProp ?? logoSrcProp ?? builtInLogoDark)
+    : (logoSrcProp ?? builtInLogoLight);
 
   const initials = getUserInitials(user?.name, user?.email);
 
@@ -67,7 +80,7 @@ export function Header(props: HeaderProps): ReactNode {
   };
 
   return (
-    <header className="flex h-[60px] w-full items-center justify-between border-b bg-background px-10">
+    <header className="flex h-[60px] w-full items-center justify-between border-b bg-header-background px-10">
       <div className="flex items-center">
         <a href={homeHref} className="flex items-center" aria-label="Go to homepage">
           <img src={logoSrc} alt="Nebari" className="h-8 w-auto" />
@@ -75,25 +88,12 @@ export function Header(props: HeaderProps): ReactNode {
       </div>
 
       <div className="flex items-center gap-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="relative h-9 w-9 rounded-[8px] border border-border bg-background text-muted-foreground transition-none hover:bg-accent"
-          aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-          aria-pressed={isDarkMode}
-          title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-          onClick={onToggleTheme}
-        >
-          {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-        </Button>
-
         <DropdownMenu onOpenChange={(open) => open && handleNotificationsOpen()}>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="relative h-9 w-9 rounded-[8px] border border-border bg-background text-muted-foreground transition-none hover:bg-accent"
+              className="relative h-9 w-9 rounded-[8px] border border-border bg-transparent text-muted-foreground transition-none hover:bg-accent"
               aria-label="Notifications"
             >
               <Bell className="h-5 w-5" />
@@ -147,10 +147,11 @@ export function Header(props: HeaderProps): ReactNode {
         </DropdownMenu>
 
         {user ? (
-          <DropdownMenu>
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
+                aria-label="Account menu"
                 className="flex items-center gap-3 rounded-md px-1 py-1 transition-none hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               >
                 <Avatar className="h-8 w-8">
@@ -168,11 +169,36 @@ export function Header(props: HeaderProps): ReactNode {
               </button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuContent align="end" className="w-72">
               <div className="border-b px-3 py-2">
                 <p className="text-sm font-medium text-foreground">{user.name ?? "Signed in"}</p>
                 {user.email ? <p className="text-xs text-muted-foreground">{user.email}</p> : null}
               </div>
+
+              <div className="px-2 py-2">
+                <DropdownMenuRadioGroup
+                  aria-label="Theme"
+                  value={themeMode}
+                  onValueChange={(value) => {
+                    if (isThemeMode(value)) onThemeChange?.(value);
+                  }}
+                  className="flex items-center gap-1 rounded-lg bg-muted p-1"
+                >
+                  <ThemeOption value="light" label="Light mode" text="Light">
+                    <Sun className="h-4 w-4" />
+                  </ThemeOption>
+
+                  <ThemeOption value="dark" label="Dark mode" text="Dark">
+                    <Moon className="h-4 w-4" />
+                  </ThemeOption>
+
+                  <ThemeOption value="system" label="System theme" text="System">
+                    <Monitor className="h-4 w-4" />
+                  </ThemeOption>
+                </DropdownMenuRadioGroup>
+              </div>
+
+              <DropdownMenuSeparator />
 
               <DropdownMenuItem
                 className="cursor-pointer focus:bg-accent focus:text-accent-foreground focus:outline-none focus:ring-[3px] focus:ring-ring/50"
@@ -189,6 +215,36 @@ export function Header(props: HeaderProps): ReactNode {
         )}
       </div>
     </header>
+  );
+}
+
+function ThemeOption({
+  value,
+  label,
+  text,
+  children,
+}: {
+  value: ThemeMode;
+  label: string;
+  text: string;
+  children: ReactNode;
+}): ReactNode {
+  return (
+    <DropdownMenuPrimitive.RadioItem
+      value={value}
+      aria-label={label}
+      title={label}
+      // Keep the menu open after switching themes so the change is visible.
+      onSelect={(event) => event.preventDefault()}
+      className={cn(
+        "flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "text-muted-foreground hover:text-foreground",
+        "data-[state=checked]:bg-background data-[state=checked]:text-foreground data-[state=checked]:shadow-sm",
+      )}
+    >
+      {children}
+      <span>{text}</span>
+    </DropdownMenuPrimitive.RadioItem>
   );
 }
 

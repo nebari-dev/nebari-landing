@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
 
   "vcs": {
     "enabled": true,
@@ -8,7 +8,16 @@
   },
 
   "files": {
-    "includes": ["**", "!!**/dist", "!!public/mockServiceWorker.js", "!**/*.test.{ts,tsx}"]
+    "includes": [
+      "src/**",
+      "biome.json",
+      "package.json",
+      "tsconfig*.json",
+      "vite.config.ts",
+      "!!**/dist",
+      "!!public/mockServiceWorker.js",
+      "!src/**/*.svg"
+    ]
   },
 
   "formatter": {
@@ -21,14 +30,10 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
 
       "correctness": {
         "noUndeclaredVariables": "error"
-      },
-
-      "style": {
-        "noNamespace": "off"
       }
     }
   },

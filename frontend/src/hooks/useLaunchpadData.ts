@@ -63,12 +63,12 @@ export function useLaunchpadData(user: unknown) {
     } catch (err) {
       console.error("toggle pin failed", err);
 
-      if (previousPinned === undefined) return;
+      // null guard
+      const pinned = previousPinned;
+      if (pinned === undefined) return;
 
       setServices((prev) =>
-        prev.map((service) =>
-          service.id === serviceId ? { ...service, pinned: previousPinned! } : service,
-        ),
+        prev.map((service) => (service.id === serviceId ? { ...service, pinned } : service)),
       );
     }
   }, []);

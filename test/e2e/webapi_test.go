@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/nebari-dev/nebari-landing/test/utils"
 )
@@ -289,6 +290,24 @@ func newNebariApp(name, namespace, hostname, visibility string, priority int) *u
 	}
 
 	_ = unstructured.SetNestedMap(u.Object, spec, "spec")
+	return u
+}
+
+// newNebariAppWithGroups builds a private NebariApp whose spec.auth carries an
+// explicit requiredGroups list. The webapi watcher (internal/watcher/watcher.go)
+// reads spec.auth.groups as the spec-level fallback before the operator
+// controller writes status.serviceDiscovery.requiredGroups, so this is
+// sufficient to drive visibility="private" + requiredGroups=<groups> through
+// the live cache without depending on a controller reconciliation round-trip.
+func newNebariAppWithGroups(name, namespace, hostname string, groups []string, priority int) *unstructured.Unstructured {
+	u := newNebariApp(name, namespace, hostname, "private", priority)
+	// spec.auth.enabled was set by newNebariApp above (visibility != "public").
+	// Add the groups slice. Unstructured requires []interface{} for nested slices.
+	groupsAny := make([]interface{}, len(groups))
+	for i, g := range groups {
+		groupsAny[i] = g
+	}
+	_ = unstructured.SetNestedSlice(u.Object, groupsAny, "spec", "auth", "groups")
 	return u
 }
 
@@ -652,11 +671,11 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			Expect(k8sClient.Create(context.Background(), pinApp)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(context.Background(), pinApp) })
 
-			By("Port-forwarding to webapi on :18084")
+			By("Port-forwarding to webapi on :18087")
 			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", e2eNamespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18084:8080")
+				"-n", e2eNamespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18087:8080")
 			Expect(pfCmd.Start()).NotTo(HaveOccurred())
-			webapiBase = "http://localhost:18084"
+			webapiBase = "http://localhost:18087"
 
 			Eventually(func() error {
 				resp, err := http.Get(webapiBase + "/api/v1/health")
@@ -1213,6 +1232,194 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			}
 		})
 	})
+
+	// WebSocket per-client access filter (issue #95). The hub must honor the
+	// same canAccessService policy on WS broadcasts that REST enforces on
+	// GET /api/v1/services. This Context validates that end-to-end via the
+	// real Keycloak JWT → ticket → WS upgrade chain, with two distinct users
+	// (admin vs. unprivileged) connected concurrently while a private
+	// NebariApp requiring the "admin" group is created.
+	//
+	// Tracked in issue #127. Unit coverage in internal/websocket/hub_test.go
+	// and internal/api/ws_ticket_test.go exercises the same chain in-process;
+	// this spec adds the deploy-time confirmation.
+	Context("WebSocket per-client access filter", func() {
+		var (
+			webapiBase    string
+			pfCmd         *exec.Cmd
+			adminToken    string
+			userToken     string
+			privateAppKey = "e2e-ws-filter-private-admin"
+			publicAppKey  = "e2e-ws-filter-public-probe"
+		)
+
+		BeforeAll(func() {
+			By("Acquiring tokens for kcAdminUser and kcTestUser")
+			adminToken = acquireToken(kcAdminUser, kcAdminPassword)
+			userToken = acquireToken(kcTestUser, kcTestPassword)
+
+			By("Port-forwarding to webapi on :18088 (independent from ticket-exchange and pins Contexts)")
+			pfCmd = exec.Command("kubectl", "port-forward",
+				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18088:8080")
+			Expect(pfCmd.Start()).NotTo(HaveOccurred())
+			webapiBase = "http://localhost:18088"
+
+			Eventually(func() error {
+				resp, err := http.Get(webapiBase + "/api/v1/health")
+				if err != nil {
+					return err
+				}
+				resp.Body.Close()
+				return nil
+			}, 30*time.Second, time.Second).Should(Succeed(),
+				"webapi must respond on :18088 before running filter tests")
+		})
+
+		AfterAll(func() {
+			if pfCmd != nil && pfCmd.Process != nil {
+				_ = pfCmd.Process.Kill()
+			}
+		})
+
+		It("should deliver private service events only to clients in the required Keycloak group", func() {
+			By("Sanity-checking admin REST access — pins down the group claim independent of the WS path")
+			// If the sandbox's Keycloak realm doesn't actually surface the
+			// 'admin' group in JWTs (mapper misconfigured, group renamed,
+			// operator rewriting requiredGroups in status), the whole spec
+			// would silently degrade — admin filtered out, negative
+			// assertion on test-user still trivially passes. A REST call
+			// for an admin-only NebariApp catches that here.
+			sanityApp := newNebariAppWithGroups("e2e-ws-filter-sanity", e2eNamespace,
+				"e2e-ws-filter-sanity.example.com", []string{"admin"}, 100)
+			Expect(k8sClient.Create(ctx, sanityApp)).To(Succeed(),
+				"should create sanity-check NebariApp")
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, sanityApp) })
+
+			Eventually(func() bool {
+				req, _ := http.NewRequest(http.MethodGet, webapiBase+"/api/v1/services", nil)
+				req.Header.Set("Authorization", "Bearer "+adminToken)
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					return false
+				}
+				defer resp.Body.Close()
+				var body ServiceListResponse
+				if json.NewDecoder(resp.Body).Decode(&body) != nil {
+					return false
+				}
+				// /api/v1/services collapses cache.ServiceInfo.Name with
+				// DisplayName fallback (via toServiceView in handlers.go),
+				// so the value here is the rendered displayName from
+				// newNebariApp ("Test Service <resource-name>"). Match
+				// against that, mirroring the existing Service Discovery
+				// specs at lines 504/533/546.
+				for _, n := range serviceNames(body) {
+					if n == "Test Service e2e-ws-filter-sanity" {
+						return true
+					}
+				}
+				return false
+			}, 30*time.Second, 500*time.Millisecond).Should(BeTrue(),
+				"admin token must surface admin-only NebariApps via REST; the WS path inherits the same policy")
+
+			By("Minting tickets for both users")
+			adminTicket := mintTicket(webapiBase, adminToken)
+			userTicket := mintTicket(webapiBase, userToken)
+
+			By("Opening WS connections for both users, before any test NebariApp is created")
+			adminRaw, _, err := websocket.DefaultDialer.Dial(
+				"ws://localhost:18088/api/v1/ws?ticket="+adminTicket, nil)
+			Expect(err).NotTo(HaveOccurred(), "admin WS upgrade must succeed")
+			adminWS := newWSClient(adminRaw)
+			defer adminWS.Close()
+
+			userRaw, _, err := websocket.DefaultDialer.Dial(
+				"ws://localhost:18088/api/v1/ws?ticket="+userTicket, nil)
+			Expect(err).NotTo(HaveOccurred(), "test-user WS upgrade must succeed")
+			userWS := newWSClient(userRaw)
+			defer userWS.Close()
+
+			By("Creating a PUBLIC probe NebariApp to flush the broadcast pipeline")
+			// Sync barrier: both clients must receive the probe's `added`
+			// event. That proves the watcher -> publish -> subscribe -> broadcast
+			// chain is live at this moment in the test, so the subsequent
+			// negative-receive on the private app is meaningful (the frame
+			// would have arrived if the filter were broken).
+			publicApp := newNebariApp(publicAppKey, e2eNamespace,
+				publicAppKey+".example.com", "public", 100)
+			Expect(k8sClient.Create(ctx, publicApp)).To(Succeed(), "should create public probe NebariApp")
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, publicApp) })
+
+			Expect(adminWS.waitForNamed(publicAppKey, "added", 30*time.Second)).
+				To(Succeed(), "admin must receive the public probe's added event")
+			Expect(userWS.waitForNamed(publicAppKey, "added", 30*time.Second)).
+				To(Succeed(), "test-user must receive the public probe's added event")
+
+			By("Creating a PRIVATE NebariApp requiring the admin group")
+			privateApp := newNebariAppWithGroups(privateAppKey, e2eNamespace,
+				privateAppKey+".example.com", []string{"admin"}, 100)
+			Expect(k8sClient.Create(ctx, privateApp)).To(Succeed(), "should create private NebariApp")
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, privateApp) })
+
+			By("Asserting the admin connection receives the private added event")
+			Expect(adminWS.waitForNamed(privateAppKey, "added", 30*time.Second)).
+				To(Succeed(), "admin (in 'admin' group) must receive the private added event")
+
+			By("Asserting the test-user connection does NOT receive the private added event")
+			// The public probe above proved both clients are reachable; a
+			// genuine filter regression would deliver this frame within the
+			// same window. We give a generous bound (5s) on top of that to
+			// absorb sandbox jitter.
+			Expect(userWS.expectNoNamed(privateAppKey, 5*time.Second)).
+				To(Succeed(), "test-user (NOT in 'admin') must not receive the private added event")
+		})
+
+		It("should apply the filter to modified events, not just added", func() {
+			By("Opening fresh WS sessions for this spec")
+			// Each It owns its own connections - the previous spec's defers
+			// have already closed its conns by the time this It runs.
+			adminTicket := mintTicket(webapiBase, adminToken)
+			userTicket := mintTicket(webapiBase, userToken)
+			adminRaw, _, err := websocket.DefaultDialer.Dial(
+				"ws://localhost:18088/api/v1/ws?ticket="+adminTicket, nil)
+			Expect(err).NotTo(HaveOccurred())
+			adminWS := newWSClient(adminRaw)
+			defer adminWS.Close()
+			userRaw, _, err := websocket.DefaultDialer.Dial(
+				"ws://localhost:18088/api/v1/ws?ticket="+userTicket, nil)
+			Expect(err).NotTo(HaveOccurred())
+			userWS := newWSClient(userRaw)
+			defer userWS.Close()
+
+			By("Flushing the pipeline with a public probe")
+			probeName := publicAppKey + "-mod"
+			probe := newNebariApp(probeName, e2eNamespace, probeName+".example.com", "public", 100)
+			Expect(k8sClient.Create(ctx, probe)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, probe) })
+			Expect(adminWS.waitForNamed(probeName, "added", 30*time.Second)).To(Succeed())
+			Expect(userWS.waitForNamed(probeName, "added", 30*time.Second)).To(Succeed())
+
+			By("Creating a private admin-only NebariApp and waiting for admin to see the added event")
+			modAppName := privateAppKey + "-mod"
+			modApp := newNebariAppWithGroups(modAppName, e2eNamespace,
+				modAppName+".example.com", []string{"admin"}, 100)
+			Expect(k8sClient.Create(ctx, modApp)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, modApp) })
+			Expect(adminWS.waitForNamed(modAppName, "added", 30*time.Second)).To(Succeed())
+
+			By("Patching the private NebariApp's displayName to trigger a modified event")
+			patch := []byte(`{"spec":{"landingPage":{"displayName":"Renamed Private Service"}}}`)
+			Expect(k8sClient.Patch(ctx, modApp,
+				client.RawPatch(types.MergePatchType, patch))).To(Succeed(),
+				"should patch the private NebariApp")
+
+			By("Asserting admin receives the modified event, test-user does not")
+			Expect(adminWS.waitForNamed(modAppName, "modified", 30*time.Second)).
+				To(Succeed(), "admin must receive the modified event for the private app")
+			Expect(userWS.expectNoNamed(modAppName, 5*time.Second)).
+				To(Succeed(), "test-user must not receive the modified event for the private app")
+		})
+	})
 })
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -1231,4 +1438,150 @@ func serviceNames(r ServiceListResponse) []string {
 		}
 	}
 	return names
+}
+
+// mintTicket POSTs /api/v1/ws-ticket with the given Bearer token and returns
+// the resulting ticket id. Fails the test on any non-200 response. Used by
+// the per-client filter spec to mint two tickets (one per user) ahead of
+// opening parallel WS connections.
+func mintTicket(webapiBase, bearer string) string {
+	GinkgoHelper()
+	req, err := http.NewRequest(http.MethodPost, webapiBase+"/api/v1/ws-ticket", nil)
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred(), "POST /ws-ticket must not fail")
+	defer resp.Body.Close()
+	Expect(resp.StatusCode).To(Equal(http.StatusOK), "POST /ws-ticket must return 200")
+	var body struct {
+		Ticket string `json:"ticket"`
+	}
+	Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+	Expect(body.Ticket).NotTo(BeEmpty())
+	return body.Ticket
+}
+
+// wsServiceFrame is the minimal shape we decode from a WS service event when
+// asserting on it in e2e specs. Mirrors websocket.ServiceEvent's wire format
+// but kept independent so the e2e suite does not import the internal hub
+// package.
+type wsServiceFrame struct {
+	Type    string `json:"type"`
+	Service struct {
+		Name string `json:"name"`
+		UID  string `json:"uid"`
+	} `json:"service"`
+}
+
+// wsClient wraps a WebSocket connection with a dedicated reader goroutine
+// that drains frames continuously into a buffered channel. This is the
+// correct pattern for the per-client filter tests: gorilla/websocket marks
+// a connection as failed after a SetReadDeadline timeout, so the obvious
+// "set a short deadline, loop, retry on timeout" pattern panics on the
+// second iteration with "repeated read on failed websocket connection".
+// The reader goroutine instead reads without any deadline, blocking until
+// a frame arrives (or the conn closes), and the assertion methods select
+// on the channel against a Timer for their time budget.
+//
+// Frames that fail to decode as wsServiceFrame (notifications,
+// malformed) are silently dropped - the spec only cares about service
+// events whose Service.Name matches the test's NebariApp.
+type wsClient struct {
+	conn   *websocket.Conn
+	frames chan wsServiceFrame
+	errs   chan error
+	stop   chan struct{}
+}
+
+// newWSClient takes ownership of an open gorilla/websocket connection and
+// starts the reader goroutine. Close exits the goroutine and closes the
+// underlying conn.
+func newWSClient(conn *websocket.Conn) *wsClient {
+	c := &wsClient{
+		conn:   conn,
+		frames: make(chan wsServiceFrame, 64),
+		errs:   make(chan error, 1),
+		stop:   make(chan struct{}),
+	}
+	go c.readLoop()
+	return c
+}
+
+func (c *wsClient) readLoop() {
+	for {
+		_, raw, err := c.conn.ReadMessage()
+		if err != nil {
+			select {
+			case c.errs <- err:
+			case <-c.stop:
+			}
+			return
+		}
+		var f wsServiceFrame
+		if jerr := json.Unmarshal(raw, &f); jerr != nil {
+			continue // not a service event (notification, malformed) - skip
+		}
+		select {
+		case c.frames <- f:
+		case <-c.stop:
+			return
+		}
+	}
+}
+
+// Close stops the reader goroutine and closes the underlying conn. Safe to
+// call once; subsequent calls are no-ops because of the close(stop) guard.
+func (c *wsClient) Close() {
+	select {
+	case <-c.stop:
+		// already closed
+		return
+	default:
+	}
+	close(c.stop)
+	_ = c.conn.Close()
+}
+
+// waitForNamed waits up to `within` for a service event whose Service.Name
+// matches `name` and Type matches `eventType`. Unrelated frames (other
+// services, wrong type for this name) are skipped. A read error on the
+// underlying conn fails the wait immediately.
+func (c *wsClient) waitForNamed(name, eventType string, within time.Duration) error {
+	deadline := time.NewTimer(within)
+	defer deadline.Stop()
+	for {
+		select {
+		case f := <-c.frames:
+			if f.Service.Name == name && f.Type == eventType {
+				return nil
+			}
+			// Unrelated frame or wrong type for this name - keep waiting.
+		case err := <-c.errs:
+			return fmt.Errorf("ws read error waiting for %s event on %q: %w", eventType, name, err)
+		case <-deadline.C:
+			return fmt.Errorf("did not receive %s event for %q within %s", eventType, name, within)
+		}
+	}
+}
+
+// expectNoNamed asserts no service event with Service.Name == name arrives
+// within `within`. Unrelated frames are tolerated; a read error fails the
+// assertion (so a hub-side close masquerading as "no event" cannot pass
+// silently).
+func (c *wsClient) expectNoNamed(name string, within time.Duration) error {
+	deadline := time.NewTimer(within)
+	defer deadline.Stop()
+	for {
+		select {
+		case f := <-c.frames:
+			if f.Service.Name == name {
+				return fmt.Errorf("unexpected %s event for filtered service %q delivered to a non-entitled client", f.Type, name)
+			}
+			// Unrelated frame - keep watching.
+		case err := <-c.errs:
+			return fmt.Errorf("ws read error during negative window for %q: %w", name, err)
+		case <-deadline.C:
+			return nil // no event arrived
+		}
+	}
 }

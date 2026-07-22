@@ -72,6 +72,8 @@ spec:
     displayName: {{ .Values.nebariApp.landingPage.displayName | quote }}
     description: {{ .Values.nebariApp.landingPage.description | quote }}
     icon: {{ .Values.nebariApp.landingPage.icon | quote }}
+    iconDark: {{ .Values.nebariApp.landingPage.iconDark | quote }}
+    iconLight: {{ .Values.nebariApp.landingPage.iconLight | quote }}
     category: {{ .Values.nebariApp.landingPage.category | quote }}
     priority: {{ .Values.nebariApp.landingPage.priority }}
 {{- end }}

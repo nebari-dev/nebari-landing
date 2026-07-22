@@ -196,6 +196,12 @@ const docTemplate = `{
                     "image": {
                         "type": "string"
                     },
+                    "imageDark": {
+                        "type": "string"
+                    },
+                    "imageLight": {
+                        "type": "string"
+                    },
                     "name": {
                         "type": "string"
                     },
@@ -251,6 +257,12 @@ const docTemplate = `{
                     "icon": {
                         "type": "string"
                     },
+                    "iconDark": {
+                        "type": "string"
+                    },
+                    "iconLight": {
+                        "type": "string"
+                    },
                     "name": {
                         "type": "string"
                     },
@@ -297,8 +309,24 @@ const docTemplate = `{
                         "description": "Message is the body text of the notification.",
                         "type": "string"
                     },
+                    "requiredGroups": {
+                        "description": "RequiredGroups mirrors ServiceInfo.RequiredGroups when the source\nservice is private. Consumed by canAccessPolicy.",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "serviceUid": {
+                        "description": "ServiceUID, when non-empty, ties this notification to a specific\nNebariApp for per-caller access filtering. Producer sites (watcher\nlifecycle events, health-checker transitions) populate this from the\nsource ServiceInfo; admin-created broadcast notifications leave it\nempty and route through the fan-out-to-all path.",
+                        "type": "string"
+                    },
                     "title": {
                         "description": "Title is the short heading of the notification.",
+                        "type": "string"
+                    },
+                    "visibility": {
+                        "description": "Visibility mirrors ServiceInfo.Visibility for the source service:\n\"public\" | \"private\" | \"\" (untagged). Consumed by canAccessPolicy.",
                         "type": "string"
                     }
                 },

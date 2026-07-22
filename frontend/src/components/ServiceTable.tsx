@@ -84,7 +84,11 @@ function ServiceRow({
     >
       <TableCell className="py-4 pr-2 pl-5 align-middle whitespace-normal">
         <div className="flex min-w-0 items-start gap-3">
-          <ServiceIcon imageUrl={service.image} />
+          <ServiceIcon
+            image={service.image}
+            imageLight={service.imageLight}
+            imageDark={service.imageDark}
+          />
 
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold leading-5 text-foreground">

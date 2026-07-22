@@ -21,7 +21,11 @@ export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) 
       <Card className="h-full overflow-hidden border border-border bg-background shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
         <CardContent className="flex h-full flex-col p-4 pb-2">
           <div className="flex items-start justify-between gap-3">
-            <ServiceIcon imageUrl={service.image} />
+            <ServiceIcon
+              image={service.image}
+              imageLight={service.imageLight}
+              imageDark={service.imageDark}
+            />
 
             <StatusBadge status={service.status} />
           </div>

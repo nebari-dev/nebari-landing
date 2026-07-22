@@ -30,9 +30,9 @@ const screenshotDir =
   process.env.SCREENSHOT_DIR ?? path.resolve(__dirname, "../../../docs/static/screenshots");
 
 test("homepage light theme", async ({ page }) => {
-  // Light mode is the default; clear any persisted dark-mode preference.
+  // Pin light mode so the screenshot is deterministic regardless of OS preference.
   await page.addInitScript(() => {
-    window.localStorage.removeItem("launchpad:isDarkMode");
+    window.localStorage.setItem("launchpad:themeMode", "light");
   });
 
   await page.goto("/");
@@ -49,7 +49,7 @@ test("homepage light theme", async ({ page }) => {
 
 test("homepage dark theme", async ({ page }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("launchpad:isDarkMode", "true");
+    window.localStorage.setItem("launchpad:themeMode", "dark");
   });
 
   await page.goto("/");

@@ -14,7 +14,7 @@ type ServicesSectionProps = {
 
 export function ServicesSection({ services, onTogglePin }: ServicesSectionProps) {
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"table" | "grid">("table");
+  const [view, setView] = useState<"table" | "grid">("grid");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -78,19 +78,19 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
           className="h-[46px] shrink-0 gap-1 rounded-[8px] border border-border bg-secondary p-1"
         >
           <ToggleGroupItem
-            value="table"
-            aria-label="Table view"
-            className="h-9 w-9 !rounded-[6px] text-muted-foreground transition-none data-[state=on]:bg-accent data-[state=on]:text-foreground data-[state=on]:shadow-[0px_1px_2px_0px_#0000000D]"
-          >
-            <List className="h-4 w-4" />
-          </ToggleGroupItem>
-
-          <ToggleGroupItem
             value="grid"
             aria-label="Grid view"
             className="h-9 w-9 !rounded-[6px] text-muted-foreground transition-none data-[state=on]:bg-accent data-[state=on]:text-foreground data-[state=on]:shadow-[0px_1px_2px_0px_#0000000D]"
           >
             <LayoutGrid className="h-4 w-4" />
+          </ToggleGroupItem>
+
+          <ToggleGroupItem
+            value="table"
+            aria-label="Table view"
+            className="h-9 w-9 !rounded-[6px] text-muted-foreground transition-none data-[state=on]:bg-accent data-[state=on]:text-foreground data-[state=on]:shadow-[0px_1px_2px_0px_#0000000D]"
+          >
+            <List className="h-4 w-4" />
           </ToggleGroupItem>
         </ToggleGroup>
       </div>

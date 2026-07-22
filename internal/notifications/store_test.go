@@ -266,3 +266,111 @@ func TestMarkRead_RedisDown_ReturnsError(t *testing.T) {
 		t.Error("expected error when Redis is unavailable, got nil")
 	}
 }
+
+// --- CreateDraft: source-service metadata roundtrip ---
+
+func TestCreateDraft_TaggedFields_RoundtripViaGet(t *testing.T) {
+	s := newStore(t)
+	d := Draft{
+		Image:          "icon.png",
+		Title:          "Private is back",
+		Message:        "body",
+		ServiceUID:     "uid-private-1",
+		Visibility:     "private",
+		RequiredGroups: []string{"argocd-admins", "finance"},
+	}
+	n, err := s.CreateDraft(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.ServiceUID != d.ServiceUID || n.Visibility != d.Visibility {
+		t.Errorf("returned: %+v", n)
+	}
+	if len(n.RequiredGroups) != 2 || n.RequiredGroups[0] != "argocd-admins" || n.RequiredGroups[1] != "finance" {
+		t.Errorf("RequiredGroups roundtrip broke: %+v", n.RequiredGroups)
+	}
+
+	got, err := s.Get(n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ServiceUID != d.ServiceUID {
+		t.Errorf("Get ServiceUID: expected %q, got %q", d.ServiceUID, got.ServiceUID)
+	}
+	if got.Visibility != d.Visibility {
+		t.Errorf("Get Visibility: expected %q, got %q", d.Visibility, got.Visibility)
+	}
+	if len(got.RequiredGroups) != 2 || got.RequiredGroups[0] != "argocd-admins" || got.RequiredGroups[1] != "finance" {
+		t.Errorf("Get RequiredGroups roundtrip broke: %+v", got.RequiredGroups)
+	}
+}
+
+func TestCreateDraft_ZeroFields_UntaggedRoundtrip(t *testing.T) {
+	// Untagged draft (admin-broadcast shape): all three source-service fields
+	// stay empty after roundtrip. Legacy Create() delegates here and must
+	// remain equivalent to a broadcast-to-all notification.
+	s := newStore(t)
+	n, err := s.CreateDraft(Draft{Image: "", Title: "Welcome", Message: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ServiceUID != "" || got.Visibility != "" || len(got.RequiredGroups) != 0 {
+		t.Errorf("expected untagged notification, got %+v", got)
+	}
+}
+
+func TestCreate_LegacyShim_MatchesUntaggedDraft(t *testing.T) {
+	// Create is retained as a backward-compat shim for admin broadcasts.
+	// It must produce a notification indistinguishable from CreateDraft
+	// with zero source-service fields.
+	s := newStore(t)
+	n, err := s.Create("img", "T", "M")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.ServiceUID != "" || n.Visibility != "" || len(n.RequiredGroups) != 0 {
+		t.Errorf("Create must produce an untagged notification, got %+v", n)
+	}
+}
+
+func TestList_MixedTaggedAndUntagged_PreservesFields(t *testing.T) {
+	// Regression guard for the notifFromHash decoder path: List() hits the
+	// pipeline HGetAll, not the single-key Get(). If notifFromHash drops the
+	// new fields, filtering downstream will silently treat every notification
+	// as untagged (broadcast-to-all) - exactly the #170 regression this PR
+	// fixes.
+	s := newStore(t)
+	if _, err := s.CreateDraft(Draft{Title: "public-tagged", ServiceUID: "svc-a", Visibility: "public"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateDraft(Draft{Title: "private-tagged", ServiceUID: "svc-b", Visibility: "private", RequiredGroups: []string{"g1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateDraft(Draft{Title: "untagged"}); err != nil {
+		t.Fatal(err)
+	}
+	all, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("expected 3 notifications, got %d", len(all))
+	}
+	found := map[string]*Notification{}
+	for _, n := range all {
+		found[n.Title] = n
+	}
+	if got := found["public-tagged"]; got == nil || got.ServiceUID != "svc-a" || got.Visibility != "public" {
+		t.Errorf("public-tagged lost fields: %+v", got)
+	}
+	if got := found["private-tagged"]; got == nil || got.ServiceUID != "svc-b" || got.Visibility != "private" || len(got.RequiredGroups) != 1 || got.RequiredGroups[0] != "g1" {
+		t.Errorf("private-tagged lost fields: %+v", got)
+	}
+	if got := found["untagged"]; got == nil || got.ServiceUID != "" || got.Visibility != "" || len(got.RequiredGroups) != 0 {
+		t.Errorf("untagged shouldn't carry source-service fields: %+v", got)
+	}
+}
