@@ -67,6 +67,7 @@ export async function loadAppConfig(): Promise<AppConfig> {
   // (defence-in-depth, mirroring the theme-token sanitisation below).
   _config.logoUrl = sanitizeUrl(_config.logoUrl);
   _config.logoUrlDark = sanitizeUrl(_config.logoUrlDark);
+  _config.faviconUrl = sanitizeUrl(_config.faviconUrl);
   return _config;
 }
 
