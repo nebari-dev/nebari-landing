@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // loadAppConfig() caches its result at module scope and only fetches once, so
 // each case resets the module registry and re-imports a fresh copy.
