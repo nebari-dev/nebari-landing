@@ -70,14 +70,45 @@ export async function loadAppConfig(): Promise<AppConfig> {
   return _config;
 }
 
-// Accept only non-empty, well-formed http(s) URLs or root-relative paths;
-// anything else (including "") becomes undefined.
+// Accept root-relative paths, http(s) URLs, and data: URIs for a
+// safe-listed set of image MIME types. Anything else (including "")
+// becomes undefined.
+//
+// Data URIs were supported before PR #110 introduced this sanitizer; the
+// restriction to http(s) accidentally broke deployers who ship the logo /
+// favicon inline via `frontend.branding.logoUrl` in the chart values.
+// Restoring data-URI support keeps the defence-in-depth (no javascript:,
+// no data:text/html, etc.) while unblocking the previously-working
+// inline-image pattern.
+const ALLOWED_DATA_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/svg+xml",
+  "image/webp",
+  "image/gif",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+]);
+
 function sanitizeUrl(value: string | undefined): string | undefined {
   if (!value) return undefined;
   if (value.startsWith("/")) return value;
   try {
     const { protocol } = new URL(value);
-    return protocol === "http:" || protocol === "https:" ? value : undefined;
+    if (protocol === "http:" || protocol === "https:") return value;
+    if (protocol === "data:") {
+      // Format: data:<mime>[;base64],<data>
+      // Only accept base64-encoded images from the allow-list; reject
+      // text/html, javascript, and everything else.
+      const match = /^data:([^;,]+)(;base64)?,/.exec(value);
+      if (!match) return undefined;
+      const mime = match[1].toLowerCase();
+      const isBase64 = Boolean(match[2]);
+      if (isBase64 && ALLOWED_DATA_MIME_TYPES.has(mime)) return value;
+      return undefined;
+    }
+    return undefined;
   } catch {
     return undefined;
   }
