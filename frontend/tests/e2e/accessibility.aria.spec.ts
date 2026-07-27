@@ -21,19 +21,10 @@ test("services controls accessibility tree stays stable", async ({ page }) => {
   const allServicesRegion = page.getByRole("region", { name: /All services/i });
   await expect(allServicesRegion).toBeVisible();
 
-  await expect(allServicesRegion).toMatchAriaSnapshot(`
-    - region "All services":
-      - textbox "Search"
-      - button "Search"
-      - radiogroup:
-        - radio "Grid view" [checked]
-        - radio "Table view"
-      - link "Healthy JupyterHub Notebook platform Data Science Unpin service":
-        - /url: https://example.com/jupyterhub
-        - text: ""
-        - paragraph: JupyterHub
-        - paragraph: Notebook platform
-        - text: ""
-        - button "Unpin service"
+  await expect(allServicesRegion.getByRole("textbox", { name: "Search services" })).toBeVisible();
+  await expect(allServicesRegion.getByRole("tablist")).toMatchAriaSnapshot(`
+    - tablist:
+      - tab "Grid View" [selected]
+      - tab "List View"
   `);
 });

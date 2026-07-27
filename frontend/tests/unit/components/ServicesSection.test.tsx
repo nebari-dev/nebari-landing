@@ -31,6 +31,7 @@ describe("ServicesSection", () => {
   it("renders search input", () => {
     render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
     expect(screen.getByPlaceholderText(/search/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^search$/i })).not.toBeInTheDocument();
   });
 
   it("filters services by query", async () => {
@@ -43,12 +44,21 @@ describe("ServicesSection", () => {
     expect(screen.queryByText("JupyterHub")).not.toBeInTheDocument();
   });
 
-  it("switches to grid view", async () => {
+  it("defaults to grid view and switches to list view", async () => {
     const user = userEvent.setup();
     render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
 
-    await user.click(screen.getByLabelText(/grid view/i));
+    expect(screen.getByRole("tab", { name: /grid view/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await user.click(screen.getByRole("tab", { name: /list view/i }));
 
     expect(screen.getByText("Grafana")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /list view/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 });

@@ -58,20 +58,17 @@ test("services toolbar stays on one row and keeps search text sizing stable", as
     await expect(allServicesRegion).toBeVisible();
 
     const searchInput = allServicesRegion.getByPlaceholder("Search");
-    const searchButton = allServicesRegion.getByRole("button", {
-      name: /^Search$/,
-    });
-    const viewToggle = allServicesRegion.getByRole("radiogroup");
+    const viewToggle = allServicesRegion.getByRole("tablist");
 
     const inputBox = await getBox(searchInput);
-    const buttonBox = await getBox(searchButton);
     const toggleBox = await getBox(viewToggle);
 
     const inputCenterY = inputBox.y + inputBox.height / 2;
     const toggleCenterY = toggleBox.y + toggleBox.height / 2;
 
     expect(Math.abs(inputCenterY - toggleCenterY)).toBeLessThanOrEqual(2);
-    expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(toggleBox.x);
+    expect(inputBox.x + inputBox.width).toBeLessThanOrEqual(toggleBox.x);
+    expect(Math.abs(inputBox.width - width / 3)).toBeLessThanOrEqual(2);
 
     await expect(searchInput).toHaveCSS("font-size", "14px");
     await expect(searchInput).toHaveCSS("line-height", "20px");
@@ -94,7 +91,7 @@ test("services table keeps headers and rows in bounds while resizing", async ({ 
     await expect(allServicesRegion).toBeVisible();
 
     // Grid is the default view, so switch to the table view this test exercises.
-    await allServicesRegion.getByRole("radio", { name: /Table view/i }).click();
+    await allServicesRegion.getByRole("tab", { name: /List View/i }).click();
 
     const tableContainer = page.locator('[data-slot="table-container"]').first();
     const actionsHeader = page.getByRole("columnheader", { name: /Actions/i }).getByText("Actions");
@@ -134,4 +131,45 @@ test("services table keeps headers and rows in bounds while resizing", async ({ 
 
     expect(descriptionMetrics.height).toBeLessThanOrEqual(descriptionMetrics.lineHeight * 2 + 1);
   }
+});
+
+test("services table uses the semantic light and dark surface colors", async ({ page }) => {
+  await mockResponsiveServices(page);
+
+  const openTable = async () => {
+    await page.goto("/");
+    const allServicesRegion = page.getByRole("region", { name: /All services/i });
+    await allServicesRegion.getByRole("tab", { name: /List View/i }).click();
+  };
+
+  await page.goto("/");
+  await page.evaluate(() => {
+    window.localStorage.setItem("launchpad:themeMode", "light");
+  });
+  await openTable();
+
+  const container = page.locator('[data-slot="table-container"]');
+  const table = page.locator('[data-slot="table"]');
+  const header = page.locator('[data-slot="table-header"]');
+  const headerCell = page.locator('[data-slot="table-head"]').first();
+
+  await expect(header).toHaveCSS("background-color", "oklch(0.9494 0.0013 286.37)");
+  await expect(headerCell).toHaveCSS("background-color", "oklch(0.9494 0.0013 286.37)");
+  await expect(container).toHaveCSS("border-color", "oklch(0.7806 0.0056 286.27)");
+
+  await page.evaluate(() => {
+    window.localStorage.setItem("launchpad:themeMode", "dark");
+  });
+  await openTable();
+
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(header).toHaveCSS("background-color", "rgb(38, 38, 40)");
+  await expect(headerCell).toHaveCSS("background-color", "rgb(38, 38, 40)");
+  await expect(container).toHaveCSS("border-color", "oklch(0.4701 0.0112 285.96)");
+
+  const surfaces = await Promise.all([
+    container.evaluate((element) => getComputedStyle(element).backgroundColor),
+    table.evaluate((element) => getComputedStyle(element).backgroundColor),
+  ]);
+  expect(surfaces[1]).toBe(surfaces[0]);
 });

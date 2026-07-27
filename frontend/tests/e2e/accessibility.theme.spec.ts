@@ -11,6 +11,17 @@ test("dark theme loads correctly and has no detectable accessibility violations"
   await page.goto("/");
 
   await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(38, 38, 40)");
+  await expect(page.locator("body")).toHaveCSS("color", "rgb(248, 248, 248)");
+  await expect(page.locator("header")).toHaveCSS("background-color", "rgb(53, 53, 56)");
+  await expect(page.getByText("Pinned services", { exact: true })).toHaveCSS(
+    "color",
+    "rgb(183, 183, 187)",
+  );
+  await expect(page.getByText("Quick access to your most-used tools", { exact: true })).toHaveCSS(
+    "color",
+    "rgb(157, 157, 166)",
+  );
 
   // The theme toggle now lives inside the profile menu as a radio group.
   await page.getByRole("button", { name: /account menu/i }).click();

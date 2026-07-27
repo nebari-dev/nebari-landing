@@ -1,4 +1,5 @@
 import type { Service } from "../api/listServices";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
   Table,
@@ -19,39 +20,31 @@ type ServicesTableProps = {
 
 export function ServicesTable({ services, onTogglePin }: ServicesTableProps) {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-background transition-none">
-      <Table className="min-w-140 table-fixed">
-        <colgroup>
-          <col className="w-[50%]" />
-          <col className="w-[20%]" />
-          <col className="w-[15%]" />
-          <col className="w-[15%]" />
-        </colgroup>
+    <Table aria-label="Services" className="min-w-140 table-fixed">
+      <colgroup>
+        <col className="w-[50%]" />
+        <col className="w-[20%]" />
+        <col className="w-[15%]" />
+        <col className="w-[15%]" />
+      </colgroup>
 
-        <TableHeader>
-          <TableRow className="h-13.5 border-b border-border transition-none">
-            <TableHead className="w-[50%] py-4 pr-2 pl-5 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
-              Service
-            </TableHead>
-            <TableHead className="w-[20%] py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
-              Category
-            </TableHead>
-            <TableHead className="w-[20%] py-4 text-[13px] font-semibold uppercase tracking-[0.05em] text-(--text-secondary)">
-              Status
-            </TableHead>
-            <TableHead className="w-[10%] pr-5 py-4 text-right text-[12px] font-semibold uppercase tracking-[0.02em] text-(--text-secondary) md:text-[13px] md:tracking-[0.05em]">
-              Actions
-            </TableHead>
-          </TableRow>
-        </TableHeader>
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col">Service</TableHead>
+          <TableHead scope="col">Category</TableHead>
+          <TableHead scope="col">Status</TableHead>
+          <TableHead className="text-right" scope="col">
+            Actions
+          </TableHead>
+        </TableRow>
+      </TableHeader>
 
-        <TableBody>
-          {services.map((service) => (
-            <ServiceRow key={service.id} service={service} onTogglePin={onTogglePin} />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+      <TableBody>
+        {services.map((service) => (
+          <ServiceRow key={service.id} service={service} onTogglePin={onTogglePin} />
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -78,11 +71,11 @@ function ServiceRow({
       tabIndex={0}
       role="link"
       aria-label={`${service.name} (opens in a new tab)`}
-      className="h-[77px] cursor-pointer border-b border-border transition-none focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      className="cursor-pointer focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
       onClick={openService}
       onKeyDown={handleRowKeyDown}
     >
-      <TableCell className="py-4 pr-2 pl-5 align-middle whitespace-normal">
+      <TableCell className="whitespace-normal">
         <div className="flex min-w-0 items-start gap-3">
           <ServiceIcon
             image={service.image}
@@ -101,31 +94,30 @@ function ServiceRow({
         </div>
       </TableCell>
 
-      <TableCell className="px-2 py-4 align-middle whitespace-normal">
+      <TableCell className="whitespace-normal">
         <div className="flex min-w-0 flex-wrap gap-1">
           {service.category.map((item) => (
-            <span
+            <Badge
               key={item}
-              className="inline-flex max-w-full items-center rounded-sm bg-accent px-1.5 py-0.5 text-xs capitalize text-(--pill-category-fg) whitespace-normal break-words"
+              variant="secondary"
+              className="max-w-full rounded-sm text-muted-foreground capitalize whitespace-normal break-words dark:text-[#b7b7bb]"
             >
               {item}
-            </span>
+            </Badge>
           ))}
         </div>
       </TableCell>
 
-      <TableCell className="px-2 py-4 align-middle">
+      <TableCell>
         <div className="min-w-0">
           <StatusBadge status={service.status} />
         </div>
       </TableCell>
 
-      <TableCell className="py-4 pr-5 pl-2 text-right align-middle">
+      <TableCell className="text-right">
         <Button
-          type="button"
           variant="ghost"
           size="icon"
-          className="h-8 w-8 transition-none"
           onClick={(event) => {
             event.stopPropagation();
             onTogglePin?.(service.id, !service.pinned);
@@ -137,9 +129,9 @@ function ServiceRow({
           aria-label={service.pinned ? "Unpin service" : "Pin service"}
         >
           {service.pinned ? (
-            <UnpinIcon className="h-4 w-4 text-primary" />
+            <UnpinIcon className="text-primary" />
           ) : (
-            <PinIcon className="h-4 w-4 text-muted-foreground" />
+            <PinIcon className="text-muted-foreground" />
           )}
         </Button>
       </TableCell>

@@ -39,8 +39,10 @@ export function ServicesAccordion({
           )}
         >
           <div className="text-left">
-            <div className="text-sm font-semibold text-(--text-secondary)">Pinned services</div>
-            <p className="mt-1 text-sm font-normal text-(--text-secondary)">
+            <div className="text-sm font-semibold text-(--accordion-trigger-foreground)">
+              Pinned services
+            </div>
+            <p className="mt-1 text-sm font-normal text-(--accordion-description-foreground)">
               Quick access to your most-used tools
             </p>
           </div>
@@ -64,7 +66,9 @@ export function ServicesAccordion({
           )}
         >
           <div className="text-left">
-            <div className="text-sm font-semibold text-(--text-secondary)">All services</div>
+            <div className="text-sm font-semibold text-(--accordion-trigger-foreground)">
+              All services
+            </div>
           </div>
         </AccordionTrigger>
 
