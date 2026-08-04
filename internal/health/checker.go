@@ -92,11 +92,17 @@ func (h *HealthChecker) postRecoveryNotif(uid string) {
 	if name == "" {
 		name = svc.Name
 	}
-	n, err := h.notifStore.Create(
-		svc.IconURL(),
-		fmt.Sprintf("%s is back online!", name),
-		fmt.Sprintf("%s is back online! Service is ready to use.", name),
-	)
+	// Tag with the source-service metadata so per-caller filtering can gate
+	// delivery: a private service's recovery notification must only reach
+	// callers whose groups satisfy svc.RequiredGroups.
+	n, err := h.notifStore.CreateDraft(notifications.Draft{
+		Image:          svc.IconURL(),
+		Title:          fmt.Sprintf("%s is back online!", name),
+		Message:        fmt.Sprintf("%s is back online! Service is ready to use.", name),
+		ServiceUID:     svc.UID,
+		Visibility:     svc.Visibility,
+		RequiredGroups: svc.RequiredGroups,
+	})
 	if err != nil {
 		log.Error(err, "Failed to post recovery notification", "uid", uid, "name", name)
 		return

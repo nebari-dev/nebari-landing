@@ -315,7 +315,7 @@ npm run dev
 - `internal/` — webapi packages:
   - `accessrequests/` — Access request store.
   - `api/` — HTTP handlers and routes.
-  - `app/` — Application wiring.
+  - `app/` — Internal domain model for service discovery (`App`, `LandingPage`, `HealthCheck`); decoupled from the Kubernetes API types.
   - `auth/` — JWT validation.
   - `cache/` — Service cache (backed by Redis).
   - `health/` — Health check endpoint.
