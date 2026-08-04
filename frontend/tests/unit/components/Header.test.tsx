@@ -60,4 +60,16 @@ describe("Header", () => {
       "false",
     );
   });
+
+  it("calls onSignOut from the account menu", async () => {
+    const user = userEvent.setup();
+    const onSignOut = vi.fn();
+
+    render(<Header user={{ name: "John Doe" }} onSignOut={onSignOut} notifications={[]} />);
+
+    await user.click(screen.getByRole("button", { name: /account menu/i }));
+    await user.click(screen.getByRole("menuitem", { name: /sign out/i }));
+
+    expect(onSignOut).toHaveBeenCalledOnce();
+  });
 });

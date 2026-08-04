@@ -14,6 +14,7 @@ test("dark theme loads correctly and has no detectable accessibility violations"
   await expect(page.locator("body")).toHaveCSS("background-color", "rgb(38, 38, 40)");
   await expect(page.locator("body")).toHaveCSS("color", "rgb(248, 248, 248)");
   await expect(page.locator("header")).toHaveCSS("background-color", "rgb(53, 53, 56)");
+  await expect(page.locator("header")).toHaveCSS("border-bottom-color", "rgb(90, 90, 97)");
   await expect(page.getByText("Pinned services", { exact: true })).toHaveCSS(
     "color",
     "rgb(183, 183, 187)",
@@ -26,8 +27,15 @@ test("dark theme loads correctly and has no detectable accessibility violations"
   // The theme toggle now lives inside the profile menu as a radio group.
   await page.getByRole("button", { name: /account menu/i }).click();
   const darkOption = page.getByRole("menuitemradio", { name: /dark mode/i });
+  const themeGroup = page.getByRole("group", { name: "Theme" });
   await expect(darkOption).toBeVisible();
   await expect(darkOption).toHaveAttribute("aria-checked", "true");
+  await expect(themeGroup).toHaveCSS("height", "34px");
+  await expect(themeGroup).toHaveCSS("gap", "4px");
+  await expect(themeGroup).toHaveCSS("padding", "4px");
+  await expect(themeGroup).toHaveCSS("border-radius", "8px");
+  await expect(darkOption).toHaveCSS("padding", "2px 6px");
+  await expect(darkOption).toHaveCSS("border-radius", "6px");
 
   // The menu fades in (fade-in-0, duration-100). Wait for it to reach full
   // opacity so axe measures the settled colors rather than the mid-animation

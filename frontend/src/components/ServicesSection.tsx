@@ -11,6 +11,9 @@ type ServicesSectionProps = {
   onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>;
 };
 
+const viewToggleTriggerClassName =
+  "h-auto gap-1 rounded-[6px] px-1.5 py-0.5 transition-none data-active:border-border-strong data-active:bg-card data-active:shadow-[0_1px_3px_0_rgba(0,0,0,0.10)] dark:text-[#b7b7bb] dark:data-active:bg-card";
+
 export function ServicesSection({ services, onTogglePin }: ServicesSectionProps) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"table" | "grid">("grid");
@@ -66,23 +69,17 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search"
             aria-label="Search services"
-            className="h-[46px] pl-9"
+            className="h-[34px] bg-table-cell-background pl-9"
           />
         </div>
 
-        <TabsList className="!h-[46px] shrink-0 gap-1 rounded-[8px] bg-secondary p-1">
-          <TabsTrigger
-            value="grid"
-            className="h-9 gap-2 rounded-[6px] px-3 transition-none dark:text-[#b7b7bb]"
-          >
+        <TabsList className="!h-[34px] shrink-0 gap-1 rounded-[8px] bg-muted p-1">
+          <TabsTrigger value="grid" className={viewToggleTriggerClassName}>
             <LayoutGrid className="h-4 w-4" />
             <span>Grid View</span>
           </TabsTrigger>
 
-          <TabsTrigger
-            value="table"
-            className="h-9 gap-2 rounded-[6px] px-3 transition-none dark:text-[#b7b7bb]"
-          >
+          <TabsTrigger value="table" className={viewToggleTriggerClassName}>
             <List className="h-4 w-4" />
             <span>List View</span>
           </TabsTrigger>

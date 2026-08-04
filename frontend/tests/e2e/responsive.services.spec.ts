@@ -72,7 +72,8 @@ test("services toolbar stays on one row and keeps search text sizing stable", as
 
     await expect(searchInput).toHaveCSS("font-size", "14px");
     await expect(searchInput).toHaveCSS("line-height", "20px");
-    await expect(searchInput).toHaveCSS("height", "46px");
+    await expect(searchInput).toHaveCSS("height", "34px");
+    await expect(viewToggle).toHaveCSS("height", "34px");
   }
 });
 
@@ -148,6 +149,9 @@ test("services table uses the semantic light and dark surface colors", async ({ 
   });
   await openTable();
 
+  const searchInput = page.getByRole("textbox", { name: "Search services" });
+  const viewToggle = page.getByRole("tablist");
+  const activeView = page.getByRole("tab", { name: /List View/i });
   const container = page.locator('[data-slot="table-container"]');
   const table = page.locator('[data-slot="table"]');
   const header = page.locator('[data-slot="table-header"]');
@@ -156,6 +160,15 @@ test("services table uses the semantic light and dark surface colors", async ({ 
   await expect(header).toHaveCSS("background-color", "oklch(0.9494 0.0013 286.37)");
   await expect(headerCell).toHaveCSS("background-color", "oklch(0.9494 0.0013 286.37)");
   await expect(container).toHaveCSS("border-color", "oklch(0.7806 0.0056 286.27)");
+  await expect(searchInput).toHaveCSS("background-color", "oklch(1 0 0)");
+  await expect(viewToggle).toHaveCSS("background-color", "oklch(0.9494 0.0013 286.37)");
+  await expect(viewToggle).toHaveCSS("border-radius", "8px");
+  await expect(viewToggle).toHaveCSS("gap", "4px");
+  await expect(viewToggle).toHaveCSS("padding", "4px");
+  await expect(activeView).toHaveCSS("background-color", "oklch(1 0 0)");
+  await expect(activeView).toHaveCSS("border-radius", "6px");
+  await expect(activeView).toHaveCSS("border-width", "1px");
+  await expect(activeView).toHaveCSS("padding", "2px 6px");
 
   await page.evaluate(() => {
     window.localStorage.setItem("launchpad:themeMode", "dark");
@@ -166,6 +179,9 @@ test("services table uses the semantic light and dark surface colors", async ({ 
   await expect(header).toHaveCSS("background-color", "rgb(38, 38, 40)");
   await expect(headerCell).toHaveCSS("background-color", "rgb(38, 38, 40)");
   await expect(container).toHaveCSS("border-color", "oklch(0.4701 0.0112 285.96)");
+  await expect(searchInput).toHaveCSS("background-color", "rgb(53, 53, 56)");
+  await expect(viewToggle).toHaveCSS("background-color", "oklch(0.3301 0.0052 286.11)");
+  await expect(activeView).toHaveCSS("background-color", "rgb(53, 53, 56)");
 
   const surfaces = await Promise.all([
     container.evaluate((element) => getComputedStyle(element).backgroundColor),

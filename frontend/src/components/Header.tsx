@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, Monitor, Moon, Sun } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import type { ReactNode } from "react";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
@@ -8,13 +8,17 @@ import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
+  HeaderDropdownMenu as DropdownMenu,
+  HeaderDropdownMenuContent as DropdownMenuContent,
+  HeaderDropdownMenuItem as DropdownMenuItem,
+  HeaderDropdownMenuRadioGroup as DropdownMenuRadioGroup,
+  HeaderDropdownMenuSeparator as DropdownMenuSeparator,
+  HeaderDropdownMenuTrigger as DropdownMenuTrigger,
+} from "./ui/header-dropdown-menu";
+import { MenuBarActions, MenuBarBrand, NavigationMenu } from "./ui/navigation-menu";
+
+const accountMenuItemClassName =
+  "w-full gap-2 px-1.5 py-1 font-sans text-[14px] font-normal leading-5 text-foreground";
 
 type Notification = {
   id: string;
@@ -80,25 +84,23 @@ export function Header(props: HeaderProps): ReactNode {
   };
 
   return (
-    <header className="flex h-[60px] w-full items-center justify-between border-b bg-header-background px-10">
-      <div className="flex items-center">
-        <a href={homeHref} className="flex items-center" aria-label="Go to homepage">
-          <img src={logoSrc} alt="Nebari" className="h-8 w-auto" />
-        </a>
-      </div>
+    <NavigationMenu>
+      <MenuBarBrand href={homeHref} aria-label="Go to homepage">
+        <img src={logoSrc} alt="Nebari" className="h-8 w-auto" />
+      </MenuBarBrand>
 
-      <div className="flex items-center gap-3">
+      <MenuBarActions>
         <DropdownMenu onOpenChange={(open) => open && handleNotificationsOpen()}>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="relative h-9 w-9 rounded-[8px] border border-border bg-transparent text-muted-foreground transition-none hover:bg-accent"
+              className="relative hover:bg-header-action-hover active:bg-header-action-hover"
               aria-label="Notifications"
             >
-              <Bell className="h-5 w-5" />
+              <Bell />
               {unreadCount > 0 ? (
-                <span className="absolute -right-1 -top-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white">
+                <span className="absolute -right-1 -top-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-notification-badge px-1 text-[10px] font-semibold text-white">
                   {unreadCount}
                 </span>
               ) : null}
@@ -152,7 +154,7 @@ export function Header(props: HeaderProps): ReactNode {
               <button
                 type="button"
                 aria-label="Account menu"
-                className="flex items-center gap-3 rounded-md px-1 py-1 transition-none hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className="flex items-center gap-2 rounded-md px-3 text-sm font-medium outline-none hover:bg-header-action-hover focus-visible:ring-2 focus-visible:ring-ring active:bg-header-action-hover"
               >
                 <Avatar className="h-8 w-8">
                   {user.image ? <AvatarImage src={user.image} alt={user.name ?? "User"} /> : null}
@@ -161,28 +163,26 @@ export function Header(props: HeaderProps): ReactNode {
                   </AvatarFallback>
                 </Avatar>
 
-                <span className="text-sm font-medium text-foreground">
-                  {user.name ?? user.email ?? "Account"}
-                </span>
+                <span>{user.name ?? user.email ?? "Account"}</span>
 
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                <ChevronDown />
               </button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-72">
-              <div className="border-b px-3 py-2">
+            <DropdownMenuContent align="end" className="w-[248px] p-2">
+              <div className="border-b px-1.5 pb-2">
                 <p className="text-sm font-medium text-foreground">{user.name ?? "Signed in"}</p>
                 {user.email ? <p className="text-xs text-muted-foreground">{user.email}</p> : null}
               </div>
 
-              <div className="px-2 py-2">
+              <div className="py-2">
                 <DropdownMenuRadioGroup
                   aria-label="Theme"
                   value={themeMode}
                   onValueChange={(value) => {
                     if (isThemeMode(value)) onThemeChange?.(value);
                   }}
-                  className="flex items-center gap-1 rounded-lg bg-muted p-1"
+                  className="flex h-[34px] items-center gap-1 rounded-[8px] bg-muted p-1"
                 >
                   <ThemeOption value="light" label="Light mode" text="Light">
                     <Sun className="h-4 w-4" />
@@ -201,9 +201,13 @@ export function Header(props: HeaderProps): ReactNode {
               <DropdownMenuSeparator />
 
               <DropdownMenuItem
-                className="cursor-pointer focus:bg-accent focus:text-accent-foreground focus:outline-none focus:ring-[3px] focus:ring-ring/50"
+                className={cn(
+                  accountMenuItemClassName,
+                  "text-sign-out-foreground focus:text-sign-out-foreground",
+                )}
                 onClick={() => onSignOut?.()}
               >
+                <LogOut className="size-4 shrink-0" aria-hidden="true" />
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -213,8 +217,8 @@ export function Header(props: HeaderProps): ReactNode {
             Sign in
           </Button>
         )}
-      </div>
-    </header>
+      </MenuBarActions>
+    </NavigationMenu>
   );
 }
 
@@ -234,12 +238,12 @@ function ThemeOption({
       value={value}
       aria-label={label}
       title={label}
-      // Keep the menu open after switching themes so the change is visible.
+      // Let users compare theme options without reopening the account menu.
       onSelect={(event) => event.preventDefault()}
       className={cn(
-        "flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "flex h-auto flex-1 cursor-pointer items-center justify-center gap-1 rounded-[6px] border border-transparent px-1.5 py-0.5 text-sm outline-none transition-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
         "text-muted-foreground hover:text-foreground",
-        "data-[state=checked]:bg-background data-[state=checked]:text-foreground data-[state=checked]:shadow-sm",
+        "data-[state=checked]:border-border-strong data-[state=checked]:bg-card data-[state=checked]:text-foreground data-[state=checked]:shadow-[0_1px_3px_0_rgba(0,0,0,0.10)] dark:data-[state=checked]:bg-card",
       )}
     >
       {children}
