@@ -32,6 +32,27 @@ test("accordion trigger can be toggled with keyboard", async ({ page }) => {
 
   await pinnedTrigger.focus();
   await expect(pinnedTrigger).toBeFocused();
+  await expect(pinnedTrigger).toHaveCSS("border-radius", "8px");
+
+  const notificationButton = page.getByRole("button", { name: /notifications/i });
+  await notificationButton.focus();
+  const buttonFocusStyle = await notificationButton.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      color: style.getPropertyValue("--tw-ring-color"),
+      offsetWidth: style.getPropertyValue("--tw-ring-offset-width"),
+    };
+  });
+  await pinnedTrigger.focus();
+  expect(
+    await pinnedTrigger.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        color: style.getPropertyValue("--tw-ring-color"),
+        offsetWidth: style.getPropertyValue("--tw-ring-offset-width"),
+      };
+    }),
+  ).toEqual(buttonFocusStyle);
   await expect(pinnedTrigger).toHaveAttribute("aria-expanded", "true");
 
   await page.keyboard.press("Enter");
@@ -39,4 +60,17 @@ test("accordion trigger can be toggled with keyboard", async ({ page }) => {
 
   await page.keyboard.press(" ");
   await expect(pinnedTrigger).toHaveAttribute("aria-expanded", "true");
+});
+
+test("service card focus ring overlays the card border", async ({ page }) => {
+  await page.goto("/");
+
+  const serviceCard = page.getByRole("link", { name: /JupyterHub/i }).first();
+  await serviceCard.focus();
+  await expect(serviceCard).toBeFocused();
+  await expect(serviceCard).toHaveCSS("border-radius", "8px");
+  const cardSurface = serviceCard.locator('[data-slot="card"]');
+  expect(await cardSurface.evaluate((element) => getComputedStyle(element).boxShadow)).toContain(
+    "inset",
+  );
 });

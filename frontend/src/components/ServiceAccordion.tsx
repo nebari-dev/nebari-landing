@@ -34,7 +34,7 @@ export function ServicesAccordion({
             "justify-start gap-3",
             "rounded-md py-4 pr-0",
             "transition-none hover:no-underline",
-            "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            "outline-none focus-visible:ring-2 focus-visible:ring-ring",
             "[&>svg]:order-first [&>svg]:shrink-0",
           )}
         >
@@ -61,7 +61,7 @@ export function ServicesAccordion({
             "justify-start gap-3",
             "rounded-md py-4 pr-0",
             "transition-none hover:no-underline",
-            "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            "outline-none focus-visible:ring-2 focus-visible:ring-ring",
             "[&>svg]:order-first [&>svg]:shrink-0",
           )}
         >

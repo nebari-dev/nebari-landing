@@ -20,7 +20,11 @@ type ServicesTableProps = {
 
 export function ServicesTable({ services, onTogglePin }: ServicesTableProps) {
   return (
-    <Table aria-label="Services" className="min-w-140 table-fixed">
+    <Table
+      aria-label="Services"
+      className="min-w-140 table-fixed"
+      scrollContainerClassName="focus-visible:ring-inset focus-visible:ring-offset-0"
+    >
       <colgroup>
         <col className="w-[50%]" />
         <col className="w-[20%]" />
@@ -71,7 +75,7 @@ function ServiceRow({
       tabIndex={0}
       role="link"
       aria-label={`${service.name} (opens in a new tab)`}
-      className="cursor-pointer focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      className="cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       onClick={openService}
       onKeyDown={handleRowKeyDown}
     >
@@ -118,6 +122,7 @@ function ServiceRow({
         <Button
           variant="ghost"
           size="icon"
+          className="focus-visible:ring-offset-0"
           onClick={(event) => {
             event.stopPropagation();
             onTogglePin?.(service.id, !service.pinned);

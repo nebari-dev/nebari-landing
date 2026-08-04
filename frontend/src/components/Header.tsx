@@ -89,13 +89,13 @@ export function Header(props: HeaderProps): ReactNode {
         <img src={logoSrc} alt="Nebari" className="h-8 w-auto" />
       </MenuBarBrand>
 
-      <MenuBarActions>
+      <MenuBarActions className="gap-2">
         <DropdownMenu onOpenChange={(open) => open && handleNotificationsOpen()}>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="relative hover:bg-header-action-hover active:bg-header-action-hover"
+              className="relative hover:bg-header-action-hover focus-visible:ring-offset-0 active:bg-header-action-hover"
               aria-label="Notifications"
             >
               <Bell />
@@ -154,7 +154,7 @@ export function Header(props: HeaderProps): ReactNode {
               <button
                 type="button"
                 aria-label="Account menu"
-                className="flex items-center gap-2 rounded-md px-3 text-sm font-medium outline-none hover:bg-header-action-hover focus-visible:ring-2 focus-visible:ring-ring active:bg-header-action-hover"
+                className="flex items-center gap-2 rounded-md px-2.5 text-sm font-medium outline-none hover:bg-header-action-hover focus-visible:ring-2 focus-visible:ring-ring active:bg-header-action-hover"
               >
                 <Avatar className="h-8 w-8">
                   {user.image ? <AvatarImage src={user.image} alt={user.name ?? "User"} /> : null}

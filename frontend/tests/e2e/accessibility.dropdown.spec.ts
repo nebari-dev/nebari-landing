@@ -44,3 +44,26 @@ test("sign out action uses body-small typography", async ({ page }) => {
   await expect(icon).toHaveCSS("width", "16px");
   await expect(icon).toHaveCSS("height", "16px");
 });
+
+test("header actions leave room for the profile focus ring", async ({ page }) => {
+  await page.goto("/");
+
+  const actions = page.locator('[data-slot="menu-bar-actions"]');
+  const accountMenu = page.getByRole("button", { name: /account menu/i });
+
+  await expect(actions).toHaveCSS("column-gap", "8px");
+  await expect(accountMenu).toHaveCSS("padding-left", "10px");
+  await expect(accountMenu).toHaveCSS("padding-right", "10px");
+});
+
+test("compact icon button focus ring has no offset gap", async ({ page }) => {
+  await page.goto("/");
+
+  const notificationButton = page.getByRole("button", { name: /notifications/i });
+  await notificationButton.focus();
+
+  const focusShadow = await notificationButton.evaluate(
+    (element) => getComputedStyle(element).boxShadow,
+  );
+  expect(focusShadow).not.toContain("0px 0px 0px 4px");
+});

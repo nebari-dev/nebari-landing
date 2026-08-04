@@ -13,9 +13,9 @@ export function PinnedServiceCard({ service }: PinnedServiceCardProps) {
       href={service.url}
       target="_blank"
       rel="noreferrer"
-      className="block focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      className="group/card-link block rounded-md outline-none"
     >
-      <Card className="h-24 border border-border bg-card text-card-foreground shadow-none transition-none hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
+      <Card className="h-24 border border-border bg-card text-card-foreground shadow-none transition-none group-focus-visible/card-link:ring-2 group-focus-visible/card-link:ring-ring group-focus-visible/card-link:ring-inset hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
         <CardContent className="flex h-full items-center gap-4 p-6">
           <ServiceIcon
             image={service.image}

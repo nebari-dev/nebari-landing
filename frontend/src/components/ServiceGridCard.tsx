@@ -25,11 +25,11 @@ export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) 
       href={service.url}
       target="_blank"
       rel="noreferrer"
-      className="block h-56 overflow-visible focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      className="group/card-link block h-56 overflow-visible rounded-md outline-none"
     >
       <Card
         size="sm"
-        className="h-full shadow-none hover:bg-black/[0.02] dark:[--muted-foreground:#b7b7bb] dark:hover:bg-white/[0.03]"
+        className="h-full shadow-none group-focus-visible/card-link:ring-2 group-focus-visible/card-link:ring-ring group-focus-visible/card-link:ring-inset hover:bg-black/[0.02] dark:[--muted-foreground:#b7b7bb] dark:hover:bg-white/[0.03]"
       >
         <CardHeader>
           <ServiceIcon
@@ -69,6 +69,7 @@ export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) 
           <Button
             variant="ghost"
             size="icon"
+            className="focus-visible:ring-offset-0"
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
