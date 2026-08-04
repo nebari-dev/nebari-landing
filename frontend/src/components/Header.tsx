@@ -1,24 +1,21 @@
 import { Bell, ChevronDown, LogOut, Monitor, Moon, Sun } from "lucide-react";
-import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import type { ReactNode } from "react";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
 import builtInLogoLight from "../assets/nebari-logo_light.svg";
 import { isThemeMode, type ThemeMode } from "../hooks/useThemePreference";
 import { cn } from "../lib/utils";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
-import { Button } from "./ui/button";
 import {
   HeaderDropdownMenu as DropdownMenu,
   HeaderDropdownMenuContent as DropdownMenuContent,
   HeaderDropdownMenuItem as DropdownMenuItem,
   HeaderDropdownMenuRadioGroup as DropdownMenuRadioGroup,
+  HeaderDropdownMenuRadioItem as DropdownMenuRadioItem,
   HeaderDropdownMenuSeparator as DropdownMenuSeparator,
   HeaderDropdownMenuTrigger as DropdownMenuTrigger,
-} from "./ui/header-dropdown-menu";
+} from "./HeaderDropdownMenu";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { Button } from "./ui/button";
 import { MenuBarActions, MenuBarBrand, NavigationMenu } from "./ui/navigation-menu";
-
-const accountMenuItemClassName =
-  "w-full gap-2 px-1.5 py-1 font-sans text-[14px] font-normal leading-5 text-foreground";
 
 type Notification = {
   id: string;
@@ -84,7 +81,7 @@ export function Header(props: HeaderProps): ReactNode {
   };
 
   return (
-    <NavigationMenu>
+    <NavigationMenu className="h-14 gap-3 border-header-border bg-header-background px-3 text-header-foreground shadow-none">
       <MenuBarBrand href={homeHref} aria-label="Go to homepage">
         <img src={logoSrc} alt="Nebari" className="h-8 w-auto" />
       </MenuBarBrand>
@@ -202,7 +199,7 @@ export function Header(props: HeaderProps): ReactNode {
 
               <DropdownMenuItem
                 className={cn(
-                  accountMenuItemClassName,
+                  "w-full gap-2 px-1.5 py-1 font-sans text-[14px] font-normal leading-5 text-foreground",
                   "text-sign-out-foreground focus:text-sign-out-foreground",
                 )}
                 onClick={() => onSignOut?.()}
@@ -234,21 +231,21 @@ function ThemeOption({
   children: ReactNode;
 }): ReactNode {
   return (
-    <DropdownMenuPrimitive.RadioItem
+    <DropdownMenuRadioItem
       value={value}
       aria-label={label}
       title={label}
       // Let users compare theme options without reopening the account menu.
       onSelect={(event) => event.preventDefault()}
       className={cn(
-        "flex h-auto flex-1 cursor-pointer items-center justify-center gap-1 rounded-[6px] border border-transparent px-1.5 py-0.5 text-sm outline-none transition-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "flex h-auto flex-1 cursor-pointer items-center justify-center gap-1 rounded-[6px] border border-transparent px-1.5 py-0.5 text-sm outline-none transition-none focus-visible:ring-2 focus-visible:ring-ring",
         "text-muted-foreground hover:text-foreground",
         "data-[state=checked]:border-border-strong data-[state=checked]:bg-card data-[state=checked]:text-foreground data-[state=checked]:shadow-[0_1px_3px_0_rgba(0,0,0,0.10)] dark:data-[state=checked]:bg-card",
       )}
     >
       {children}
       <span>{text}</span>
-    </DropdownMenuPrimitive.RadioItem>
+    </DropdownMenuRadioItem>
   );
 }
 

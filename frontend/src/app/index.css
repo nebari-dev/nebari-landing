@@ -28,6 +28,7 @@
 
   --muted: oklch(94.94% 0.0013 286.37);
   --muted-foreground: oklch(54.86% 0.0154 285.88);
+  --control-muted-foreground: var(--muted-foreground);
 
   --accent: oklch(95.04% 0.0042 236.5);
   --accent-foreground: oklch(32.95% 0.0209 254.12);
@@ -55,6 +56,7 @@
   --table-header-background: var(--muted);
   --table-cell-background: var(--card);
   --table-border: var(--border);
+  --table-row-hover-background: color-mix(in oklab, var(--muted) 50%, transparent);
 
   --sidebar: oklch(97.91% 0 0);
   --sidebar-foreground: oklch(26.94% 0.0037 286.15);
@@ -110,6 +112,7 @@
 
   --muted: oklch(33.01% 0.0052 286.11);
   --muted-foreground: oklch(69.88% 0.013 286.06);
+  --control-muted-foreground: #b7b7bb;
 
   --accent: oklch(40% 0.0269 250.57);
   --accent-foreground: oklch(95.04% 0.0042 236.5);
@@ -135,6 +138,7 @@
   --table-header-background: #262628;
   --table-cell-background: var(--card);
   --table-border: var(--border);
+  --table-row-hover-background: #4a4a50;
 
   --sidebar: oklch(26.94% 0.0037 286.15);
   --sidebar-foreground: oklch(97.91% 0 0);
@@ -195,6 +199,7 @@
   --color-accent: var(--accent);
 
   --color-muted-foreground: var(--muted-foreground);
+  --color-control-muted-foreground: var(--control-muted-foreground);
   --color-muted: var(--muted);
 
   --color-secondary-foreground: var(--secondary-foreground);
@@ -218,6 +223,7 @@
   --color-table-header-background: var(--table-header-background);
   --color-table-cell-background: var(--table-cell-background);
   --color-table-border: var(--table-border);
+  --color-table-row-hover-background: var(--table-row-hover-background);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);

@@ -2,9 +2,8 @@ import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
-// The header keeps Radix's non-modal menu behavior so opening the adjacent
-// Base UI dialog does not leave hidden focus guards in the accessibility tree.
-
+// Header-specific adapter for Radix radio items, which are not exposed by the
+// installed dropdown-menu abstraction.
 function HeaderDropdownMenu(props: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
   return <DropdownMenuPrimitive.Root {...props} />;
 }
@@ -58,6 +57,12 @@ function HeaderDropdownMenuRadioGroup(
   return <DropdownMenuPrimitive.RadioGroup {...props} />;
 }
 
+function HeaderDropdownMenuRadioItem(
+  props: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem>,
+) {
+  return <DropdownMenuPrimitive.RadioItem {...props} />;
+}
+
 function HeaderDropdownMenuSeparator({
   className,
   ...props
@@ -75,6 +80,7 @@ export {
   HeaderDropdownMenuContent,
   HeaderDropdownMenuItem,
   HeaderDropdownMenuRadioGroup,
+  HeaderDropdownMenuRadioItem,
   HeaderDropdownMenuSeparator,
   HeaderDropdownMenuTrigger,
 };

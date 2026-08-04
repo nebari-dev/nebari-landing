@@ -157,7 +157,7 @@ function MenuBar({ className, ...props }: MenuBarProps) {
     <header
       data-slot="menu-bar"
       className={cn(
-        "flex h-14 w-full items-center gap-3 border-header-border border-b bg-header-background px-3 text-header-foreground",
+        "flex h-12 w-full items-center justify-between border-border border-b bg-card px-5 text-card-foreground shadow-xs",
         className,
       )}
       {...props}

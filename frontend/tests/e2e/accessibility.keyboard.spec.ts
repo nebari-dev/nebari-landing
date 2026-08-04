@@ -23,6 +23,43 @@ test("Ctrl+K focuses the search input", async ({ page }) => {
   await expect(page.getByPlaceholder("Search")).toBeFocused();
 });
 
+test("view tabs use arrow-key focus and manual activation", async ({ page }) => {
+  await page.goto("/");
+
+  const allServices = page.getByRole("region", { name: /All services/i });
+  const gridView = allServices.getByRole("tab", { name: /Grid View/i });
+  const listView = allServices.getByRole("tab", { name: /List View/i });
+
+  await gridView.focus();
+  await expect(gridView).toBeFocused();
+
+  await page.keyboard.press("ArrowRight");
+  await expect(listView).toBeFocused();
+  await expect(gridView).toHaveAttribute("aria-selected", "true");
+  await expect(listView).toHaveAttribute("aria-selected", "false");
+
+  await page.keyboard.press("Enter");
+  await expect(listView).toHaveAttribute("aria-selected", "true");
+
+  await page.keyboard.press("Tab");
+  await expect(allServices.getByRole("link", { name: /JupyterHub/i })).toBeFocused();
+});
+
+test("dark table rows expose a visible hover surface", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => document.documentElement.classList.add("dark"));
+
+  const allServices = page.getByRole("region", { name: /All services/i });
+  await allServices.getByRole("tab", { name: /List View/i }).click();
+  const serviceRow = allServices.getByRole("link", { name: /JupyterHub/i });
+  const beforeHover = await serviceRow.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
+
+  await serviceRow.hover();
+  await expect(serviceRow).not.toHaveCSS("background-color", beforeHover);
+});
+
 test("accordion trigger can be toggled with keyboard", async ({ page }) => {
   await page.goto("/");
 

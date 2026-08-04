@@ -12,7 +12,7 @@ type ServicesSectionProps = {
 };
 
 const viewToggleTriggerClassName =
-  "h-auto gap-1 rounded-[6px] px-1.5 py-0.5 transition-none data-active:border-border-strong data-active:bg-card data-active:shadow-[0_1px_3px_0_rgba(0,0,0,0.10)] dark:text-[#b7b7bb] dark:data-active:bg-card";
+  "h-auto gap-1 rounded-[6px] px-1.5 py-0.5 text-control-muted-foreground transition-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:border-border-strong data-active:bg-card data-active:text-foreground data-active:shadow-[0_1px_3px_0_rgba(0,0,0,0.10)] dark:data-active:bg-card";
 
 export function ServicesSection({ services, onTogglePin }: ServicesSectionProps) {
   const [query, setQuery] = useState("");
@@ -49,6 +49,7 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
 
   return (
     <Tabs
+      activationMode="manual"
       value={view}
       onValueChange={(value) => {
         if (value === "table" || value === "grid") {
@@ -86,10 +87,10 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
         </TabsList>
       </div>
 
-      <TabsContent value="table" className="px-1">
+      <TabsContent value="table" tabIndex={-1} className="px-1">
         <ServicesTable services={filteredServices} onTogglePin={onTogglePin} />
       </TabsContent>
-      <TabsContent value="grid" className="px-1">
+      <TabsContent value="grid" tabIndex={-1} className="px-1">
         <ServicesGrid services={filteredServices} onTogglePin={onTogglePin} />
       </TabsContent>
     </Tabs>

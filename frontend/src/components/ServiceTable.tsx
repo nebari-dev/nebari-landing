@@ -24,6 +24,7 @@ export function ServicesTable({ services, onTogglePin }: ServicesTableProps) {
       aria-label="Services"
       className="min-w-140 table-fixed"
       scrollContainerClassName="focus-visible:ring-inset focus-visible:ring-offset-0"
+      scrollContainerProps={{ tabIndex: -1 }}
     >
       <colgroup>
         <col className="w-[50%]" />
@@ -75,7 +76,7 @@ function ServiceRow({
       tabIndex={0}
       role="link"
       aria-label={`${service.name} (opens in a new tab)`}
-      className="cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      className="cursor-pointer outline-none hover:bg-table-row-hover-background focus-visible:bg-table-row-hover-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       onClick={openService}
       onKeyDown={handleRowKeyDown}
     >
@@ -104,7 +105,7 @@ function ServiceRow({
             <Badge
               key={item}
               variant="secondary"
-              className="max-w-full rounded-sm text-muted-foreground capitalize whitespace-normal break-words dark:text-[#b7b7bb]"
+              className="max-w-full rounded-sm text-control-muted-foreground capitalize whitespace-normal break-words"
             >
               {item}
             </Badge>

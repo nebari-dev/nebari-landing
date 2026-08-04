@@ -21,15 +21,19 @@ type ServiceGridCardProps = {
 
 export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) {
   return (
-    <a
-      href={service.url}
-      target="_blank"
-      rel="noreferrer"
-      className="group/card-link block h-56 overflow-visible rounded-md outline-none"
-    >
+    <div className="group/card relative h-56 overflow-visible rounded-md">
+      <a
+        href={service.url}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`${service.name} (opens in a new tab)`}
+        className="peer absolute inset-0 z-10 rounded-md outline-none"
+      >
+        <span className="sr-only">Open {service.name}</span>
+      </a>
       <Card
         size="sm"
-        className="h-full shadow-none group-focus-visible/card-link:ring-2 group-focus-visible/card-link:ring-ring group-focus-visible/card-link:ring-inset hover:bg-black/[0.02] dark:[--muted-foreground:#b7b7bb] dark:hover:bg-white/[0.03]"
+        className="h-full shadow-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-inset group-hover/card:bg-black/[0.02] dark:group-hover/card:bg-white/[0.03]"
       >
         <CardHeader>
           <ServiceIcon
@@ -59,7 +63,7 @@ export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) 
               <Badge
                 key={item}
                 variant="secondary"
-                className="rounded-sm text-muted-foreground capitalize"
+                className="rounded-sm text-control-muted-foreground capitalize"
               >
                 {item}
               </Badge>
@@ -69,7 +73,7 @@ export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) 
           <Button
             variant="ghost"
             size="icon"
-            className="focus-visible:ring-offset-0"
+            className="relative z-20 focus-visible:ring-offset-0"
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -86,6 +90,6 @@ export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) 
           </Button>
         </CardFooter>
       </Card>
-    </a>
+    </div>
   );
 }
