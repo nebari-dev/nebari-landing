@@ -97,7 +97,7 @@ export function Header(props: HeaderProps): ReactNode {
             >
               <Bell />
               {unreadCount > 0 ? (
-                <span className="absolute -right-1 -top-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-notification-badge px-1 text-[10px] font-semibold text-white">
+                <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-notification-badge px-1 text-[9px] font-semibold leading-none text-white tabular-nums">
                   {unreadCount}
                 </span>
               ) : null}

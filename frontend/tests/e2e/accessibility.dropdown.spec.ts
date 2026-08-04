@@ -36,13 +36,17 @@ test("sign out action uses body-small typography", async ({ page }) => {
   await page.getByRole("button", { name: /account menu/i }).click();
 
   const signOut = page.getByRole("menuitem", { name: /sign out/i });
+  await expect(signOut).toHaveCSS("color", "rgb(210, 22, 28)");
+  await expect(signOut).toHaveCSS("font-family", /Inter Variable/);
   await expect(signOut).toHaveCSS("font-size", "14px");
+  await expect(signOut).toHaveCSS("font-style", "normal");
   await expect(signOut).toHaveCSS("font-weight", "400");
   await expect(signOut).toHaveCSS("line-height", "20px");
 
   const icon = signOut.locator("svg");
   await expect(icon).toHaveCSS("width", "16px");
   await expect(icon).toHaveCSS("height", "16px");
+  await expect(icon).toHaveCSS("flex-shrink", "0");
 });
 
 test("header actions leave room for the profile focus ring", async ({ page }) => {
@@ -66,4 +70,15 @@ test("compact icon button focus ring has no offset gap", async ({ page }) => {
     (element) => getComputedStyle(element).boxShadow,
   );
   expect(focusShadow).not.toContain("0px 0px 0px 4px");
+});
+
+test("notification badge uses the compact size", async ({ page }) => {
+  await page.goto("/");
+
+  const badge = page.getByRole("button", { name: /notifications/i }).locator("span");
+  await expect(badge).toHaveCSS("height", "16px");
+  await expect(badge).toHaveCSS("min-width", "16px");
+  await expect(badge).toHaveCSS("align-items", "center");
+  await expect(badge).toHaveCSS("justify-content", "center");
+  await expect(badge).toHaveCSS("line-height", "9px");
 });
