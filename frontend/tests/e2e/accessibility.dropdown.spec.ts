@@ -5,8 +5,10 @@ test("notifications dropdown opens and closes with keyboard", async ({ page }) =
 
   const trigger = page.getByRole("button", { name: /notifications/i });
 
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(255, 255, 255)");
   await expect(page.locator("header")).toHaveCSS("background-color", "rgb(238, 238, 239)");
   await expect(page.locator("header")).toHaveCSS("border-bottom-color", "rgb(183, 183, 187)");
+  expect((await page.getByRole("link", { name: "Go to homepage" }).boundingBox())?.x).toBe(16);
   await trigger.hover();
   await expect(trigger).toHaveCSS("background-color", "rgb(217, 217, 220)");
 

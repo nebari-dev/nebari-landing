@@ -81,7 +81,7 @@ export function Header(props: HeaderProps): ReactNode {
   };
 
   return (
-    <NavigationMenu className="h-14 gap-3 border-header-border bg-header-background px-3 text-header-foreground shadow-none">
+    <NavigationMenu className="h-14 gap-3 border-header-border bg-header-background pr-3 pl-4 text-header-foreground shadow-none">
       <MenuBarBrand href={homeHref} aria-label="Go to homepage">
         <img src={logoSrc} alt="Nebari" className="h-8 w-auto" />
       </MenuBarBrand>

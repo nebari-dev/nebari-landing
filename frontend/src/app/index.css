@@ -6,7 +6,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(97.91% 0 0);
+  --background: oklch(100% 0 0);
   --foreground: oklch(26.94% 0.0037 286.15);
 
   --header-background: #eeeeef;
@@ -93,7 +93,7 @@
   --background: #262628;
   --foreground: #f8f8f8;
 
-  --header-background: #353538;
+  --header-background: var(--card);
   --header-border: #5a5a61;
   --header-foreground: #f8f8f8;
   --header-action-hover: #4a4a50;
