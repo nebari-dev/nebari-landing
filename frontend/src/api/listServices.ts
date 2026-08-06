@@ -3,6 +3,8 @@ import { apiFetch } from "./client";
 export type Service = {
   id: string;
   name: string;
+  /** Mock-supported for now; the production services API does not populate this field yet. */
+  version?: string;
   status: string;
   description: string;
   category: string[];

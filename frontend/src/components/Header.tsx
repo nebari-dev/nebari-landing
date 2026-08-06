@@ -1,9 +1,11 @@
-import { Bell, ChevronDown, LogOut, Monitor, Moon, Sun } from "lucide-react";
-import type { ReactNode } from "react";
+import { Bell, ChevronDown, Info, LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { type ReactNode, useRef, useState } from "react";
+import type { Service } from "../api/listServices";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
 import builtInLogoLight from "../assets/nebari-logo_light.svg";
 import { isThemeMode, type ThemeMode } from "../hooks/useThemePreference";
 import { cn } from "../lib/utils";
+import { AboutDialog } from "./AboutDialog";
 import {
   HeaderDropdownMenu as DropdownMenu,
   HeaderDropdownMenuContent as DropdownMenuContent,
@@ -16,6 +18,10 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { MenuBarActions, MenuBarBrand, NavigationMenu } from "./ui/navigation-menu";
+
+const accountMenuItemClassName =
+  "w-full gap-2 px-1.5 py-1 font-sans text-[14px] font-normal leading-5 text-foreground";
+const accountMenuIconClassName = "size-4 shrink-0";
 
 type Notification = {
   id: string;
@@ -41,12 +47,16 @@ export type HeaderProps = {
   onSignIn?: () => void;
   onSignOut?: () => void;
   notifications?: Notification[];
+  services?: Service[];
   onNotificationsViewed?: (ids: string[]) => void | Promise<void>;
   logoSrc?: string;
   logoSrcDark?: string;
+  environment?: string;
 };
 
 export function Header(props: HeaderProps): ReactNode {
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const accountMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const {
     homeHref = "/",
     isDarkMode = false,
@@ -56,9 +66,11 @@ export function Header(props: HeaderProps): ReactNode {
     onSignIn,
     onSignOut,
     notifications = [],
+    services = [],
     onNotificationsViewed,
     logoSrc: logoSrcProp,
     logoSrcDark: logoSrcDarkProp,
+    environment,
   } = props;
 
   const unreadNotifications = notifications.filter((item) => !item.read);
@@ -77,6 +89,14 @@ export function Header(props: HeaderProps): ReactNode {
     const unreadIds = unreadNotifications.map((item) => item.id);
     if (unreadIds.length > 0) {
       void onNotificationsViewed(unreadIds);
+    }
+  };
+
+  const handleAboutOpenChange = (open: boolean) => {
+    setAboutOpen(open);
+
+    if (!open) {
+      requestAnimationFrame(() => accountMenuTriggerRef.current?.focus());
     }
   };
 
@@ -149,9 +169,10 @@ export function Header(props: HeaderProps): ReactNode {
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <button
+                ref={accountMenuTriggerRef}
                 type="button"
                 aria-label="Account menu"
-                className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium outline-none hover:bg-header-action-hover focus-visible:ring-2 focus-visible:ring-ring active:bg-header-action-hover"
+                className="flex items-center gap-2 rounded-md px-2.5 py-1 text-sm font-medium outline-none hover:bg-header-action-hover focus-visible:ring-2 focus-visible:ring-ring active:bg-header-action-hover"
               >
                 <Avatar className="h-8 w-8">
                   {user.image ? <AvatarImage src={user.image} alt={user.name ?? "User"} /> : null}
@@ -198,13 +219,21 @@ export function Header(props: HeaderProps): ReactNode {
               <DropdownMenuSeparator />
 
               <DropdownMenuItem
+                className={accountMenuItemClassName}
+                onClick={() => setAboutOpen(true)}
+              >
+                <Info className={accountMenuIconClassName} aria-hidden="true" />
+                About
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
                 className={cn(
-                  "w-full gap-2 px-1.5 py-1 font-sans text-[14px] font-normal leading-5 text-foreground",
+                  accountMenuItemClassName,
                   "text-sign-out-foreground focus:text-sign-out-foreground",
                 )}
                 onClick={() => onSignOut?.()}
               >
-                <LogOut className="size-4 shrink-0" aria-hidden="true" />
+                <LogOut className={accountMenuIconClassName} aria-hidden="true" />
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -215,6 +244,16 @@ export function Header(props: HeaderProps): ReactNode {
           </Button>
         )}
       </MenuBarActions>
+
+      <AboutDialog
+        open={aboutOpen}
+        onOpenChange={handleAboutOpenChange}
+        isDarkMode={isDarkMode}
+        logoSrc={logoSrcProp}
+        logoSrcDark={logoSrcDarkProp}
+        services={services}
+        environment={environment}
+      />
     </NavigationMenu>
   );
 }

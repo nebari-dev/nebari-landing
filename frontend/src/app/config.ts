@@ -32,6 +32,8 @@ export type BannerConfig = {
 
 export type AppConfig = {
   keycloak: { url: string; realm: string; clientId: string };
+  /** Human-readable deployment environment shown in the About dialog. */
+  environment?: string;
   /** Optional page title override shown in the browser tab. */
   title?: string;
   /** Optional URL to a custom logo image rendered in the header. */

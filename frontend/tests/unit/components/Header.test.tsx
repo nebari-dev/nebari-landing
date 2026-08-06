@@ -1,10 +1,12 @@
 import { renderWithProviders as render } from "@/test/render";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Header } from "@/components/Header";
 
 describe("Header", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it("shows sign in button when no user is present", () => {
     render(<Header notifications={[]} />);
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
@@ -59,6 +61,40 @@ describe("Header", () => {
       "aria-checked",
       "false",
     );
+  });
+
+  it("opens and closes the About Nebari dialog", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            version: "0.1.0",
+            commit: "a1b2c3d",
+            lastUpdated: "2026-06-28T12:00:00Z",
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    render(
+      <Header user={{ name: "John Doe" }} notifications={[]} environment="Local development" />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /account menu/i }));
+    await user.click(screen.getByRole("menuitem", { name: /about/i }));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "About Nebari" })).toBeInTheDocument();
+    expect(await screen.findByText("a1b2c3d")).toBeInTheDocument();
+    expect(screen.getByText("Jun 28, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Local development")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy all" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /close/i }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("calls onSignOut from the account menu", async () => {

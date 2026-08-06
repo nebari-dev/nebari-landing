@@ -43,6 +43,8 @@ IMAGE_REPO          ?= nebari-landing
 IMAGE_TAG           ?= dev
 WEBAPI_IMAGE        := $(IMAGE_REPO)/webapi:$(IMAGE_TAG)
 FRONTEND_IMAGE      := $(IMAGE_REPO)/nebari-landing:$(IMAGE_TAG)
+GIT_COMMIT          := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+GIT_COMMIT_DATE     := $(shell git show -s --format=%cI HEAD 2>/dev/null)
 HELM_RELEASE        ?= nebari-landing
 
 HELM_RELEASE_KC    ?= keycloak
@@ -247,7 +249,10 @@ image-build:
 	$(call _minikube-reload,webapi,app.kubernetes.io/component=webapi,$(WEBAPI_IMAGE))
 	@echo "→  Building frontend image $(FRONTEND_IMAGE) …"
 	# Build context is frontend/ — Dockerfile lives there and only touches that tree.
-	docker build -t $(FRONTEND_IMAGE) -f frontend/Dockerfile frontend/
+	docker build \
+	  --build-arg GIT_COMMIT="$(GIT_COMMIT)" \
+	  --build-arg GIT_COMMIT_DATE="$(GIT_COMMIT_DATE)" \
+	  -t $(FRONTEND_IMAGE) -f frontend/Dockerfile frontend/
 	$(call _minikube-reload,frontend,app.kubernetes.io/component=frontend,$(FRONTEND_IMAGE))
 	@echo "✔  Images loaded into minikube: $(WEBAPI_IMAGE) $(FRONTEND_IMAGE)"
 

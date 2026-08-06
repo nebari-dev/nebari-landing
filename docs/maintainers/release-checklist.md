@@ -91,6 +91,17 @@ docker pull quay.io/nebari/nebari-landing:0.2.0
 - Find PR titled "feat: add nebari-landing v0.2.0"
 - Review and merge the PR.
 
+**About dialog metadata**:
+
+```bash
+docker run --rm quay.io/nebari/nebari-landing:0.2.0 \
+  cat /usr/share/nginx/html/build-info.json
+```
+
+Confirm that `version` is `0.2.0`, `commit` identifies the release commit, and `lastUpdated` contains that commit's
+timestamp. See [About Dialog Deployment Metadata](#about-dialog-deployment-metadata) for the complete build and
+deployment flow.
+
 ### 6. Test the Release
 
 **Via Helm repository** (after helm-repository PR is merged):
@@ -113,6 +124,87 @@ If this release includes breaking changes or new features:
 - [ ] Update README.md
 - [ ] Update docs/api.md
 - [ ] Update examples in dev/
+
+## About Dialog Deployment Metadata
+
+The frontend generates `/build-info.json` before every development or production build. The About dialog fetches this
+static file at runtime to display the frontend version, source commit, and last-updated date. Deployment environment is
+kept separate in `/config.json` because the same image may be promoted through multiple environments.
+
+### Official release images
+
+No manual metadata step is required when using the release workflow. `release.yml` passes the release version, tagged
+commit, and commit timestamp to the frontend Docker build as:
+
+| Build argument | About dialog field | Release value |
+| --- | --- | --- |
+| `APP_VERSION` | Version | GitHub release tag without the leading `v` |
+| `GIT_COMMIT` | Commit | Full commit SHA; displayed as the first seven characters |
+| `GIT_COMMIT_DATE` | Last updated | ISO 8601 timestamp of the release commit |
+
+The regular frontend image workflow also supplies commit metadata. Non-tag branch and pull-request images use `dev` as
+their version so they cannot be mistaken for an official release.
+
+### Manually built images
+
+Builds performed outside GitHub Actions must provide the same arguments:
+
+```bash
+docker build \
+  --build-arg APP_VERSION=0.2.0 \
+  --build-arg GIT_COMMIT="$(git rev-parse HEAD)" \
+  --build-arg GIT_COMMIT_DATE="$(git show -s --format=%cI HEAD)" \
+  --tag quay.io/nebari/nebari-landing:0.2.0 \
+  --file frontend/Dockerfile \
+  frontend/
+```
+
+Use the immutable commit and version associated with the image being published. Uncommitted working-tree changes are
+not represented by these values.
+
+### Deployment environment
+
+Set a human-readable environment label in the deployment's Helm values:
+
+```yaml
+frontend:
+  environment: "Production · us-east-1"
+```
+
+The chart renders this value into `/config.json` at deployment time. Do not pass it as a Docker build argument: keeping
+it in runtime configuration allows one immutable image to move from staging to production.
+
+### Production verification
+
+After the frontend rollout completes, request the metadata through the same public host users access:
+
+```bash
+curl -i https://<nebari-host>/build-info.json
+```
+
+Verify that:
+
+- The response status is `200`.
+- `version` matches the deployed image tag or release.
+- `commit` matches the source revision used to build the image.
+- `lastUpdated` contains the expected commit timestamp.
+- `Cache-Control` contains `no-store`.
+
+The Dockerfile and Helm-provided nginx configuration both disable caching for this stable filename. If an ingress,
+gateway, or CDN overrides response caching, exclude `/build-info.json` there as well.
+
+### Fallback values
+
+| Situation | Displayed result |
+| --- | --- |
+| `APP_VERSION` omitted from a Docker build | `dev` |
+| `GIT_COMMIT` omitted from a Docker build | `unknown` |
+| `GIT_COMMIT_DATE` omitted from a Docker build | Last updated displays an em dash |
+| `frontend.environment` empty | Environment displays an em dash |
+
+Local `npm run dev` and `npm run build` commands can read the version from the Helm chart and the commit information
+from the local Git checkout. Docker builds cannot access the repository's `.git` directory because their build context
+is `frontend/`, so published images must receive the arguments explicitly.
 
 ## Rollback Procedure
 
@@ -175,6 +267,7 @@ After a successful release:
 - [ ] Verified the workflow pushed the `v<version>` tag (no release branch is created).
 - [ ] Published GitHub release at the new tag.
 - [ ] Verified images built successfully (`:0.2.0` exists on Quay).
+- [ ] Verified the frontend image contains the expected About dialog build metadata.
 - [ ] Verified Helm chart `.tgz` attached to release with the right `appVersion`.
 - [ ] Merged helm-repository PR.
 - [ ] Tested chart installation.

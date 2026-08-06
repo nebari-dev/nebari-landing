@@ -24,6 +24,18 @@ export const test = base.extend<{
         }
       });
 
+      await context.route("**/build-info.json", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            version: "0.1.0",
+            commit: "a1b2c3d",
+            lastUpdated: "2026-06-28T12:00:00Z",
+          }),
+        });
+      });
+
       await context.route(/\/api\/.*services(?:\/)?(?:\?.*)?$/, async (route) => {
         console.log("MOCK services", route.request().url());
         await route.fulfill({
@@ -33,6 +45,7 @@ export const test = base.extend<{
             {
               id: "svc-1",
               name: "JupyterHub",
+              version: "5.2.1",
               status: "Healthy",
               description: "Notebook platform",
               category: ["Data Science"],

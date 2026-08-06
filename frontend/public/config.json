@@ -4,6 +4,7 @@
     "realm": "nebari",
     "clientId": "nebari-frontend-spa"
   },
+  "environment": "",
   "title": "",
   "logoUrl": "",
   "logoUrlDark": "",

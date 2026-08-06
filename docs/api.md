@@ -237,6 +237,7 @@ List discoverable services
 
 Returns the union of public services plus any private services the caller may access based on their JWT groups.
 Anonymous callers see public services only; bearer-token callers additionally see private services they have access to. The "pinned" flag reflects the caller's own pin list (always false for anonymous).
+Service version is not currently included in the production response. Frontend development mocks expose an optional "version" field; the backend service model must be extended before production clients can rely on it.
 
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/services \

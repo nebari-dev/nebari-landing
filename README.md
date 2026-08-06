@@ -217,7 +217,30 @@ have an `/auth` context root). `webapi.keycloak.url` is the in-cluster URL the w
 
 See [`charts/nebari-landing/values.yaml`](charts/nebari-landing/values.yaml) for the full set of configurable values.
 
+### About dialog deployment information
 
+The account menu's **About** dialog shows the frontend version, source commit, last-updated date, and a
+deployment-specific environment label. Official release images embed the version and Git information automatically;
+operators only need to provide the environment label in their Helm values:
+
+```yaml
+frontend:
+  environment: "Production · us-east-1"
+```
+
+The chart renders this value into `/config.json` at deployment time, so the same frontend image can be promoted across
+environments without rebuilding it. When the value is empty, the dialog displays an em dash.
+
+After deploying, verify the embedded image metadata and cache policy:
+
+```sh
+curl -i https://<nebari-host>/build-info.json
+```
+
+The response should contain the deployed `version`, short `commit`, and `lastUpdated` timestamp, with
+`Cache-Control: no-store`. If you build frontend images outside the release workflow, see
+[About dialog deployment metadata](docs/maintainers/release-checklist.md#about-dialog-deployment-metadata) for the
+required Docker build arguments and fallback behavior.
 
 ## Quick Start
 

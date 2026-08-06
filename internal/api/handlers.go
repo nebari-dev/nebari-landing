@@ -489,6 +489,7 @@ func (h *Handler) callerPinnedUIDs(claims *auth.Claims, authenticated bool) map[
 //	@Summary		List discoverable services
 //	@Description	Returns the union of public services plus any private services the caller may access based on their JWT groups.
 //	@Description	Anonymous callers see public services only; bearer-token callers additionally see private services they have access to. The "pinned" flag reflects the caller's own pin list (always false for anonymous).
+//	@Description	Service version is not currently included in the production response. Frontend development mocks expose an optional "version" field; the backend service model must be extended before production clients can rely on it.
 //	@Tags			services
 //	@Produce		json
 //	@Success		200	{object}	ServiceResponse

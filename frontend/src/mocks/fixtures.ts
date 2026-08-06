@@ -21,6 +21,7 @@ export const seedServices: Service[] = [
   {
     id: "svc-jupyter",
     name: "JupyterHub",
+    version: "5.2.1",
     status: "Healthy",
     description: "Multi-user notebook server backed by Kubernetes.",
     category: ["Notebooks"],
@@ -31,6 +32,7 @@ export const seedServices: Service[] = [
   {
     id: "svc-vscode",
     name: "VS Code Server",
+    version: "4.104.2",
     status: "Healthy",
     description: "Browser-based VS Code with shared workspaces.",
     category: ["IDE"],
@@ -41,6 +43,7 @@ export const seedServices: Service[] = [
   {
     id: "svc-grafana",
     name: "Grafana",
+    version: "12.2.0",
     status: "Healthy",
     description: "Dashboards for cluster and workload metrics.",
     category: ["Monitoring"],
@@ -51,6 +54,7 @@ export const seedServices: Service[] = [
   {
     id: "svc-mlflow",
     name: "MLflow",
+    version: "3.4.0",
     status: "Unknown",
     description: "Track experiments, package and deploy models.",
     category: ["ML"],

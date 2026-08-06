@@ -63,6 +63,8 @@ nebariApp:
 # Frontend
 # ---------------------------------------------------------------------------
 frontend:
+  environment: "Local · minikube"
+
   image:
     # Image loaded into minikube by 'make image-build'
     repository: nebari-landing/nebari-landing

@@ -25,9 +25,11 @@ export default function App() {
         user={user}
         onSignOut={() => signOut()}
         notifications={notifications}
+        services={services}
         onNotificationsViewed={onNotificationsViewed}
         logoSrc={config?.logoUrl || undefined}
         logoSrcDark={config?.logoUrlDark || undefined}
+        environment={config?.environment || undefined}
       />
 
       <Content services={services} onTogglePin={onTogglePin} />
