@@ -63,7 +63,7 @@ export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) 
               <Badge
                 key={item}
                 variant="secondary"
-                className="rounded-sm text-control-muted-foreground capitalize"
+                className="rounded-sm bg-category-badge-background text-category-badge-foreground capitalize"
               >
                 {item}
               </Badge>

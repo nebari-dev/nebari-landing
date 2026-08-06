@@ -151,7 +151,7 @@ export function Header(props: HeaderProps): ReactNode {
               <button
                 type="button"
                 aria-label="Account menu"
-                className="flex items-center gap-2 rounded-md px-2.5 text-sm font-medium outline-none hover:bg-header-action-hover focus-visible:ring-2 focus-visible:ring-ring active:bg-header-action-hover"
+                className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium outline-none hover:bg-header-action-hover focus-visible:ring-2 focus-visible:ring-ring active:bg-header-action-hover"
               >
                 <Avatar className="h-8 w-8">
                   {user.image ? <AvatarImage src={user.image} alt={user.name ?? "User"} /> : null}

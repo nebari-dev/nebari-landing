@@ -58,8 +58,8 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
       }}
       className="gap-4"
     >
-      <div className="flex items-center justify-between gap-3 px-1">
-        <div className="relative w-[33.333vw] max-w-[calc(100%_-_5.5rem)] min-w-0">
+      <div className="grid items-center gap-4 px-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="relative min-w-0">
           <Search
             aria-hidden="true"
             className="pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2 text-muted-foreground"
@@ -74,7 +74,7 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
           />
         </div>
 
-        <TabsList className="!h-[34px] shrink-0 gap-1 rounded-[8px] bg-muted p-1">
+        <TabsList className="!h-[34px] justify-self-end gap-1 rounded-[8px] bg-muted p-1 sm:col-start-2 lg:col-start-3 xl:col-start-4">
           <TabsTrigger value="grid" className={viewToggleTriggerClassName}>
             <LayoutGrid className="h-4 w-4" />
             <span>Grid View</span>

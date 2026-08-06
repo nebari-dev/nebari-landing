@@ -43,7 +43,7 @@ async function getBox(locator: Locator) {
   return box;
 }
 
-test("services toolbar stays on one row and keeps search text sizing stable", async ({ page }) => {
+test("service search matches the responsive card width", async ({ page }) => {
   await mockResponsiveServices(page);
 
   const widths = [560, 640, 767, 816, 1024];
@@ -59,16 +59,23 @@ test("services toolbar stays on one row and keeps search text sizing stable", as
 
     const searchInput = allServicesRegion.getByPlaceholder("Search");
     const viewToggle = allServicesRegion.getByRole("tablist");
+    const firstCard = allServicesRegion.getByRole("link", {
+      name: /Long Running Analytics Workspace.*opens in a new tab/i,
+    });
 
     const inputBox = await getBox(searchInput);
     const toggleBox = await getBox(viewToggle);
+    const cardBox = await getBox(firstCard);
 
-    const inputCenterY = inputBox.y + inputBox.height / 2;
-    const toggleCenterY = toggleBox.y + toggleBox.height / 2;
+    expect(Math.abs(inputBox.width - cardBox.width)).toBeLessThanOrEqual(1);
 
-    expect(Math.abs(inputCenterY - toggleCenterY)).toBeLessThanOrEqual(2);
-    expect(inputBox.x + inputBox.width).toBeLessThanOrEqual(toggleBox.x);
-    expect(Math.abs(inputBox.width - width / 3)).toBeLessThanOrEqual(2);
+    if (width >= 640) {
+      const inputCenterY = inputBox.y + inputBox.height / 2;
+      const toggleCenterY = toggleBox.y + toggleBox.height / 2;
+      expect(Math.abs(inputCenterY - toggleCenterY)).toBeLessThanOrEqual(2);
+    } else {
+      expect(toggleBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
+    }
 
     await expect(searchInput).toHaveCSS("font-size", "14px");
     await expect(searchInput).toHaveCSS("line-height", "20px");
@@ -182,6 +189,13 @@ test("services table uses the semantic light and dark surface colors", async ({ 
   await expect(searchInput).toHaveCSS("background-color", "rgb(53, 53, 56)");
   await expect(viewToggle).toHaveCSS("background-color", "oklch(0.3301 0.0052 286.11)");
   await expect(activeView).toHaveCSS("background-color", "rgb(53, 53, 56)");
+
+  const categoryBadge = page.getByText("Observability", { exact: true });
+  const unknownBadge = page.getByText("Unknown", { exact: true });
+  await expect(categoryBadge).toHaveCSS("background-color", "rgb(71, 71, 75)");
+  await expect(categoryBadge).toHaveCSS("color", "rgb(183, 183, 187)");
+  await expect(unknownBadge).toHaveCSS("background-color", "rgb(71, 71, 75)");
+  await expect(unknownBadge).toHaveCSS("color", "rgb(157, 157, 166)");
 
   const surfaces = await Promise.all([
     container.evaluate((element) => getComputedStyle(element).backgroundColor),

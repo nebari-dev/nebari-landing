@@ -105,7 +105,7 @@ function ServiceRow({
             <Badge
               key={item}
               variant="secondary"
-              className="max-w-full rounded-sm text-control-muted-foreground capitalize whitespace-normal break-words"
+              className="max-w-full rounded-sm bg-category-badge-background text-category-badge-foreground capitalize whitespace-normal break-words"
             >
               {item}
             </Badge>

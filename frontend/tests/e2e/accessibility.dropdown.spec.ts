@@ -6,7 +6,7 @@ test("notifications dropdown opens and closes with keyboard", async ({ page }) =
   const trigger = page.getByRole("button", { name: /notifications/i });
 
   await expect(page.locator("body")).toHaveCSS("background-color", "rgb(255, 255, 255)");
-  await expect(page.locator("header")).toHaveCSS("background-color", "rgb(238, 238, 239)");
+  await expect(page.locator("header")).toHaveCSS("background-color", "rgb(248, 248, 248)");
   await expect(page.locator("header")).toHaveCSS("border-bottom-color", "rgb(183, 183, 187)");
   expect((await page.getByRole("link", { name: "Go to homepage" }).boundingBox())?.x).toBe(16);
   await trigger.hover();
@@ -60,6 +60,8 @@ test("header actions leave room for the profile focus ring", async ({ page }) =>
   await expect(actions).toHaveCSS("column-gap", "8px");
   await expect(accountMenu).toHaveCSS("padding-left", "10px");
   await expect(accountMenu).toHaveCSS("padding-right", "10px");
+  await expect(accountMenu).toHaveCSS("padding-top", "4px");
+  await expect(accountMenu).toHaveCSS("padding-bottom", "4px");
 });
 
 test("compact icon button focus ring has no offset gap", async ({ page }) => {

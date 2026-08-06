@@ -6,10 +6,10 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(100% 0 0);
+  --background: #ffffff;
   --foreground: oklch(26.94% 0.0037 286.15);
 
-  --header-background: #eeeeef;
+  --header-background: #f8f8f8;
   --header-border: #b7b7bb;
   --header-foreground: #262628;
   --header-action-hover: #d9d9dc;
@@ -78,6 +78,8 @@
   --status-default-bg: var(--muted);
   --status-default-fg: var(--muted-foreground-strong);
   --status-default-dot: var(--muted-foreground-strong);
+  --category-badge-background: var(--secondary);
+  --category-badge-foreground: var(--control-muted-foreground);
   --scrim: rgba(0, 0, 0, 0.5);
   --primary-hover: oklch(47.01% 0.1577 311.26);
   --muted-foreground-strong: oklch(47.01% 0.0112 285.96);
@@ -156,9 +158,11 @@
   --status-unhealthy-fg: var(--destructive-foreground);
   --status-unhealthy-dot: var(--destructive-foreground);
 
-  --status-default-bg: var(--muted);
-  --status-default-fg: var(--muted-foreground-strong);
-  --status-default-dot: var(--muted-foreground-strong);
+  --status-default-bg: #47474b;
+  --status-default-fg: #9d9da6;
+  --status-default-dot: #9d9da6;
+  --category-badge-background: #47474b;
+  --category-badge-foreground: #b7b7bb;
   --scrim: rgba(0, 0, 0, 0.6);
   --primary-hover: oklch(69.98% 0.1926 311.48);
   --muted-foreground-strong: oklch(78.06% 0.0056 286.27);
@@ -224,6 +228,8 @@
   --color-table-cell-background: var(--table-cell-background);
   --color-table-border: var(--table-border);
   --color-table-row-hover-background: var(--table-row-hover-background);
+  --color-category-badge-background: var(--category-badge-background);
+  --color-category-badge-foreground: var(--category-badge-foreground);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
