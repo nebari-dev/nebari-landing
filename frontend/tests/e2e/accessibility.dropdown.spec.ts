@@ -33,6 +33,126 @@ test("notifications dropdown opens and closes with keyboard", async ({ page }) =
   await emptyState.count();
 });
 
+test("notifications dropdown preserves page scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 500 });
+  await page.goto("/");
+  await page.evaluate(() => {
+    document.body.style.minHeight = "200vh";
+  });
+
+  await page.getByRole("button", { name: /notifications/i }).click();
+  await expect(page.getByRole("menu")).toBeVisible();
+  await expect(page.locator("body")).not.toHaveAttribute("data-scroll-locked");
+
+  const initialScrollY = await page.evaluate(() => window.scrollY);
+  await page.mouse.move(100, 400);
+  await page.mouse.wheel(0, 500);
+
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(initialScrollY);
+});
+
+test("notifications dropdown has a contrasting border in both themes", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /notifications/i }).click();
+
+  const menu = page.getByRole("menu");
+  await expect(menu).toHaveCSS("border-style", "solid");
+  await expect(menu).toHaveCSS("border-width", "1px");
+  await expect(menu).toHaveCSS("border-color", "oklch(0.7806 0.0056 286.27)");
+
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => window.localStorage.setItem("launchpad:themeMode", "dark"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await page.getByRole("button", { name: /notifications/i }).click();
+
+  await expect(menu).toHaveCSS("border-color", "oklch(0.4701 0.0112 285.96)");
+});
+
+test("notification rows use straight separators", async ({ page }) => {
+  await page.route(/\/api\/.*notifications(?:\/)?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: "notif-1",
+          title: "JupyterHub is back online",
+          message: "Ready to use.",
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: "notif-2",
+          title: "Grafana maintenance complete",
+          message: "Dashboards are available.",
+          read: true,
+          createdAt: new Date().toISOString(),
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /notifications/i }).click();
+
+  const rows = page.getByRole("menuitem");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toHaveCSS("border-radius", "0px");
+  await expect(rows.first()).toHaveCSS("border-bottom-style", "solid");
+  await expect(rows.first()).toHaveCSS("border-bottom-width", "1px");
+  await expect(rows.last()).toHaveCSS("border-radius", "0px");
+  await expect(rows.last()).toHaveCSS("border-bottom-width", "0px");
+});
+
+test("notification dropdown scrolls when the list exceeds the viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 500 });
+  await page.route(/\/api\/.*notifications(?:\/)?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        Array.from({ length: 12 }, (_, index) => ({
+          id: `scroll-notification-${index + 1}`,
+          title: `Mock notification ${index + 1}`,
+          message: "Notification content used to verify scrolling.",
+          read: index % 2 === 0,
+          createdAt: new Date(Date.now() - index * 60_000).toISOString(),
+        })),
+      ),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /notifications/i }).click();
+
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+
+  const scrollbarStyles = await menu.evaluate((element) => {
+    const readStyles = (target: Element) => ({
+      color: getComputedStyle(target).scrollbarColor,
+      width: getComputedStyle(target).scrollbarWidth,
+      webkitWidth: getComputedStyle(target, "::-webkit-scrollbar").width,
+      thumbColor: getComputedStyle(target, "::-webkit-scrollbar-thumb").backgroundColor,
+      thumbRadius: getComputedStyle(target, "::-webkit-scrollbar-thumb").borderRadius,
+    });
+
+    return {
+      menu: readStyles(element),
+      page: readStyles(document.documentElement),
+    };
+  });
+
+  expect(scrollbarStyles.menu).toEqual(scrollbarStyles.page);
+  expect(scrollbarStyles.menu.width).toBe("auto");
+  expect(scrollbarStyles.menu.webkitWidth).toBe("12px");
+
+  await menu.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  await expect.poll(() => menu.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});
+
 test("sign out action uses body-small typography", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /account menu/i }).click();

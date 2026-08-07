@@ -13,6 +13,7 @@
   --header-border: #b7b7bb;
   --header-foreground: #262628;
   --header-action-hover: #d9d9dc;
+  --scrollbar-thumb: #85858e;
 
   --card: oklch(100% 0 0);
   --card-foreground: oklch(26.94% 0.0037 286.15);
@@ -99,6 +100,7 @@
   --header-border: #5a5a61;
   --header-foreground: #f8f8f8;
   --header-action-hover: #4a4a50;
+  --scrollbar-thumb: #5a5a61;
 
   --card: #353538;
   --card-foreground: #f8f8f8;
@@ -298,6 +300,24 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+    scrollbar-width: auto;
+  }
+
+  *::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-color: var(--scrollbar-thumb);
+    background-clip: content-box;
   }
 
   html {

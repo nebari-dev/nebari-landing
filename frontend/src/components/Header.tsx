@@ -15,6 +15,13 @@ import {
 } from "./HeaderDropdownMenu";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
+import {
+  DropdownMenu as NebariDropdownMenu,
+  DropdownMenuContent as NebariDropdownMenuContent,
+  DropdownMenuItem as NebariDropdownMenuItem,
+  DropdownMenuPortal as NebariDropdownMenuPortal,
+  DropdownMenuTrigger as NebariDropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { MenuBarActions, MenuBarBrand, NavigationMenu } from "./ui/navigation-menu";
 
 type Notification = {
@@ -87,63 +94,68 @@ export function Header(props: HeaderProps): ReactNode {
       </MenuBarBrand>
 
       <MenuBarActions className="gap-2">
-        <DropdownMenu onOpenChange={(open) => open && handleNotificationsOpen()}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative hover:bg-header-action-hover focus-visible:ring-offset-0 active:bg-header-action-hover"
-              aria-label="Notifications"
+        <NebariDropdownMenu
+          modal={false}
+          onOpenChange={(open) => open && handleNotificationsOpen()}
+        >
+          <NebariDropdownMenuTrigger
+            variant="ghost"
+            className="relative w-8 px-0 hover:bg-header-action-hover hover:no-underline focus-visible:ring-offset-0 active:bg-header-action-hover"
+            aria-label="Notifications"
+          >
+            <Bell />
+            {unreadCount > 0 ? (
+              <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-notification-badge px-1 text-[9px] font-semibold leading-none text-white tabular-nums">
+                {unreadCount}
+              </span>
+            ) : null}
+          </NebariDropdownMenuTrigger>
+
+          <NebariDropdownMenuPortal>
+            <NebariDropdownMenuContent
+              align="end"
+              className="max-h-(--available-height) w-[552px] overflow-y-auto p-0"
             >
-              <Bell />
-              {unreadCount > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-notification-badge px-1 text-[9px] font-semibold leading-none text-white tabular-nums">
-                  {unreadCount}
-                </span>
-              ) : null}
-            </Button>
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent align="end" className="w-[552px] p-0">
-            {notifications.length > 0 ? (
-              notifications.map((notification) => (
-                <DropdownMenuItem
-                  key={notification.id}
-                  className="flex cursor-default items-start gap-4 whitespace-normal border-b px-4 py-4 last:border-b-0"
-                >
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
-                    {notification.image ? (
-                      <img
-                        src={notification.image}
-                        alt=""
-                        aria-hidden="true"
-                        className="h-9 w-9 object-contain"
-                      />
-                    ) : null}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-[15px] font-semibold leading-6 text-foreground">
-                        {notification.title}
-                      </span>
-
-                      {!notification.read ? (
-                        <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary" />
+              {notifications.length > 0 ? (
+                notifications.map((notification) => (
+                  <NebariDropdownMenuItem
+                    key={notification.id}
+                    className="flex cursor-default items-start gap-4 rounded-none border-b px-4 py-4 whitespace-normal last:border-b-0"
+                  >
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
+                      {notification.image ? (
+                        <img
+                          src={notification.image}
+                          alt=""
+                          aria-hidden="true"
+                          className="h-9 w-9 object-contain"
+                        />
                       ) : null}
                     </div>
 
-                    <p className="text-(--text-secondary) text-sm leading-7">
-                      {notification.message}
-                    </p>
-                  </div>
-                </DropdownMenuItem>
-              ))
-            ) : (
-              <div className="px-4 py-4 text-sm text-muted-foreground">No notifications</div>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-[15px] font-semibold leading-6 text-foreground">
+                          {notification.title}
+                        </span>
+
+                        {!notification.read ? (
+                          <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                        ) : null}
+                      </div>
+
+                      <p className="text-(--text-secondary) text-sm leading-7">
+                        {notification.message}
+                      </p>
+                    </div>
+                  </NebariDropdownMenuItem>
+                ))
+              ) : (
+                <div className="px-4 py-4 text-sm text-muted-foreground">No notifications</div>
+              )}
+            </NebariDropdownMenuContent>
+          </NebariDropdownMenuPortal>
+        </NebariDropdownMenu>
 
         {user ? (
           <DropdownMenu modal={false}>
@@ -151,7 +163,7 @@ export function Header(props: HeaderProps): ReactNode {
               <button
                 type="button"
                 aria-label="Account menu"
-                className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium outline-none hover:bg-header-action-hover focus-visible:ring-2 focus-visible:ring-ring active:bg-header-action-hover"
+                className="flex items-center gap-2 rounded-md px-2.5 py-1 text-sm font-medium outline-none hover:bg-header-action-hover focus-visible:ring-2 focus-visible:ring-ring active:bg-header-action-hover"
               >
                 <Avatar className="h-8 w-8">
                   {user.image ? <AvatarImage src={user.image} alt={user.name ?? "User"} /> : null}
