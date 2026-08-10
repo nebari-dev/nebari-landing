@@ -16,8 +16,8 @@ export default function App() {
   const config = getAppConfig();
 
   return (
-    <main className="w-full">
-      <Banner config={config?.banners?.top} />
+    <main className="w-full pt-(--top-banner-height,0px) pb-(--bottom-banner-height,0px)">
+      <Banner position="top" config={config?.banners?.top} />
       <Header
         isDarkMode={isDarkMode}
         themeMode={themeMode}
@@ -31,7 +31,7 @@ export default function App() {
       />
 
       <Content services={services} onTogglePin={onTogglePin} />
-      <Banner config={config?.banners?.bottom} />
+      <Banner position="bottom" config={config?.banners?.bottom} />
     </main>
   );
 }
