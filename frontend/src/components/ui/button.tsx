@@ -1,8 +1,8 @@
-import { useRender } from "@base-ui/react/use-render";
-import { cva, type VariantProps } from "class-variance-authority";
-import { Children, isValidElement, type ReactNode } from "react";
-import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
+import { useRender } from '@base-ui/react/use-render';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { Children, isValidElement, type ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+import { Spinner } from '@/components/ui/spinner';
 
 const buttonVariants = cva(
   "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium underline-offset-4 outline-none motion-safe:transition-[color,background-color,border-color,opacity,transform] motion-safe:duration-[--duration-fast] motion-safe:ease-[--ease-standard] motion-safe:active:scale-[0.97] hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[disabled]:pointer-events-none data-[disabled]:text-muted-foreground data-[disabled]:no-underline data-[disabled]:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -13,36 +13,36 @@ const buttonVariants = cva(
       // share these `data-[disabled]:*` overrides and loading also shows a Spinner.
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-xs hover:bg-primary-hover active:bg-primary-hover data-[disabled]:bg-muted",
+          'bg-primary text-primary-foreground shadow-xs hover:bg-primary-hover active:bg-primary-hover data-[disabled]:bg-muted',
         destructive:
-          "border border-transparent bg-destructive text-destructive-foreground hover:border-destructive-foreground active:border-destructive-foreground data-[disabled]:border-transparent data-[disabled]:bg-muted",
+          'border border-transparent bg-destructive text-destructive-foreground hover:border-destructive-foreground active:border-destructive-foreground data-[disabled]:border-transparent data-[disabled]:bg-muted',
         outline:
-          "border border-input bg-background shadow-xs hover:border-muted-foreground hover:bg-accent hover:text-accent-foreground active:border-muted-foreground active:bg-accent active:text-accent-foreground data-[disabled]:border-border data-[disabled]:bg-transparent",
+          'border border-input bg-background shadow-xs hover:border-muted-foreground hover:bg-accent hover:text-accent-foreground active:border-muted-foreground active:bg-accent active:text-accent-foreground data-[disabled]:border-border data-[disabled]:bg-transparent',
         secondary:
-          "border border-transparent bg-secondary text-secondary-foreground shadow-xs hover:border-input active:border-input data-[disabled]:border-transparent data-[disabled]:bg-muted",
+          'border border-transparent bg-secondary text-secondary-foreground shadow-xs hover:border-input active:border-input data-[disabled]:border-transparent data-[disabled]:bg-muted',
         ghost:
-          "hover:bg-accent hover:text-accent-foreground active:bg-accent active:text-accent-foreground",
-        link: "text-foreground",
+          'hover:bg-accent hover:text-accent-foreground active:bg-accent active:text-accent-foreground',
+        link: 'text-foreground',
       },
       size: {
         xs: "h-6 gap-1 rounded-md px-2 text-xs [&_svg:not([class*='size-'])]:size-3.5",
         sm: "h-7 gap-1.5 rounded-md px-2.5 text-xs [&_svg:not([class*='size-'])]:size-3.5",
-        default: "h-8 px-3 text-sm",
-        lg: "h-9 px-4 text-sm",
-        "icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3.5",
-        "icon-sm": "size-7 [&_svg:not([class*='size-'])]:size-3.5",
-        icon: "size-8 text-sm",
-        "icon-lg": "size-9 text-sm",
+        default: 'h-8 px-3 text-sm',
+        lg: 'h-9 px-4 text-sm',
+        'icon-xs': "size-6 [&_svg:not([class*='size-'])]:size-3.5",
+        'icon-sm': "size-7 [&_svg:not([class*='size-'])]:size-3.5",
+        icon: 'size-8 text-sm',
+        'icon-lg': 'size-9 text-sm',
       },
     },
     defaultVariants: {
-      variant: "default",
-      size: "default",
+      variant: 'default',
+      size: 'default',
     },
   },
 );
 
-type ButtonProps = useRender.ComponentProps<"button"> &
+type ButtonProps = useRender.ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     /**
      * Renders a {@link Spinner}, sets `aria-busy`, and disables the button
@@ -77,7 +77,7 @@ function Button({
   ...props
 }: ButtonProps) {
   const isDisabled = disabled || loading;
-  const isIconSize = size?.startsWith("icon") ?? false;
+  const isIconSize = size?.startsWith('icon') ?? false;
 
   // While loading the Spinner takes the place of the leading icon. Icon-only
   // buttons show just the Spinner; otherwise it sits before the remaining
@@ -110,13 +110,13 @@ function Button({
     ref,
     props: {
       className: cn(buttonVariants({ variant, size }), className),
-      "data-slot": "button",
-      "data-variant": variant ?? "default",
-      "data-size": size ?? "default",
-      "data-disabled": isDisabled || undefined,
+      'data-slot': 'button',
+      'data-variant': variant ?? 'default',
+      'data-size': size ?? 'default',
+      'data-disabled': isDisabled || undefined,
       disabled: isDisabled,
-      "aria-busy": loading || undefined,
-      "aria-disabled": isDisabled || undefined,
+      'aria-busy': loading || undefined,
+      'aria-disabled': isDisabled || undefined,
       children: content,
       ...props,
     },

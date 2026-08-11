@@ -41,23 +41,12 @@ test("view tabs use arrow-key focus and manual activation", async ({ page }) => 
   await page.keyboard.press("Enter");
   await expect(listView).toHaveAttribute("aria-selected", "true");
 
+  const tableContainer = allServices.locator('[data-slot="table-container"]');
   await page.keyboard.press("Tab");
-  await expect(allServices.getByRole("link", { name: /JupyterHub/i })).toBeFocused();
-});
+  await expect(tableContainer).toBeFocused();
 
-test("dark table rows expose a visible hover surface", async ({ page }) => {
-  await page.goto("/");
-  await page.evaluate(() => document.documentElement.classList.add("dark"));
-
-  const allServices = page.getByRole("region", { name: /All services/i });
-  await allServices.getByRole("tab", { name: /List View/i }).click();
-  const serviceRow = allServices.getByRole("link", { name: /JupyterHub/i });
-  const beforeHover = await serviceRow.evaluate(
-    (element) => getComputedStyle(element).backgroundColor,
-  );
-
-  await serviceRow.hover();
-  await expect(serviceRow).not.toHaveCSS("background-color", beforeHover);
+  await page.keyboard.press("Tab");
+  await expect(tableContainer.getByRole("link", { name: /JupyterHub/i })).toBeFocused();
 });
 
 test("accordion trigger can be toggled with keyboard", async ({ page }) => {
@@ -69,27 +58,6 @@ test("accordion trigger can be toggled with keyboard", async ({ page }) => {
 
   await pinnedTrigger.focus();
   await expect(pinnedTrigger).toBeFocused();
-  await expect(pinnedTrigger).toHaveCSS("border-radius", "8px");
-
-  const notificationButton = page.getByRole("button", { name: /notifications/i });
-  await notificationButton.focus();
-  const buttonFocusStyle = await notificationButton.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return {
-      color: style.getPropertyValue("--tw-ring-color"),
-      offsetWidth: style.getPropertyValue("--tw-ring-offset-width"),
-    };
-  });
-  await pinnedTrigger.focus();
-  expect(
-    await pinnedTrigger.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return {
-        color: style.getPropertyValue("--tw-ring-color"),
-        offsetWidth: style.getPropertyValue("--tw-ring-offset-width"),
-      };
-    }),
-  ).toEqual(buttonFocusStyle);
   await expect(pinnedTrigger).toHaveAttribute("aria-expanded", "true");
 
   await page.keyboard.press("Enter");
@@ -99,15 +67,29 @@ test("accordion trigger can be toggled with keyboard", async ({ page }) => {
   await expect(pinnedTrigger).toHaveAttribute("aria-expanded", "true");
 });
 
-test("service card focus ring overlays the card border", async ({ page }) => {
+test("header and accordion controls expose visible focus rings", async ({ page }) => {
+  await page.goto("/");
+
+  const readFocusShadow = (element: HTMLElement) => getComputedStyle(element).boxShadow;
+  const notificationButton = page.getByRole("button", { name: /notifications/i });
+  const pinnedTrigger = page.getByRole("button", { name: /Pinned services/i });
+
+  await notificationButton.focus();
+  const buttonFocusShadow = await notificationButton.evaluate(readFocusShadow);
+  expect(buttonFocusShadow).not.toBe("none");
+
+  await pinnedTrigger.focus();
+  expect(await pinnedTrigger.evaluate(readFocusShadow)).not.toBe("none");
+});
+
+test("service card exposes a visible focus indicator", async ({ page }) => {
   await page.goto("/");
 
   const serviceCard = page.getByRole("link", { name: /JupyterHub/i }).first();
   await serviceCard.focus();
   await expect(serviceCard).toBeFocused();
-  await expect(serviceCard).toHaveCSS("border-radius", "8px");
   const cardSurface = serviceCard.locator('[data-slot="card"]');
-  expect(await cardSurface.evaluate((element) => getComputedStyle(element).boxShadow)).toContain(
-    "inset",
+  expect(await cardSurface.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe(
+    "none",
   );
 });

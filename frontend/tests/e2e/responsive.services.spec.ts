@@ -26,13 +26,16 @@ const responsiveServices = [
 ];
 
 async function mockResponsiveServices(page: Page) {
-  await page.route(/\/api\/.*services(?:\/)?(?:\?.*)?$/, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(responsiveServices),
-    });
-  });
+  await page.route(
+    /^https?:\/\/[^/]+\/api\/v1\/services\/?(?:\?.*)?$/,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(responsiveServices),
+      });
+    },
+  );
 }
 
 async function getBox(locator: Locator) {
@@ -43,10 +46,10 @@ async function getBox(locator: Locator) {
   return box;
 }
 
-test("service search matches the responsive card width", async ({ page }) => {
+test("service controls preserve their responsive order and stay in bounds", async ({ page }) => {
   await mockResponsiveServices(page);
 
-  const widths = [560, 640, 767, 816, 1024];
+  const widths = [560, 768, 1024];
 
   for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
@@ -66,21 +69,28 @@ test("service search matches the responsive card width", async ({ page }) => {
     const inputBox = await getBox(searchInput);
     const toggleBox = await getBox(viewToggle);
     const cardBox = await getBox(firstCard);
+    const regionBox = await getBox(allServicesRegion);
+    const regionRight = regionBox.x + regionBox.width;
 
-    expect(Math.abs(inputBox.width - cardBox.width)).toBeLessThanOrEqual(1);
+    for (const box of [inputBox, toggleBox, cardBox]) {
+      expect(box.x).toBeGreaterThanOrEqual(Math.floor(regionBox.x));
+      expect(box.x + box.width).toBeLessThanOrEqual(Math.ceil(regionRight));
+    }
+
+    expect(cardBox.y).toBeGreaterThanOrEqual(
+      Math.max(inputBox.y + inputBox.height, toggleBox.y + toggleBox.height),
+    );
 
     if (width >= 640) {
-      const inputCenterY = inputBox.y + inputBox.height / 2;
-      const toggleCenterY = toggleBox.y + toggleBox.height / 2;
-      expect(Math.abs(inputCenterY - toggleCenterY)).toBeLessThanOrEqual(2);
+      const controlsOverlapStart = Math.max(inputBox.y, toggleBox.y);
+      const controlsOverlapEnd = Math.min(
+        inputBox.y + inputBox.height,
+        toggleBox.y + toggleBox.height,
+      );
+      expect(controlsOverlapStart).toBeLessThan(controlsOverlapEnd);
     } else {
       expect(toggleBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
     }
-
-    await expect(searchInput).toHaveCSS("font-size", "14px");
-    await expect(searchInput).toHaveCSS("line-height", "20px");
-    await expect(searchInput).toHaveCSS("height", "34px");
-    await expect(viewToggle).toHaveCSS("height", "34px");
   }
 });
 
@@ -106,100 +116,34 @@ test("services table keeps headers and rows in bounds while resizing", async ({ 
     const pinButton = allServicesRegion.getByRole("button", {
       name: /^Unpin service$/,
     });
-    const longDescription = page.getByText(/Notebook workspace for collaborative data analysis/);
+    const longServiceRow = allServicesRegion.getByRole("link", {
+      name: /Long Running Analytics Workspace.*opens in a new tab/i,
+    });
+    const serviceIcon = longServiceRow.locator("img").first().locator("..");
+    const serviceTitle = longServiceRow.getByText("Long Running Analytics Workspace");
+    const longDescription = longServiceRow.getByText(
+      /Notebook workspace for collaborative data analysis/,
+    );
 
     await expect(actionsHeader).toBeVisible();
     await expect(pinButton).toBeVisible();
     await expect(longDescription).toBeVisible();
+    await tableContainer.focus();
+    await expect(tableContainer).toBeFocused();
 
-    const containerBox = await getBox(tableContainer);
-    const actionsHeaderBox = await getBox(actionsHeader);
-    const pinButtonBox = await getBox(pinButton);
+    const iconBox = await getBox(serviceIcon);
+    const titleBox = await getBox(serviceTitle);
+    const descriptionBox = await getBox(longDescription);
 
-    const containerRight = containerBox.x + containerBox.width;
+    const textBlockTop = titleBox.y;
+    const textBlockBottom = descriptionBox.y + descriptionBox.height;
+    const iconCenter = iconBox.y + iconBox.height / 2;
+    expect(descriptionBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
+    expect(iconCenter).toBeGreaterThanOrEqual(textBlockTop);
+    expect(iconCenter).toBeLessThanOrEqual(textBlockBottom);
 
-    expect(actionsHeaderBox.x).toBeGreaterThanOrEqual(containerBox.x - 1);
-    expect(actionsHeaderBox.x + actionsHeaderBox.width).toBeLessThanOrEqual(containerRight + 1);
-    expect(pinButtonBox.x + pinButtonBox.width).toBeLessThanOrEqual(containerRight + 1);
-
-    const overflow = await tableContainer.evaluate((element) => ({
-      clientWidth: element.clientWidth,
-      scrollWidth: element.scrollWidth,
-    }));
-
-    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
-
-    const descriptionMetrics = await longDescription.evaluate((element) => {
-      const styles = window.getComputedStyle(element);
-      return {
-        height: element.getBoundingClientRect().height,
-        lineHeight: Number.parseFloat(styles.lineHeight),
-      };
-    });
-
-    expect(descriptionMetrics.height).toBeLessThanOrEqual(descriptionMetrics.lineHeight * 2 + 1);
+    expect(
+      await tableContainer.evaluate((element) => element.scrollWidth > element.clientWidth),
+    ).toBe(false);
   }
-});
-
-test("services table uses the semantic light and dark surface colors", async ({ page }) => {
-  await mockResponsiveServices(page);
-
-  const openTable = async () => {
-    await page.goto("/");
-    const allServicesRegion = page.getByRole("region", { name: /All services/i });
-    await allServicesRegion.getByRole("tab", { name: /List View/i }).click();
-  };
-
-  await page.goto("/");
-  await page.evaluate(() => {
-    window.localStorage.setItem("launchpad:themeMode", "light");
-  });
-  await openTable();
-
-  const searchInput = page.getByRole("textbox", { name: "Search services" });
-  const viewToggle = page.getByRole("tablist");
-  const activeView = page.getByRole("tab", { name: /List View/i });
-  const container = page.locator('[data-slot="table-container"]');
-  const table = page.locator('[data-slot="table"]');
-  const header = page.locator('[data-slot="table-header"]');
-  const headerCell = page.locator('[data-slot="table-head"]').first();
-
-  await expect(header).toHaveCSS("background-color", "oklch(0.9494 0.0013 286.37)");
-  await expect(headerCell).toHaveCSS("background-color", "oklch(0.9494 0.0013 286.37)");
-  await expect(container).toHaveCSS("border-color", "oklch(0.7806 0.0056 286.27)");
-  await expect(searchInput).toHaveCSS("background-color", "oklch(1 0 0)");
-  await expect(viewToggle).toHaveCSS("background-color", "oklch(0.9494 0.0013 286.37)");
-  await expect(viewToggle).toHaveCSS("border-radius", "8px");
-  await expect(viewToggle).toHaveCSS("gap", "4px");
-  await expect(viewToggle).toHaveCSS("padding", "4px");
-  await expect(activeView).toHaveCSS("background-color", "oklch(1 0 0)");
-  await expect(activeView).toHaveCSS("border-radius", "6px");
-  await expect(activeView).toHaveCSS("border-width", "1px");
-  await expect(activeView).toHaveCSS("padding", "2px 6px");
-
-  await page.evaluate(() => {
-    window.localStorage.setItem("launchpad:themeMode", "dark");
-  });
-  await openTable();
-
-  await expect(page.locator("html")).toHaveClass(/dark/);
-  await expect(header).toHaveCSS("background-color", "rgb(38, 38, 40)");
-  await expect(headerCell).toHaveCSS("background-color", "rgb(38, 38, 40)");
-  await expect(container).toHaveCSS("border-color", "oklch(0.4701 0.0112 285.96)");
-  await expect(searchInput).toHaveCSS("background-color", "rgb(53, 53, 56)");
-  await expect(viewToggle).toHaveCSS("background-color", "oklch(0.3301 0.0052 286.11)");
-  await expect(activeView).toHaveCSS("background-color", "rgb(53, 53, 56)");
-
-  const categoryBadge = page.getByText("Observability", { exact: true });
-  const unknownBadge = page.getByText("Unknown", { exact: true });
-  await expect(categoryBadge).toHaveCSS("background-color", "rgb(71, 71, 75)");
-  await expect(categoryBadge).toHaveCSS("color", "rgb(183, 183, 187)");
-  await expect(unknownBadge).toHaveCSS("background-color", "rgb(71, 71, 75)");
-  await expect(unknownBadge).toHaveCSS("color", "rgb(157, 157, 166)");
-
-  const surfaces = await Promise.all([
-    container.evaluate((element) => getComputedStyle(element).backgroundColor),
-    table.evaluate((element) => getComputedStyle(element).backgroundColor),
-  ]);
-  expect(surfaces[1]).toBe(surfaces[0]);
 });

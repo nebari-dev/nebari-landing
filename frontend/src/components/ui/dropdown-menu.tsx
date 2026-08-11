@@ -1,46 +1,46 @@
-import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { cva, type VariantProps } from "class-variance-authority";
-import { CheckIcon, ChevronRightIcon, ChevronsUpDownIcon } from "lucide-react";
-import type * as React from "react";
-import { Button, type ButtonProps } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Menu as MenuPrimitive } from '@base-ui/react/menu';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { CheckIcon, ChevronRightIcon, ChevronsUpDownIcon } from 'lucide-react';
+import type * as React from 'react';
+import { cn } from '@/lib/utils';
+import { Button, type ButtonProps } from '@/components/ui/button';
 
 const dropdownMenuItemVariants = cva(
-  "relative flex w-full cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-sm outline-hidden select-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring motion-safe:transition-[color,background-color] motion-safe:duration-[--duration-fast] motion-safe:ease-[--ease-standard]",
+  'relative flex w-full cursor-default items-center gap-2 rounded-[calc(var(--radius-md)-var(--spacing))] px-1.5 py-1 text-sm outline-hidden select-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring motion-safe:transition-[color,background-color] motion-safe:duration-[--duration-fast] motion-safe:ease-[--ease-standard]',
   {
     variants: {
       variant: {
-        default: "",
+        default: '',
         destructive:
-          "text-destructive-foreground data-[highlighted]:bg-destructive data-[highlighted]:text-destructive-foreground",
+          'text-destructive-foreground data-[highlighted]:bg-destructive data-[highlighted]:text-destructive-foreground',
       },
     },
     defaultVariants: {
-      variant: "default",
+      variant: 'default',
     },
   },
 );
 
-const dropdownMenuTriggerVariants = cva("group data-[popup-open]:underline", {
+const dropdownMenuTriggerVariants = cva('group data-[popup-open]:underline', {
   variants: {
     variant: {
       default:
-        "bg-muted text-foreground shadow-none hover:bg-accent hover:text-accent-foreground active:bg-accent active:text-accent-foreground data-[popup-open]:bg-accent data-[popup-open]:text-accent-foreground",
-      destructive: "",
-      outline: "",
-      secondary: "",
-      ghost: "",
-      link: "",
+        'bg-muted text-foreground shadow-none hover:bg-accent hover:text-accent-foreground active:bg-accent active:text-accent-foreground data-[popup-open]:bg-accent data-[popup-open]:text-accent-foreground',
+      destructive: '',
+      outline: '',
+      secondary: '',
+      ghost: '',
+      link: '',
     },
   },
   defaultVariants: {
-    variant: "default",
+    variant: 'default',
   },
 });
 
 type DropdownMenuTriggerProps = MenuPrimitive.Trigger.Props &
-  Omit<ButtonProps, keyof MenuPrimitive.Trigger.Props | "size"> & {
-    variant?: NonNullable<ButtonProps["variant"]>;
+  Omit<ButtonProps, keyof MenuPrimitive.Trigger.Props | 'size'> & {
+    variant?: NonNullable<ButtonProps['variant']>;
     showExpandIcon?: boolean;
     expandIcon?: React.ReactNode;
   };
@@ -48,7 +48,10 @@ type DropdownMenuTriggerProps = MenuPrimitive.Trigger.Props &
 type DropdownMenuProps = MenuPrimitive.Root.Props;
 
 type DropdownMenuContentProps = MenuPrimitive.Popup.Props &
-  Pick<MenuPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">;
+  Pick<
+    MenuPrimitive.Positioner.Props,
+    'align' | 'alignOffset' | 'side' | 'sideOffset'
+  >;
 
 type DropdownMenuItemProps = MenuPrimitive.Item.Props &
   VariantProps<typeof dropdownMenuItemVariants>;
@@ -56,12 +59,15 @@ type DropdownMenuItemProps = MenuPrimitive.Item.Props &
 type DropdownMenuCheckboxItemProps = MenuPrimitive.CheckboxItem.Props &
   VariantProps<typeof dropdownMenuItemVariants>;
 
-interface DropdownMenuSubmenuProps extends Omit<MenuPrimitive.SubmenuRoot.Props, "children"> {
+interface DropdownMenuSubmenuProps
+  extends Omit<MenuPrimitive.SubmenuRoot.Props, 'children'> {
   children?: React.ReactNode;
   label: React.ReactNode;
   triggerClassName?: string;
   contentClassName?: string;
-  variant?: NonNullable<VariantProps<typeof dropdownMenuItemVariants>["variant"]>;
+  variant?: NonNullable<
+    VariantProps<typeof dropdownMenuItemVariants>['variant']
+  >;
 }
 
 const DropdownMenuPortal = MenuPrimitive.Portal;
@@ -70,7 +76,7 @@ const DropdownMenuPortal = MenuPrimitive.Portal;
 function DropdownMenu({
   children,
   ...props
-}: Omit<DropdownMenuProps, "children"> & {
+}: Omit<DropdownMenuProps, 'children'> & {
   children?: React.ReactNode;
 }) {
   return (
@@ -89,7 +95,7 @@ function DropdownMenuTrigger({
   expandIcon,
   ...props
 }: DropdownMenuTriggerProps) {
-  const buttonVariant = variant ?? "default";
+  const buttonVariant = variant ?? 'default';
 
   return (
     <MenuPrimitive.Trigger
@@ -98,7 +104,7 @@ function DropdownMenuTrigger({
       render={<Button size="default" variant={buttonVariant} />}
       className={cn(
         dropdownMenuTriggerVariants({ variant: buttonVariant }),
-        showExpandIcon && "gap-1.5",
+        showExpandIcon && 'gap-1.5',
         className,
       )}
       {...props}
@@ -122,7 +128,7 @@ function DropdownMenuGroup({ className, ...props }: MenuPrimitive.Group.Props) {
   return (
     <MenuPrimitive.Group
       data-slot="dropdown-menu-group"
-      className={cn("flex flex-col", className)}
+      className={cn('flex flex-col', className)}
       {...props}
     />
   );
@@ -132,9 +138,9 @@ function DropdownMenuGroup({ className, ...props }: MenuPrimitive.Group.Props) {
 function DropdownMenuContent({
   className,
   children,
-  side = "bottom",
+  side = 'bottom',
   sideOffset = 4,
-  align = "start",
+  align = 'start',
   alignOffset = 0,
   ...props
 }: DropdownMenuContentProps) {
@@ -149,7 +155,7 @@ function DropdownMenuContent({
       <MenuPrimitive.Popup
         data-slot="dropdown-menu-content"
         className={cn(
-          "z-50 min-w-60 origin-(--transform-origin) rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 data-[starting-style]:translate-y-1 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:opacity-0 motion-safe:transition-[opacity,transform] motion-safe:duration-[--duration-base] motion-safe:ease-[--ease-emphasized]",
+          'z-50 min-w-60 origin-(--transform-origin) rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 data-[starting-style]:translate-y-1 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:opacity-0 motion-safe:transition-[opacity,transform] motion-safe:duration-[--duration-base] motion-safe:ease-[--ease-emphasized]',
           className,
         )}
         {...props}
@@ -161,11 +167,16 @@ function DropdownMenuContent({
 }
 
 /** Standard actionable menu item with optional destructive emphasis. */
-function DropdownMenuItem({ className, children, variant, ...props }: DropdownMenuItemProps) {
+function DropdownMenuItem({
+  className,
+  children,
+  variant,
+  ...props
+}: DropdownMenuItemProps) {
   return (
     <MenuPrimitive.Item
       data-slot="dropdown-menu-item"
-      data-variant={variant ?? "default"}
+      data-variant={variant ?? 'default'}
       className={cn(dropdownMenuItemVariants({ variant }), className)}
       {...props}
     >
@@ -175,23 +186,29 @@ function DropdownMenuItem({ className, children, variant, ...props }: DropdownMe
 }
 
 /** Visual divider between menu groups. */
-function DropdownMenuSeparator({ className, ...props }: MenuPrimitive.Separator.Props) {
+function DropdownMenuSeparator({
+  className,
+  ...props
+}: MenuPrimitive.Separator.Props) {
   return (
     <MenuPrimitive.Separator
       data-slot="dropdown-menu-separator"
-      className={cn("my-1 h-px bg-border", className)}
+      className={cn('my-1 h-px bg-border', className)}
       {...props}
     />
   );
 }
 
 /** Non-interactive uppercase label for a grouped section. */
-function DropdownMenuGroupLabel({ className, ...props }: MenuPrimitive.GroupLabel.Props) {
+function DropdownMenuGroupLabel({
+  className,
+  ...props
+}: MenuPrimitive.GroupLabel.Props) {
   return (
     <MenuPrimitive.GroupLabel
       data-slot="dropdown-menu-group-label"
       className={cn(
-        "px-2 py-1.5 text-[11px] leading-4 font-medium tracking-[0.8px] text-muted-foreground uppercase",
+        'px-2 py-1.5 text-[11px] leading-4 font-medium tracking-[0.8px] text-muted-foreground uppercase',
         className,
       )}
       {...props}
@@ -209,8 +226,8 @@ function DropdownMenuCheckboxItem({
   return (
     <MenuPrimitive.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
-      data-variant={variant ?? "default"}
-      className={cn(dropdownMenuItemVariants({ variant }), "pr-7", className)}
+      data-variant={variant ?? 'default'}
+      className={cn(dropdownMenuItemVariants({ variant }), 'pr-7', className)}
       {...props}
     >
       <span className="flex flex-1 items-center">{children}</span>
@@ -230,7 +247,7 @@ function DropdownMenuSubmenu({
   contentClassName,
   label,
   triggerClassName,
-  variant = "default",
+  variant = 'default',
   ...props
 }: DropdownMenuSubmenuProps) {
   return (
@@ -238,13 +255,21 @@ function DropdownMenuSubmenu({
       <MenuPrimitive.SubmenuTrigger
         data-slot="dropdown-menu-submenu-trigger"
         data-variant={variant}
-        className={cn(dropdownMenuItemVariants({ variant }), "pr-7", triggerClassName)}
+        className={cn(
+          dropdownMenuItemVariants({ variant }),
+          'pr-7',
+          triggerClassName,
+        )}
       >
         <span className="flex flex-1 items-center">{label}</span>
         <ChevronRightIcon className="absolute right-1.5 size-4" />
       </MenuPrimitive.SubmenuTrigger>
       <DropdownMenuPortal>
-        <DropdownMenuContent className={contentClassName} side="right" sideOffset={8}>
+        <DropdownMenuContent
+          className={contentClassName}
+          side="right"
+          sideOffset={8}
+        >
           {children}
         </DropdownMenuContent>
       </DropdownMenuPortal>

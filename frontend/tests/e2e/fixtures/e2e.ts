@@ -4,7 +4,7 @@ export const test = base.extend<{
   mockApp: void;
 }>({
   mockApp: [
-    async ({ context, page }, use) => {
+    async ({ context }, use) => {
       await context.addInitScript(() => {
         window.__PW_E2E_AUTH__ = {
           authenticated: true,
@@ -18,57 +18,84 @@ export const test = base.extend<{
         };
       });
 
-      page.on("request", (req) => {
-        if (req.url().includes("/api/")) {
-          console.log("REQ", req.method(), req.url());
-        }
-      });
+      await context.route(
+        /^https?:\/\/[^/]+\/api\/v1\/services\/?(?:\?.*)?$/,
+        async (route) => {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify([
+              {
+                id: "svc-1",
+                name: "JupyterHub",
+                status: "Healthy",
+                description: "Notebook platform",
+                category: ["Data Science"],
+                pinned: true,
+                image: "",
+                url: "https://example.com/jupyterhub",
+              },
+            ]),
+          });
+        },
+      );
 
-      await context.route(/\/api\/.*services(?:\/)?(?:\?.*)?$/, async (route) => {
-        console.log("MOCK services", route.request().url());
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([
-            {
-              id: "svc-1",
-              name: "JupyterHub",
-              status: "Healthy",
-              description: "Notebook platform",
-              category: ["Data Science"],
-              pinned: true,
-              image: "",
-              url: "https://example.com/jupyterhub",
-            },
-          ]),
-        });
-      });
+      await context.route(
+        /^https?:\/\/[^/]+\/api\/v1\/notifications\/?(?:\?.*)?$/,
+        async (route) => {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify([
+              {
+                id: "notif-1",
+                image: "",
+                title: "JupyterHub is back online",
+                message: "Ready to use.",
+                read: false,
+                createdAt: new Date().toISOString(),
+              },
+            ]),
+          });
+        },
+      );
 
-      await context.route(/\/api\/.*notifications(?:\/)?(?:\?.*)?$/, async (route) => {
-        console.log("MOCK notifications", route.request().url());
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([
-            {
-              id: "notif-1",
-              image: "",
-              title: "JupyterHub is back online",
-              message: "Ready to use.",
-              read: false,
-              createdAt: new Date().toISOString(),
-            },
-          ]),
-        });
-      });
+      await context.route(
+        /^https?:\/\/[^/]+\/api\/v1\/notifications\/[^/?]+\/read(?:\?.*)?$/,
+        async (route) => {
+          await route.fulfill({ status: 204, body: "" });
+        },
+      );
 
-      await context.route(/\/api\/notifications\/.+/, async (route) => {
-        await route.fulfill({ status: 204, body: "" });
-      });
+      await context.route(
+        /^https?:\/\/[^/]+\/api\/v1\/pins\/[^/?]+(?:\?.*)?$/,
+        async (route) => {
+          if (route.request().method() === "GET") {
+            const serviceId = new URL(route.request().url()).pathname.split("/").at(-1);
+            await route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({ id: serviceId }),
+            });
+            return;
+          }
 
-      await context.route(/\/api\/pin\/.+/, async (route) => {
-        await route.fulfill({ status: 204, body: "" });
-      });
+          await route.fulfill({ status: 204, body: "" });
+        },
+      );
+
+      await context.route(
+        /^https?:\/\/[^/]+\/api\/v1\/ws-ticket\/?(?:\?.*)?$/,
+        async (route) => {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ ticket: "mock-ws-ticket" }),
+          });
+        },
+      );
+
+      await context.routeWebSocket(/^wss?:\/\/[^/]+\/api\/v1\/ws(?:\?.*)?$/, () => {});
 
       await use();
     },

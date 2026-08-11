@@ -1,26 +1,19 @@
+import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { Bell, ChevronDown, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
 import builtInLogoLight from "../assets/nebari-logo_light.svg";
 import { isThemeMode, type ThemeMode } from "../hooks/useThemePreference";
 import { cn } from "../lib/utils";
-import {
-  HeaderDropdownMenu as DropdownMenu,
-  HeaderDropdownMenuContent as DropdownMenuContent,
-  HeaderDropdownMenuItem as DropdownMenuItem,
-  HeaderDropdownMenuRadioGroup as DropdownMenuRadioGroup,
-  HeaderDropdownMenuRadioItem as DropdownMenuRadioItem,
-  HeaderDropdownMenuSeparator as DropdownMenuSeparator,
-  HeaderDropdownMenuTrigger as DropdownMenuTrigger,
-} from "./HeaderDropdownMenu";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import {
-  DropdownMenu as NebariDropdownMenu,
-  DropdownMenuContent as NebariDropdownMenuContent,
-  DropdownMenuItem as NebariDropdownMenuItem,
-  DropdownMenuPortal as NebariDropdownMenuPortal,
-  DropdownMenuTrigger as NebariDropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { MenuBarActions, MenuBarBrand, NavigationMenu } from "./ui/navigation-menu";
 
@@ -88,39 +81,36 @@ export function Header(props: HeaderProps): ReactNode {
   };
 
   return (
-    <NavigationMenu className="h-14 gap-3 border-header-border bg-header-background pr-3 pl-4 text-header-foreground shadow-none">
+    <NavigationMenu className="h-14 justify-between border-header-border bg-header-background pl-4 text-header-foreground">
       <MenuBarBrand href={homeHref} aria-label="Go to homepage">
         <img src={logoSrc} alt="Nebari" className="h-8 w-auto" />
       </MenuBarBrand>
 
       <MenuBarActions className="gap-2">
-        <NebariDropdownMenu
-          modal={false}
-          onOpenChange={(open) => open && handleNotificationsOpen()}
-        >
-          <NebariDropdownMenuTrigger
+        <DropdownMenu modal={false} onOpenChange={(open) => open && handleNotificationsOpen()}>
+          <DropdownMenuTrigger
             variant="ghost"
             className="relative w-8 px-0 hover:bg-header-action-hover hover:no-underline focus-visible:ring-offset-0 active:bg-header-action-hover"
             aria-label="Notifications"
           >
             <Bell />
             {unreadCount > 0 ? (
-              <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-notification-badge px-1 text-[9px] font-semibold leading-none text-white tabular-nums">
+              <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-notification-badge px-1 pt-px text-[9px] font-semibold leading-none text-white tabular-nums">
                 {unreadCount}
               </span>
             ) : null}
-          </NebariDropdownMenuTrigger>
+          </DropdownMenuTrigger>
 
-          <NebariDropdownMenuPortal>
-            <NebariDropdownMenuContent
+          <DropdownMenuPortal>
+            <DropdownMenuContent
               align="end"
               className="max-h-(--available-height) w-[552px] overflow-y-auto p-0"
             >
               {notifications.length > 0 ? (
                 notifications.map((notification) => (
-                  <NebariDropdownMenuItem
+                  <DropdownMenuItem
                     key={notification.id}
-                    className="flex cursor-default items-start gap-4 rounded-none border-b px-4 py-4 whitespace-normal last:border-b-0"
+                    className="items-start gap-4 rounded-none border-b px-4 py-4 whitespace-normal last:border-b-0"
                   >
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
                       {notification.image ? (
@@ -148,78 +138,77 @@ export function Header(props: HeaderProps): ReactNode {
                         {notification.message}
                       </p>
                     </div>
-                  </NebariDropdownMenuItem>
+                  </DropdownMenuItem>
                 ))
               ) : (
                 <div className="px-4 py-4 text-sm text-muted-foreground">No notifications</div>
               )}
-            </NebariDropdownMenuContent>
-          </NebariDropdownMenuPortal>
-        </NebariDropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenuPortal>
+        </DropdownMenu>
 
         {user ? (
           <DropdownMenu modal={false}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label="Account menu"
-                className="flex items-center gap-2 rounded-md px-2.5 py-1 text-sm font-medium outline-none hover:bg-header-action-hover focus-visible:ring-2 focus-visible:ring-ring active:bg-header-action-hover"
-              >
-                <Avatar className="h-8 w-8">
-                  {user.image ? <AvatarImage src={user.image} alt={user.name ?? "User"} /> : null}
-                  <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
+            <DropdownMenuTrigger
+              variant="ghost"
+              aria-label="Account menu"
+              className="h-auto px-2.5 py-1 hover:bg-header-action-hover hover:no-underline focus-visible:ring-offset-0 active:bg-header-action-hover data-[popup-open]:bg-header-action-hover data-[popup-open]:no-underline"
+            >
+              <Avatar>
+                {user.image ? <AvatarImage src={user.image} alt={user.name ?? "User"} /> : null}
+                <AvatarFallback className="bg-primary font-semibold text-primary-foreground">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
 
-                <span>{user.name ?? user.email ?? "Account"}</span>
+              <span>{user.name ?? user.email ?? "Account"}</span>
 
-                <ChevronDown />
-              </button>
+              <ChevronDown />
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-[248px] p-2">
-              <div className="border-b px-1.5 pb-2">
-                <p className="text-sm font-medium text-foreground">{user.name ?? "Signed in"}</p>
-                {user.email ? <p className="text-xs text-muted-foreground">{user.email}</p> : null}
-              </div>
+            <DropdownMenuPortal>
+              <DropdownMenuContent align="end" className="w-[248px] p-2">
+                <div className="border-b px-1.5 pb-2">
+                  <p className="text-sm font-medium text-foreground">{user.name ?? "Signed in"}</p>
+                  {user.email ? (
+                    <p className="text-xs text-muted-foreground">{user.email}</p>
+                  ) : null}
+                </div>
 
-              <div className="py-2">
-                <DropdownMenuRadioGroup
-                  aria-label="Theme"
-                  value={themeMode}
-                  onValueChange={(value) => {
-                    if (isThemeMode(value)) onThemeChange?.(value);
-                  }}
-                  className="flex h-[34px] items-center gap-1 rounded-[8px] bg-muted p-1"
+                <div className="py-2">
+                  <MenuPrimitive.RadioGroup
+                    aria-label="Theme"
+                    value={themeMode}
+                    onValueChange={(value) => {
+                      if (isThemeMode(value)) onThemeChange?.(value);
+                    }}
+                    className="flex h-[34px] items-center gap-1 rounded-md bg-muted p-1"
+                  >
+                    <ThemeOption value="light" label="Light mode" text="Light">
+                      <Sun className="h-4 w-4" />
+                    </ThemeOption>
+
+                    <ThemeOption value="dark" label="Dark mode" text="Dark">
+                      <Moon className="h-4 w-4" />
+                    </ThemeOption>
+
+                    <ThemeOption value="system" label="System theme" text="System">
+                      <Monitor className="h-4 w-4" />
+                    </ThemeOption>
+                  </MenuPrimitive.RadioGroup>
+                </div>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                  className="leading-5 text-sign-out-foreground data-[highlighted]:text-sign-out-foreground"
+                  onClick={() => onSignOut?.()}
                 >
-                  <ThemeOption value="light" label="Light mode" text="Light">
-                    <Sun className="h-4 w-4" />
-                  </ThemeOption>
-
-                  <ThemeOption value="dark" label="Dark mode" text="Dark">
-                    <Moon className="h-4 w-4" />
-                  </ThemeOption>
-
-                  <ThemeOption value="system" label="System theme" text="System">
-                    <Monitor className="h-4 w-4" />
-                  </ThemeOption>
-                </DropdownMenuRadioGroup>
-              </div>
-
-              <DropdownMenuSeparator />
-
-              <DropdownMenuItem
-                className={cn(
-                  "w-full gap-2 px-1.5 py-1 font-sans text-[14px] font-normal leading-5 text-foreground",
-                  "text-sign-out-foreground focus:text-sign-out-foreground",
-                )}
-                onClick={() => onSignOut?.()}
-              >
-                <LogOut className="size-4 shrink-0" aria-hidden="true" />
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
+                  <LogOut className="size-4 shrink-0" aria-hidden="true" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
           </DropdownMenu>
         ) : (
           <Button type="button" onClick={() => onSignIn?.()}>
@@ -243,21 +232,20 @@ function ThemeOption({
   children: ReactNode;
 }): ReactNode {
   return (
-    <DropdownMenuRadioItem
+    <MenuPrimitive.RadioItem
       value={value}
       aria-label={label}
       title={label}
-      // Let users compare theme options without reopening the account menu.
-      onSelect={(event) => event.preventDefault()}
+      closeOnClick={false}
       className={cn(
-        "flex h-auto flex-1 cursor-pointer items-center justify-center gap-1 rounded-[6px] border border-transparent px-1.5 py-0.5 text-sm outline-none transition-none focus-visible:ring-2 focus-visible:ring-ring",
-        "text-muted-foreground hover:text-foreground",
-        "data-[state=checked]:border-border-strong data-[state=checked]:bg-card data-[state=checked]:text-foreground data-[state=checked]:shadow-[0_1px_3px_0_rgba(0,0,0,0.10)] dark:data-[state=checked]:bg-card",
+        "flex h-auto flex-1 cursor-pointer items-center justify-center gap-1 rounded-sm border border-transparent px-1.5 py-0.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "text-muted-foreground-strong hover:text-foreground",
+        "data-checked:border-border-strong data-checked:bg-card data-checked:text-foreground data-checked:shadow-[0_1px_3px_0_rgba(0,0,0,0.10)]",
       )}
     >
       {children}
       <span>{text}</span>
-    </DropdownMenuRadioItem>
+    </MenuPrimitive.RadioItem>
   );
 }
 

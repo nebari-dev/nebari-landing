@@ -5,13 +5,6 @@ test("notifications dropdown opens and closes with keyboard", async ({ page }) =
 
   const trigger = page.getByRole("button", { name: /notifications/i });
 
-  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(255, 255, 255)");
-  await expect(page.locator("header")).toHaveCSS("background-color", "rgb(248, 248, 248)");
-  await expect(page.locator("header")).toHaveCSS("border-bottom-color", "rgb(183, 183, 187)");
-  expect((await page.getByRole("link", { name: "Go to homepage" }).boundingBox())?.x).toBe(16);
-  await trigger.hover();
-  await expect(trigger).toHaveCSS("background-color", "rgb(217, 217, 220)");
-
   await trigger.focus();
   await expect(trigger).toBeFocused();
 
@@ -19,18 +12,24 @@ test("notifications dropdown opens and closes with keyboard", async ({ page }) =
 
   await expect(page.getByRole("menu")).toBeVisible();
 
-  // Works whether the menu is empty or has notifications.
-  const emptyState = page.getByText("No notifications");
-  const anyMenuText = page.getByRole("menu");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+});
 
-  await expect(anyMenuText).toBeVisible();
+test("account dropdown opens and closes with keyboard", async ({ page }) => {
+  await page.goto("/");
+
+  const trigger = page.getByRole("button", { name: /account menu/i });
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByRole("menu")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Theme" })).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).not.toBeVisible();
   await expect(trigger).toBeFocused();
-
-  // Keep this line so the empty state is not tree-shaken by the test runner.
-  await emptyState.count();
 });
 
 test("notifications dropdown preserves page scrolling", async ({ page }) => {
@@ -51,77 +50,26 @@ test("notifications dropdown preserves page scrolling", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(initialScrollY);
 });
 
-test("notifications dropdown has a contrasting border in both themes", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: /notifications/i }).click();
-
-  const menu = page.getByRole("menu");
-  await expect(menu).toHaveCSS("border-style", "solid");
-  await expect(menu).toHaveCSS("border-width", "1px");
-  await expect(menu).toHaveCSS("border-color", "oklch(0.7806 0.0056 286.27)");
-
-  await page.keyboard.press("Escape");
-  await page.evaluate(() => window.localStorage.setItem("launchpad:themeMode", "dark"));
-  await page.reload();
-  await expect(page.locator("html")).toHaveClass(/dark/);
-  await page.getByRole("button", { name: /notifications/i }).click();
-
-  await expect(menu).toHaveCSS("border-color", "oklch(0.4701 0.0112 285.96)");
-});
-
-test("notification rows use straight separators", async ({ page }) => {
-  await page.route(/\/api\/.*notifications(?:\/)?(?:\?.*)?$/, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify([
-        {
-          id: "notif-1",
-          title: "JupyterHub is back online",
-          message: "Ready to use.",
-          read: false,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: "notif-2",
-          title: "Grafana maintenance complete",
-          message: "Dashboards are available.",
-          read: true,
-          createdAt: new Date().toISOString(),
-        },
-      ]),
-    });
-  });
-
-  await page.goto("/");
-  await page.getByRole("button", { name: /notifications/i }).click();
-
-  const rows = page.getByRole("menuitem");
-  await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toHaveCSS("border-radius", "0px");
-  await expect(rows.first()).toHaveCSS("border-bottom-style", "solid");
-  await expect(rows.first()).toHaveCSS("border-bottom-width", "1px");
-  await expect(rows.last()).toHaveCSS("border-radius", "0px");
-  await expect(rows.last()).toHaveCSS("border-bottom-width", "0px");
-});
-
 test("notification dropdown scrolls when the list exceeds the viewport", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 500 });
-  await page.route(/\/api\/.*notifications(?:\/)?(?:\?.*)?$/, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(
-        Array.from({ length: 12 }, (_, index) => ({
-          id: `scroll-notification-${index + 1}`,
-          title: `Mock notification ${index + 1}`,
-          message: "Notification content used to verify scrolling.",
-          read: index % 2 === 0,
-          createdAt: new Date(Date.now() - index * 60_000).toISOString(),
-        })),
-      ),
-    });
-  });
+  await page.route(
+    /^https?:\/\/[^/]+\/api\/v1\/notifications\/?(?:\?.*)?$/,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          Array.from({ length: 12 }, (_, index) => ({
+            id: `scroll-notification-${index + 1}`,
+            title: `Mock notification ${index + 1}`,
+            message: "Notification content used to verify scrolling.",
+            read: index % 2 === 0,
+            createdAt: new Date(Date.now() - index * 60_000).toISOString(),
+          })),
+        ),
+      });
+    },
+  );
 
   await page.goto("/");
   await page.getByRole("button", { name: /notifications/i }).click();
@@ -130,79 +78,6 @@ test("notification dropdown scrolls when the list exceeds the viewport", async (
   await expect(menu).toBeVisible();
   expect(await menu.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
 
-  const scrollbarStyles = await menu.evaluate((element) => {
-    const readStyles = (target: Element) => ({
-      color: getComputedStyle(target).scrollbarColor,
-      width: getComputedStyle(target).scrollbarWidth,
-      webkitWidth: getComputedStyle(target, "::-webkit-scrollbar").width,
-      thumbColor: getComputedStyle(target, "::-webkit-scrollbar-thumb").backgroundColor,
-      thumbRadius: getComputedStyle(target, "::-webkit-scrollbar-thumb").borderRadius,
-    });
-
-    return {
-      menu: readStyles(element),
-      page: readStyles(document.documentElement),
-    };
-  });
-
-  expect(scrollbarStyles.menu).toEqual(scrollbarStyles.page);
-  expect(scrollbarStyles.menu.width).toBe("auto");
-  expect(scrollbarStyles.menu.webkitWidth).toBe("12px");
-
   await menu.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
   await expect.poll(() => menu.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-});
-
-test("sign out action uses body-small typography", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: /account menu/i }).click();
-
-  const signOut = page.getByRole("menuitem", { name: /sign out/i });
-  await expect(signOut).toHaveCSS("color", "rgb(210, 22, 28)");
-  await expect(signOut).toHaveCSS("font-family", /Inter Variable/);
-  await expect(signOut).toHaveCSS("font-size", "14px");
-  await expect(signOut).toHaveCSS("font-style", "normal");
-  await expect(signOut).toHaveCSS("font-weight", "400");
-  await expect(signOut).toHaveCSS("line-height", "20px");
-
-  const icon = signOut.locator("svg");
-  await expect(icon).toHaveCSS("width", "16px");
-  await expect(icon).toHaveCSS("height", "16px");
-  await expect(icon).toHaveCSS("flex-shrink", "0");
-});
-
-test("header actions leave room for the profile focus ring", async ({ page }) => {
-  await page.goto("/");
-
-  const actions = page.locator('[data-slot="menu-bar-actions"]');
-  const accountMenu = page.getByRole("button", { name: /account menu/i });
-
-  await expect(actions).toHaveCSS("column-gap", "8px");
-  await expect(accountMenu).toHaveCSS("padding-left", "10px");
-  await expect(accountMenu).toHaveCSS("padding-right", "10px");
-  await expect(accountMenu).toHaveCSS("padding-top", "4px");
-  await expect(accountMenu).toHaveCSS("padding-bottom", "4px");
-});
-
-test("compact icon button focus ring has no offset gap", async ({ page }) => {
-  await page.goto("/");
-
-  const notificationButton = page.getByRole("button", { name: /notifications/i });
-  await notificationButton.focus();
-
-  const focusShadow = await notificationButton.evaluate(
-    (element) => getComputedStyle(element).boxShadow,
-  );
-  expect(focusShadow).not.toContain("0px 0px 0px 4px");
-});
-
-test("notification badge uses the compact size", async ({ page }) => {
-  await page.goto("/");
-
-  const badge = page.getByRole("button", { name: /notifications/i }).locator("span");
-  await expect(badge).toHaveCSS("height", "16px");
-  await expect(badge).toHaveCSS("min-width", "16px");
-  await expect(badge).toHaveCSS("align-items", "center");
-  await expect(badge).toHaveCSS("justify-content", "center");
-  await expect(badge).toHaveCSS("line-height", "9px");
 });

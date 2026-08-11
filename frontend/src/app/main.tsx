@@ -22,9 +22,10 @@ for (const cookie of document.cookie.split(";")) {
 
 // Optional MSW layer for local frontend dev: start the service worker before
 // any Keycloak / config fetches so every subsequent network call (REST + WS)
-// is intercepted. The worker is gated behind VITE_USE_MOCKS=1 so production
-// builds never even bundle it. See docs/dev-quickstart.md.
-if (import.meta.env.VITE_USE_MOCKS === "1") {
+// is intercepted. Playwright supplies its own route mocks and blocks service
+// workers, so skip MSW when the test-only authentication state is present.
+// Production builds never enable this branch. See docs/dev-quickstart.md.
+if (import.meta.env.VITE_USE_MOCKS === "1" && !window.__PW_E2E_AUTH__) {
   const { worker } = await import("../mocks/browser");
   await worker.start({
     onUnhandledRequest: "bypass",
