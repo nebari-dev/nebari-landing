@@ -3,7 +3,7 @@ import { Bell, ChevronDown, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
 import builtInLogoLight from "../assets/nebari-logo_light.svg";
-import { isThemeMode, type ThemeMode } from "../hooks/useThemePreference";
+import { isThemeMode, type ThemeMode } from "../hooks/use-theme-preference";
 import { cn } from "../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";

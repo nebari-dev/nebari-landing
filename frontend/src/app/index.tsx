@@ -4,7 +4,7 @@ import { useUser } from "@/auth/user";
 import { Banner } from "../components/Banner";
 import { Content } from "../components/Content";
 import { Header } from "../components/Header";
-import { useTheme } from "../hooks/ThemeContext";
+import { useTheme } from "../hooks/theme-provider";
 import { useLaunchpadData } from "../hooks/useLaunchpadData";
 import { getAppConfig } from "./config";
 

@@ -3,11 +3,29 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { initKeycloak } from "../auth/keycloak";
-import { ThemeProvider } from "../hooks/ThemeContext";
+import { ThemeProvider } from "../hooks/theme-provider";
+import { isThemeMode } from "../hooks/use-theme-preference";
 import { applyAppConfig, getAppConfig, loadAppConfig } from "./config.ts";
 import App from "./index.tsx";
 
 import "./index.css";
+
+const THEME_MODE_STORAGE_KEY = "launchpad:themeMode";
+
+// One-time migration of the legacy boolean dark-mode preference to the
+// `light | dark | system` key read by `@nebari/use-theme-preference` (and by
+// the bootstrap script in index.html). Runs before render so the first React
+// pass already sees the migrated value.
+try {
+  const stored = window.localStorage.getItem(THEME_MODE_STORAGE_KEY);
+  if (stored === null || !isThemeMode(stored)) {
+    const legacy = window.localStorage.getItem("launchpad:isDarkMode");
+    if (legacy === "true") window.localStorage.setItem(THEME_MODE_STORAGE_KEY, "dark");
+    if (legacy === "false") window.localStorage.setItem(THEME_MODE_STORAGE_KEY, "light");
+  }
+} catch {
+  // Storage unavailable (private browsing, disabled) — skip migration.
+}
 
 // Clear stale oauth2-proxy session cookies left by the previous architecture.
 // Users who visit after the oauth2-proxy sidecar is removed would otherwise
@@ -46,7 +64,7 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <ThemeProvider>
+    <ThemeProvider storageKey={THEME_MODE_STORAGE_KEY}>
       <App />
     </ThemeProvider>
   </StrictMode>,
