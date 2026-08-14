@@ -1,6 +1,6 @@
 import { useState } from "react";
 import fallbackServiceImage from "../assets/Nebari.svg";
-import { useTheme } from "../hooks/ThemeContext";
+import { useTheme } from "../hooks/theme-provider";
 
 type ServiceIconProps = {
   image?: string;

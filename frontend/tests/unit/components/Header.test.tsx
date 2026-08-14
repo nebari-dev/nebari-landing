@@ -32,7 +32,7 @@ describe("Header", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
-    await user.click(screen.getByRole("menuitemradio", { name: /dark mode/i }));
+    await user.click(await screen.findByRole("menuitemradio", { name: /dark mode/i }));
     expect(onThemeChange).toHaveBeenCalledWith("dark");
 
     await user.click(screen.getByRole("menuitemradio", { name: /light mode/i }));
@@ -49,7 +49,7 @@ describe("Header", () => {
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
 
-    expect(screen.getByRole("menuitemradio", { name: /dark mode/i })).toHaveAttribute(
+    expect(await screen.findByRole("menuitemradio", { name: /dark mode/i })).toHaveAttribute(
       "aria-checked",
       "true",
     );
@@ -84,7 +84,7 @@ describe("Header", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
-    await user.click(screen.getByRole("menuitem", { name: /about/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /about/i }));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "About Nebari" })).toBeInTheDocument();
@@ -104,7 +104,7 @@ describe("Header", () => {
     render(<Header user={{ name: "John Doe" }} onSignOut={onSignOut} notifications={[]} />);
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
-    await user.click(screen.getByRole("menuitem", { name: /sign out/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /sign out/i }));
 
     expect(onSignOut).toHaveBeenCalledOnce();
   });

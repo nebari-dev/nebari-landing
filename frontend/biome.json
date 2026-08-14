@@ -16,6 +16,8 @@
       "vite.config.ts",
       "!!**/dist",
       "!!public/mockServiceWorker.js",
+      "!!src/components/ui",
+      "!!src/lib/utils.ts",
       "!src/**/*.svg"
     ]
   },

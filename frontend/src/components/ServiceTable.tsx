@@ -24,7 +24,6 @@ export function ServicesTable({ services, onTogglePin }: ServicesTableProps) {
       aria-label="Services"
       className="min-w-140 table-fixed"
       scrollContainerClassName="focus-visible:ring-inset focus-visible:ring-offset-0"
-      scrollContainerProps={{ tabIndex: -1 }}
     >
       <colgroup>
         <col className="w-[50%]" />
@@ -33,7 +32,7 @@ export function ServicesTable({ services, onTogglePin }: ServicesTableProps) {
         <col className="w-[15%]" />
       </colgroup>
 
-      <TableHeader>
+      <TableHeader className="[&_th]:bg-muted dark:[&_th]:bg-background">
         <TableRow>
           <TableHead scope="col">Service</TableHead>
           <TableHead scope="col">Category</TableHead>
@@ -81,7 +80,7 @@ function ServiceRow({
       onKeyDown={handleRowKeyDown}
     >
       <TableCell className="whitespace-normal">
-        <div className="flex min-w-0 items-start gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <ServiceIcon
             image={service.image}
             imageLight={service.imageLight}
@@ -89,12 +88,12 @@ function ServiceRow({
           />
 
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold leading-5 text-foreground">
+            <div className="truncate text-sm font-medium leading-5 text-foreground">
               {service.name}
-            </p>
-            <p className="overflow-hidden text-(--text-secondary) text-sm leading-5 whitespace-normal break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+            </div>
+            <div className="overflow-hidden text-muted-foreground text-sm leading-5 whitespace-normal break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
               {service.description}
-            </p>
+            </div>
           </div>
         </div>
       </TableCell>

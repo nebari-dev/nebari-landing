@@ -1,6 +1,6 @@
 import { type RenderOptions, render } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { ThemeProvider } from "@/hooks/ThemeContext";
+import { ThemeProvider } from "@/hooks/theme-provider";
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return <ThemeProvider>{children}</ThemeProvider>;

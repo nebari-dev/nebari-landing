@@ -47,7 +47,9 @@ export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) 
         </CardHeader>
 
         <CardContent className="min-h-0">
-          <CardTitle className="font-bold text-foreground">{service.name}</CardTitle>
+          <CardTitle className="text-sm font-medium leading-5 text-foreground">
+            {service.name}
+          </CardTitle>
           <CardDescription className="mt-1 line-clamp-2" title={service.description}>
             {service.description}
           </CardDescription>

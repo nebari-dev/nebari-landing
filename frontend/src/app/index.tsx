@@ -4,7 +4,7 @@ import { useUser } from "@/auth/user";
 import { Banner } from "../components/Banner";
 import { Content } from "../components/Content";
 import { Header } from "../components/Header";
-import { useTheme } from "../hooks/ThemeContext";
+import { useTheme } from "../hooks/theme-provider";
 import { useLaunchpadData } from "../hooks/useLaunchpadData";
 import { getAppConfig } from "./config";
 
@@ -16,8 +16,8 @@ export default function App() {
   const config = getAppConfig();
 
   return (
-    <main className="w-full">
-      <Banner config={config?.banners?.top} />
+    <main className="w-full pt-(--top-banner-height,0px) pb-(--bottom-banner-height,0px)">
+      <Banner position="top" config={config?.banners?.top} />
       <Header
         isDarkMode={isDarkMode}
         themeMode={themeMode}
@@ -33,7 +33,7 @@ export default function App() {
       />
 
       <Content services={services} onTogglePin={onTogglePin} />
-      <Banner config={config?.banners?.bottom} />
+      <Banner position="bottom" config={config?.banners?.bottom} />
     </main>
   );
 }

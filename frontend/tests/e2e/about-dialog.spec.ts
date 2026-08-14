@@ -33,7 +33,7 @@ test("About opens a dialog with content, footer action, and close control", asyn
   const signOutItem = page.getByRole("menuitem", { name: /sign out/i });
 
   for (const item of [aboutItem, signOutItem]) {
-    await expect(item).toHaveCSS("width", "232px");
+    await expect(item).toHaveCSS("width", "230px");
     await expect(item).toHaveCSS("padding", "4px 6px");
     await expect(item).toHaveCSS("gap", "8px");
     await expect(item).toHaveCSS("font-size", "14px");

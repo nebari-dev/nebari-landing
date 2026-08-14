@@ -1,4 +1,5 @@
 import { Circle } from "lucide-react";
+import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 
 type StatusBadgeProps = {
@@ -12,25 +13,23 @@ export function StatusBadge({ status }: StatusBadgeProps) {
   const isUnhealthy = normalizedStatus === "unhealthy";
 
   const displayStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
-  const color = isHealthy
-    ? "var(--status-healthy-fg)"
-    : isUnhealthy
-      ? "var(--status-unhealthy-fg)"
-      : "var(--status-default-fg)";
-  const backgroundColor = isHealthy
-    ? "var(--status-healthy-bg)"
-    : isUnhealthy
-      ? "var(--status-unhealthy-bg)"
-      : "var(--status-default-bg)";
-  const dotColor = isHealthy
-    ? "var(--status-healthy-dot)"
-    : isUnhealthy
-      ? "var(--status-unhealthy-dot)"
-      : "var(--status-default-dot)";
-
   return (
-    <Badge variant="ghost" style={{ backgroundColor, color }}>
-      <Circle className="size-2 fill-current" style={{ color: dotColor }} />
+    <Badge
+      variant="ghost"
+      className={cn(
+        isHealthy && "bg-(--status-healthy-bg) text-(--status-healthy-fg)",
+        isUnhealthy && "bg-(--status-unhealthy-bg) text-(--status-unhealthy-fg)",
+        !isHealthy && !isUnhealthy && "bg-(--status-default-bg) text-(--status-default-fg)",
+      )}
+    >
+      <Circle
+        className={cn(
+          "size-2 fill-current",
+          isHealthy && "text-(--status-healthy-dot)",
+          isUnhealthy && "text-(--status-unhealthy-dot)",
+          !isHealthy && !isUnhealthy && "text-(--status-default-dot)",
+        )}
+      />
       {displayStatus}
     </Badge>
   );

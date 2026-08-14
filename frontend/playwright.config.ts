@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 
+const explicitBaseUrl = process.env.E2E_BASE_URL;
 dotenv.config({ path: ".env" });
 
 const screenshotMode =
@@ -8,11 +9,13 @@ const screenshotMode =
 
 const outputDir = process.env.PW_OUTPUT_DIR ?? ".playwright/artifacts";
 const E2E_BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:5173";
+const baseUrlHostname = new URL(E2E_BASE_URL).hostname;
+const isLocalVite = ["localhost", "127.0.0.1", "::1"].includes(baseUrlHostname);
 
 // When E2E_BASE_URL points to a real cluster (not the local Vite dev server),
 // the production build ignores the __PW_E2E_AUTH__ mock, so we need a proper
 // Keycloak login step before running any tests.
-const isRealCluster = !!process.env.E2E_BASE_URL;
+const isRealCluster = Boolean(explicitBaseUrl) || !isLocalVite;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -58,13 +61,12 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: "npm run dev",
-    url: E2E_BASE_URL,
-    // Reuse an already-running server when:
-    //   - not in CI (local dev), OR
-    //   - E2E_BASE_URL is explicitly set (e.g. screenshots workflow pointing at
-    //     a port-forwarded cluster — no dev server to start).
-    reuseExistingServer: !process.env.CI || !!process.env.E2E_BASE_URL,
-  },
+  webServer: isRealCluster
+    ? undefined
+    : {
+        command: "npm run dev",
+        env: { VITE_USE_MOCKS: "0" },
+        url: E2E_BASE_URL,
+        reuseExistingServer: !process.env.CI,
+      },
 });

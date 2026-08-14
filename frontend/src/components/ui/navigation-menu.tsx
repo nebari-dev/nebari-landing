@@ -1,6 +1,7 @@
-import { useRender } from "@base-ui/react/use-render";
-import { cva } from "class-variance-authority";
-import type { ComponentProps, MouseEvent, ReactNode } from "react";
+import { useRender } from '@base-ui/react/use-render';
+import { cva } from 'class-variance-authority';
+import type { ComponentProps, MouseEvent, ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,10 +10,9 @@ import {
   type DropdownMenuProps,
   DropdownMenuTrigger,
   type DropdownMenuTriggerProps,
-} from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
+} from '@/components/ui/dropdown-menu';
 
-type NavLinkProps = useRender.ComponentProps<"a"> & {
+type NavLinkProps = useRender.ComponentProps<'a'> & {
   /** Marks the link as the current page or section. */
   active?: boolean;
   /** Optional icon rendered before the label or as the only visible content. */
@@ -21,7 +21,7 @@ type NavLinkProps = useRender.ComponentProps<"a"> & {
   disabled?: boolean;
 };
 
-type NavDropdownMenuProps = Omit<DropdownMenuProps, "children"> & {
+type NavDropdownMenuProps = Omit<DropdownMenuProps, 'children'> & {
   /** Content rendered inside the dropdown trigger. */
   trigger: ReactNode;
   /** Dropdown menu items. */
@@ -35,17 +35,20 @@ type NavDropdownMenuProps = Omit<DropdownMenuProps, "children"> & {
   /** Classes applied to the dropdown trigger. */
   triggerClassName?: string;
   /** Additional props applied to the dropdown trigger. */
-  triggerProps?: Omit<DropdownMenuTriggerProps, "children" | "className" | "disabled" | "variant">;
+  triggerProps?: Omit<
+    DropdownMenuTriggerProps,
+    'children' | 'className' | 'disabled' | 'variant'
+  >;
   /** Classes applied to the dropdown content. */
   contentClassName?: string;
   /** Positioning options forwarded to the dropdown content. */
-  contentProps?: Omit<DropdownMenuContentProps, "children" | "className">;
+  contentProps?: Omit<DropdownMenuContentProps, 'children' | 'className'>;
 };
 
-type MenuBarProps = ComponentProps<"header">;
-type MenuBarBrandProps = ComponentProps<"a">;
-type MenuBarNavProps = ComponentProps<"nav">;
-type MenuBarActionsProps = ComponentProps<"div">;
+type MenuBarProps = ComponentProps<'header'>;
+type MenuBarBrandProps = ComponentProps<'a'>;
+type MenuBarNavProps = ComponentProps<'nav'>;
+type MenuBarActionsProps = ComponentProps<'div'>;
 
 /**
  * Shared styles for application-level navigation links and dropdown triggers.
@@ -84,18 +87,20 @@ function NavLink({
     ref,
     props: {
       ...props,
-      "aria-current": active ? "page" : undefined,
-      "aria-disabled": disabled || undefined,
+      'aria-current': active ? 'page' : undefined,
+      'aria-disabled': disabled || undefined,
       children: (
         <>
           {icon}
-          {children !== undefined && children !== null ? <span>{children}</span> : null}
+          {children !== undefined && children !== null ? (
+            <span>{children}</span>
+          ) : null}
         </>
       ),
       className: cn(navLinkVariants(), className),
-      "data-active": active ? "true" : undefined,
-      "data-disabled": disabled ? "true" : undefined,
-      "data-slot": "nav-link",
+      'data-active': active ? 'true' : undefined,
+      'data-disabled': disabled ? 'true' : undefined,
+      'data-slot': 'nav-link',
       onClick: handleClick,
       tabIndex: disabled ? -1 : tabIndex,
     },
@@ -123,10 +128,10 @@ function NavDropdownMenu({
     <DropdownMenu {...props}>
       <DropdownMenuTrigger
         {...triggerProps}
-        aria-current={active ? "page" : undefined}
+        aria-current={active ? 'page' : undefined}
         className={cn(navLinkVariants(), triggerClassName)}
-        data-active={active ? "true" : undefined}
-        data-disabled={disabled ? "true" : undefined}
+        data-active={active ? 'true' : undefined}
+        data-disabled={disabled ? 'true' : undefined}
         data-slot="nav-dropdown-menu-trigger"
         disabled={disabled}
         showExpandIcon={triggerProps?.showExpandIcon ?? true}
@@ -157,7 +162,7 @@ function MenuBar({ className, ...props }: MenuBarProps) {
     <header
       data-slot="menu-bar"
       className={cn(
-        "flex h-12 w-full items-center justify-between border-border border-b bg-card px-5 text-card-foreground shadow-xs",
+        'flex h-12 w-full items-center gap-3 border-border border-b bg-card px-3 text-card-foreground',
         className,
       )}
       {...props}
@@ -173,7 +178,7 @@ function MenuBarBrand({ className, ...props }: MenuBarBrandProps) {
     <a
       data-slot="menu-bar-brand"
       className={cn(
-        "inline-flex shrink-0 items-center gap-2 rounded-md font-bold text-2xl text-foreground tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        'inline-flex shrink-0 items-center gap-2 rounded-md font-bold text-2xl text-foreground tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring',
         className,
       )}
       {...props}
@@ -186,7 +191,7 @@ function MenuBarNav({ className, ...props }: MenuBarNavProps) {
   return (
     <nav
       data-slot="menu-bar-nav"
-      className={cn("flex min-w-0 flex-1 items-center gap-1", className)}
+      className={cn('flex min-w-0 flex-1 items-center gap-1', className)}
       {...props}
     />
   );
@@ -197,7 +202,7 @@ function MenuBarActions({ className, ...props }: MenuBarActionsProps) {
   return (
     <div
       data-slot="menu-bar-actions"
-      className={cn("ml-auto flex shrink-0 items-center gap-1.5", className)}
+      className={cn('ml-auto flex shrink-0 items-center gap-1.5', className)}
       {...props}
     />
   );

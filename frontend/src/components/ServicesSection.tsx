@@ -2,7 +2,7 @@ import { LayoutGrid, List, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Service } from "../api/listServices";
 import { Input } from "../components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Tabs, TabsList, TabsPanel, TabsTab } from "../components/ui/tabs";
 import { ServicesGrid } from "./ServicesGrid";
 import { ServicesTable } from "./ServiceTable";
 
@@ -10,9 +10,6 @@ type ServicesSectionProps = {
   services: Service[];
   onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>;
 };
-
-const viewToggleTriggerClassName =
-  "h-auto gap-1 rounded-[6px] px-1.5 py-0.5 text-control-muted-foreground transition-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:border-border-strong data-active:bg-card data-active:text-foreground data-active:shadow-[0_1px_3px_0_rgba(0,0,0,0.10)] dark:data-active:bg-card";
 
 export function ServicesSection({ services, onTogglePin }: ServicesSectionProps) {
   const [query, setQuery] = useState("");
@@ -49,14 +46,12 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
 
   return (
     <Tabs
-      activationMode="manual"
       value={view}
       onValueChange={(value) => {
         if (value === "table" || value === "grid") {
           setView(value);
         }
       }}
-      className="gap-4"
     >
       <div className="grid items-center gap-4 px-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <div className="relative min-w-0">
@@ -70,29 +65,35 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search"
             aria-label="Search services"
-            className="h-[34px] bg-table-cell-background pl-9"
+            className="h-[34px] bg-card pl-9"
           />
         </div>
 
-        <TabsList className="!h-[34px] justify-self-end gap-1 rounded-[8px] bg-muted p-1 sm:col-start-2 lg:col-start-3 xl:col-start-4">
-          <TabsTrigger value="grid" className={viewToggleTriggerClassName}>
-            <LayoutGrid className="h-4 w-4" />
+        <TabsList className="h-[34px] justify-self-end bg-muted p-1 sm:col-start-2 lg:col-start-3 xl:col-start-4">
+          <TabsTab
+            value="grid"
+            className="h-auto gap-1 border-transparent bg-transparent px-1.5 py-0.5 text-muted-foreground-strong data-active:bg-card"
+          >
+            <LayoutGrid />
             <span>Grid View</span>
-          </TabsTrigger>
+          </TabsTab>
 
-          <TabsTrigger value="table" className={viewToggleTriggerClassName}>
-            <List className="h-4 w-4" />
+          <TabsTab
+            value="table"
+            className="h-auto gap-1 border-transparent bg-transparent px-1.5 py-0.5 text-muted-foreground-strong data-active:bg-card"
+          >
+            <List />
             <span>List View</span>
-          </TabsTrigger>
+          </TabsTab>
         </TabsList>
       </div>
 
-      <TabsContent value="table" tabIndex={-1} className="px-1">
+      <TabsPanel value="table" tabIndex={-1} className="px-1">
         <ServicesTable services={filteredServices} onTogglePin={onTogglePin} />
-      </TabsContent>
-      <TabsContent value="grid" tabIndex={-1} className="px-1">
+      </TabsPanel>
+      <TabsPanel value="grid" tabIndex={-1} className="px-1">
         <ServicesGrid services={filteredServices} onTogglePin={onTogglePin} />
-      </TabsContent>
+      </TabsPanel>
     </Tabs>
   );
 }
