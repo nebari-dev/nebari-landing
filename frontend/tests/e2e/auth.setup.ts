@@ -49,7 +49,6 @@ setup("authenticate with Keycloak", async ({ page }, testInfo) => {
     .poll(
       async () => {
         const candidates = [
-          page.getByRole("button", { name: /notifications/i }),
           page.getByText("Pinned services"),
           page.getByRole("button", { name: /all services/i }),
           page.locator("header"),

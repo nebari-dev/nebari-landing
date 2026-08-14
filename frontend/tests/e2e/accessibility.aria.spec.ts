@@ -6,11 +6,10 @@ test("header accessibility tree stays stable", async ({ page }) => {
   const header = page.locator("header");
   await expect(header).toBeVisible();
 
-  // The theme toggle moved into the account menu, so the header now exposes
-  // the notifications and account-menu triggers next to the logo.
+  // Notifications are intentionally hidden, leaving the account-menu trigger
+  // as the only header action next to the logo.
   await expect(header).toMatchAriaSnapshot(`
     - link "Go to homepage"
-    - button "Notifications"
     - button "Account menu"
   `);
 });

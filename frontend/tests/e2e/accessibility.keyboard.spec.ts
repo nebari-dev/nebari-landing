@@ -3,15 +3,15 @@ import { expect, test } from "./fixtures/e2e";
 test("header controls are reachable by keyboard", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: /notifications/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /notifications/i })).toHaveCount(0);
 
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: /go to homepage/i })).toBeFocused();
 
-  // The theme toggle now lives in the profile menu, so notifications is the
-  // next focusable header control after the logo.
+  // Notifications are hidden, so the account menu is the next focusable
+  // header control after the logo.
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: /notifications/i })).toBeFocused();
+  await expect(page.getByRole("button", { name: /account menu/i })).toBeFocused();
 });
 
 test("Ctrl+K focuses the search input", async ({ page }) => {
@@ -71,11 +71,11 @@ test("header and accordion controls expose visible focus rings", async ({ page }
   await page.goto("/");
 
   const readFocusShadow = (element: HTMLElement) => getComputedStyle(element).boxShadow;
-  const notificationButton = page.getByRole("button", { name: /notifications/i });
+  const accountMenu = page.getByRole("button", { name: /account menu/i });
   const pinnedTrigger = page.getByRole("button", { name: /Pinned services/i });
 
-  await notificationButton.focus();
-  const buttonFocusShadow = await notificationButton.evaluate(readFocusShadow);
+  await accountMenu.focus();
+  const buttonFocusShadow = await accountMenu.evaluate(readFocusShadow);
   expect(buttonFocusShadow).not.toBe("none");
 
   await pinnedTrigger.focus();
