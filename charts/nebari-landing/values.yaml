@@ -14,9 +14,6 @@ frontend:
   # that do not have the oauth2-proxy Secret pre-created).
   enabled: true
 
-  # Human-readable deployment label shown in the About dialog.
-  environment: ""
-
   replicaCount: 1
 
   image:

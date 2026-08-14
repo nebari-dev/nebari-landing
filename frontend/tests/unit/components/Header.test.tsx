@@ -2,10 +2,15 @@ import { renderWithProviders as render } from "@/test/render";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { apiFetch } from "@/api/client";
 import { Header } from "@/components/Header";
 
+vi.mock("@/api/client", () => ({ apiFetch: vi.fn() }));
+
+const mockedApiFetch = vi.mocked(apiFetch);
+
 describe("Header", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => vi.clearAllMocks());
 
   it("shows sign in button when no user is present", () => {
     render(<Header />);
@@ -64,21 +69,18 @@ describe("Header", () => {
 
   it("opens and closes the About Nebari dialog", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            version: "0.1.0",
-            commit: "a1b2c3d",
-            lastUpdated: "2026-06-28T12:00:00Z",
-          }),
-          { status: 200 },
-        ),
+    mockedApiFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          version: "0.1.0",
+          commit: "a1b2c3d",
+          lastUpdated: "2026-06-28T12:00:00Z",
+        }),
+        { status: 200 },
       ),
     );
 
-    render(<Header user={{ name: "John Doe" }} environment="Local development" />);
+    render(<Header user={{ name: "John Doe" }} />);
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
     await user.click(await screen.findByRole("menuitem", { name: /about/i }));
@@ -87,8 +89,18 @@ describe("Header", () => {
     expect(screen.getByRole("heading", { name: "About Nebari" })).toBeInTheDocument();
     expect(await screen.findByText("a1b2c3d")).toBeInTheDocument();
     expect(screen.getByText("Jun 28, 2026")).toBeInTheDocument();
-    expect(screen.getByText("Local development")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Source" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: "nebari-infrastructure-core",
+      }),
+    ).toHaveAttribute("href", "https://github.com/nebari-dev/nebari-infrastructure-core");
+    expect(screen.queryByText("Repository", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Services" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy all" })).toBeInTheDocument();
+    expect(mockedApiFetch).toHaveBeenCalledWith("/build-info", {
+      signal: expect.any(AbortSignal),
+    });
 
     await user.click(screen.getByRole("button", { name: /close/i }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

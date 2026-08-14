@@ -3,10 +3,6 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-ARG APP_VERSION=dev
-ARG GIT_COMMIT=unknown
-ARG GIT_COMMIT_DATE
-
 # Install dependencies first to leverage layer caching.
 COPY package*.json ./
 RUN npm ci
@@ -50,11 +46,6 @@ RUN printf 'server {\n\
     add_header Cache-Control "no-store";\n\
     }\n\
     \n\
-    # Do not cache build metadata so deployments never show stale values.\n\
-    location = /build-info.json {\n\
-    add_header Cache-Control "no-store";\n\
-    try_files $uri =404;\n\
-    }\n\
     }\n' > /etc/nginx/conf.d/default.conf
 
 EXPOSE 80

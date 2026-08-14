@@ -1,7 +1,6 @@
 import { FileText, X } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { type BuildInfo, getBuildInfo } from "../api/buildInfo";
-import type { Service } from "../api/listServices";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
 import builtInLogoLight from "../assets/nebari-logo_light.svg";
 import { GithubIcon } from "./icons/GithubIcon";
@@ -17,14 +16,15 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 
+const CORE_REPOSITORY_URL = "https://github.com/nebari-dev/nebari-infrastructure-core";
+const CORE_ISSUES_URL = `${CORE_REPOSITORY_URL}/issues/new`;
+
 type AboutDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isDarkMode?: boolean;
   logoSrc?: string;
   logoSrcDark?: string;
-  services?: Service[];
-  environment?: string;
 };
 
 export function AboutDialog({
@@ -33,8 +33,6 @@ export function AboutDialog({
   isDarkMode = false,
   logoSrc,
   logoSrcDark,
-  services = [],
-  environment,
 }: AboutDialogProps): ReactNode {
   const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
@@ -63,7 +61,7 @@ export function AboutDialog({
 
   const handleCopyAll = async () => {
     try {
-      await navigator.clipboard.writeText(formatSetup(buildInfo, environment, services));
+      await navigator.clipboard.writeText(formatSetup(buildInfo));
       setCopyStatus("copied");
     } catch {
       setCopyStatus("error");
@@ -80,7 +78,7 @@ export function AboutDialog({
           <div>
             <DialogTitle className="text-base leading-5">About Nebari</DialogTitle>
             <DialogDescription className="sr-only">
-              Build, platform, software pack, and service information for this Nebari deployment.
+              Build, source, and software pack information for this Nebari deployment.
             </DialogDescription>
           </div>
           <DialogClose render={<Button type="button" variant="ghost" size="icon" />}>
@@ -102,40 +100,27 @@ export function AboutDialog({
               </Badge>
             </div>
 
-            <AboutSection title="Platform">
+            <AboutSection title="Source">
               <AboutRow label="Commit" value={buildInfo?.commit ?? "—"} />
               <AboutRow label="Last updated" value={formatDate(buildInfo?.lastUpdated)} />
-              <AboutRow label="Environment" value={environment || "—"} last />
+              <AboutRow
+                value={
+                  <a
+                    href={CORE_REPOSITORY_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 text-primary underline underline-offset-4"
+                  >
+                    <GithubIcon />
+                    nebari-infrastructure-core
+                  </a>
+                }
+                last
+              />
             </AboutSection>
 
             <AboutSection title="Software packs">
               <AboutRow label="No software pack information available" value="—" last />
-            </AboutSection>
-
-            <AboutSection title="Services">
-              {services.length > 0 ? (
-                services.map((service, index) => (
-                  <AboutRow
-                    key={service.id}
-                    label={
-                      <span className="flex items-center gap-2">
-                        <span
-                          data-slot="service-status-dot"
-                          className="size-2 rounded-full"
-                          style={{ backgroundColor: getStatusDotColor(service.status) }}
-                          aria-hidden="true"
-                        />
-                        {service.name}
-                      </span>
-                    }
-                    value={formatVersion(service.version)}
-                    strong
-                    last={index === services.length - 1}
-                  />
-                ))
-              ) : (
-                <AboutRow label="No services available" value="—" last />
-              )}
             </AboutSection>
           </div>
         </div>
@@ -143,13 +128,7 @@ export function AboutDialog({
         <DialogFooter className="flex-row items-center justify-between border-t border-border p-3 sm:justify-between">
           <div className="flex items-center gap-2">
             <Button
-              render={
-                <a
-                  href="https://github.com/nebari-dev/nebari-landing/issues/new"
-                  target="_blank"
-                  rel="noreferrer"
-                />
-              }
+              render={<a href={CORE_ISSUES_URL} target="_blank" rel="noreferrer" />}
               variant="ghost"
               size="sm"
             >
@@ -157,7 +136,7 @@ export function AboutDialog({
               Report an issue
             </Button>
             <Button
-              render={<a href="https://nebari.dev/docs/welcome" target="_blank" rel="noreferrer" />}
+              render={<a href={CORE_REPOSITORY_URL} target="_blank" rel="noreferrer" />}
               variant="ghost"
               size="sm"
             >
@@ -190,12 +169,10 @@ function AboutSection({ title, children }: { title: string; children: ReactNode 
 function AboutRow({
   label,
   value,
-  strong = false,
   last = false,
 }: {
-  label: ReactNode;
+  label?: ReactNode;
   value: ReactNode;
-  strong?: boolean;
   last?: boolean;
 }): ReactNode {
   return (
@@ -204,10 +181,10 @@ function AboutRow({
         last ? "" : "border-b border-border"
       }`}
     >
-      <div className={strong ? "font-medium text-foreground" : "text-(--text-secondary)"}>
-        {label}
+      {label ? <div className="text-(--text-secondary)">{label}</div> : null}
+      <div className={`min-w-0 text-muted-foreground ${label ? "text-right" : "w-full"}`}>
+        {value}
       </div>
-      <div className="shrink-0 text-right text-muted-foreground">{value}</div>
     </div>
   );
 }
@@ -229,39 +206,18 @@ function formatDate(value?: string | null): string {
   }).format(date);
 }
 
-function getStatusDotColor(status: string): string {
-  const normalizedStatus = status.toLowerCase();
-  if (normalizedStatus === "healthy") return "var(--status-healthy-dot)";
-  if (normalizedStatus === "unhealthy") return "var(--status-unhealthy-dot)";
-  return "var(--status-default-dot)";
-}
-
-function formatSetup(
-  buildInfo: BuildInfo | null,
-  environment: string | undefined,
-  services: Service[],
-): string {
-  const serviceLines =
-    services.length > 0
-      ? services.map(
-          (service) => `${service.name} (${service.status}): ${formatVersion(service.version)}`,
-        )
-      : ["No services available: —"];
-
+function formatSetup(buildInfo: BuildInfo | null): string {
   return [
     "Nebari Core",
     "Repository: nebari-infrastructure-core",
     `Version: ${formatVersion(buildInfo?.version)}`,
     "",
-    "PLATFORM",
+    "SOURCE",
     `Commit: ${buildInfo?.commit ?? "—"}`,
     `Last updated: ${formatDate(buildInfo?.lastUpdated)}`,
-    `Environment: ${environment || "—"}`,
+    `Repository: ${CORE_REPOSITORY_URL}`,
     "",
     "SOFTWARE PACKS",
     "No software pack information available: —",
-    "",
-    "SERVICES",
-    ...serviceLines,
   ].join("\n");
 }

@@ -18,17 +18,20 @@ export const test = base.extend<{
         };
       });
 
-      await context.route("**/build-info.json", async (route) => {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            version: "0.1.0",
-            commit: "a1b2c3d",
-            lastUpdated: "2026-06-28T12:00:00Z",
-          }),
-        });
-      });
+      await context.route(
+        /^https?:\/\/[^/]+\/api\/v1\/build-info\/?(?:\?.*)?$/,
+        async (route) => {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              version: "0.1.0",
+              commit: "a1b2c3d",
+              lastUpdated: "2026-06-28T12:00:00Z",
+            }),
+          });
+        },
+      );
 
       await context.route(
         /^https?:\/\/[^/]+\/api\/v1\/services\/?(?:\?.*)?$/,

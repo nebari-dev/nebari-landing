@@ -123,5 +123,4 @@ jobs:
       cache_scope: frontend
       artifact_prefix: frontend
       is_pull_request: ${{ github.event_name == 'pull_request' }}
-      build_metadata: true
     secrets: inherit

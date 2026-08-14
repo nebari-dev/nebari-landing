@@ -35,11 +35,6 @@ on:
         description: Whether the caller was triggered by pull_request.
         required: true
         type: boolean
-      build_metadata:
-        description: Inject frontend build metadata as Docker build arguments.
-        required: false
-        default: false
-        type: boolean
     secrets:
       QUAY_USERNAME:
         required: false
@@ -65,24 +60,6 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-
-      - name: Resolve build metadata
-        id: metadata
-        if: inputs.build_metadata
-        shell: bash
-        run: |
-          version="dev"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            version="${GITHUB_REF_NAME#v}"
-          fi
-          commit_date=$(git show -s --format=%cI "$GITHUB_SHA")
-          {
-            echo "build_args<<EOF"
-            echo "APP_VERSION=$version"
-            echo "GIT_COMMIT=$GITHUB_SHA"
-            echo "GIT_COMMIT_DATE=$commit_date"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
@@ -117,7 +94,6 @@ jobs:
           tags: ${{ inputs.registry }}/${{ inputs.image_name }}
           cache-from: type=gha,scope=${{ inputs.cache_scope }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ inputs.cache_scope }}-${{ matrix.arch }}
-          build-args: ${{ steps.metadata.outputs.build_args }}
           provenance: false
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
@@ -150,7 +126,6 @@ jobs:
           tags: ${{ inputs.registry }}/${{ inputs.image_name }}:${{ steps.branch.outputs.tag }}-${{ matrix.arch }}
           cache-from: type=gha,scope=${{ inputs.cache_scope }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ inputs.cache_scope }}-${{ matrix.arch }}
-          build-args: ${{ steps.metadata.outputs.build_args }}
           provenance: false
 
       - name: Build image (no push)
@@ -164,7 +139,6 @@ jobs:
           tags: ${{ inputs.registry }}/${{ inputs.image_name }}:${{ steps.branch.outputs.tag }}
           cache-from: type=gha,scope=${{ inputs.cache_scope }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ inputs.cache_scope }}-${{ matrix.arch }}
-          build-args: ${{ steps.metadata.outputs.build_args }}
           provenance: false
 
   manifest:

@@ -4,9 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/generate-build-info.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/generate-build-info.mjs",
     "build": "tsc -b && vite build",
     "check": "biome check",
     "check:fix": "biome check --write",

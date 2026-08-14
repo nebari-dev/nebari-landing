@@ -34,10 +34,8 @@ export default function App() {
         onThemeChange={setThemeMode}
         user={user}
         onSignOut={() => signOut()}
-        services={services}
         logoSrc={config?.logoUrl || undefined}
         logoSrcDark={config?.logoUrlDark || undefined}
-        environment={config?.environment || undefined}
       />
 
       <Content services={services} onTogglePin={onTogglePin} />

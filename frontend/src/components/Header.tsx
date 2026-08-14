@@ -9,7 +9,6 @@ import {
   Sun,
 } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
-import type { Service } from "../api/listServices";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
 import builtInLogoLight from "../assets/nebari-logo_light.svg";
 import { isThemeMode, type ThemeMode } from "../hooks/use-theme-preference";
@@ -54,12 +53,10 @@ export type HeaderProps = {
   user?: User | null;
   onSignIn?: () => void;
   onSignOut?: () => void;
-  services?: Service[];
   // notifications?: Notification[];
   // onNotificationsViewed?: (ids: string[]) => void | Promise<void>;
   logoSrc?: string;
   logoSrcDark?: string;
-  environment?: string;
 };
 
 export function Header(props: HeaderProps): ReactNode {
@@ -73,12 +70,10 @@ export function Header(props: HeaderProps): ReactNode {
     user,
     onSignIn,
     onSignOut,
-    services = [],
     // notifications = [],
     // onNotificationsViewed,
     logoSrc: logoSrcProp,
     logoSrcDark: logoSrcDarkProp,
-    environment,
   } = props;
 
   // const unreadNotifications = notifications.filter((item) => !item.read);
@@ -265,8 +260,6 @@ export function Header(props: HeaderProps): ReactNode {
         isDarkMode={isDarkMode}
         logoSrc={logoSrcProp}
         logoSrcDark={logoSrcDarkProp}
-        services={services}
-        environment={environment}
       />
     </NavigationMenu>
   );

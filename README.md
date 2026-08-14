@@ -219,28 +219,19 @@ See [`charts/nebari-landing/values.yaml`](charts/nebari-landing/values.yaml) for
 
 ### About dialog deployment information
 
-The account menu's **About** dialog shows the frontend version, source commit, last-updated date, and a
-deployment-specific environment label. Official release images embed the version and Git information automatically;
-operators only need to provide the environment label in their Helm values:
+The account menu's **About** dialog shows Nebari Core version and source information. The frontend expects the webapi
+to provide that metadata from `GET /api/v1/build-info` using this response shape:
 
-```yaml
-frontend:
-  environment: "Production · us-east-1"
+```json
+{
+  "version": "0.2.0",
+  "commit": "a1b2c3d",
+  "lastUpdated": "2026-06-28T12:00:00Z"
+}
 ```
 
-The chart renders this value into `/config.json` at deployment time, so the same frontend image can be promoted across
-environments without rebuilding it. When the value is empty, the dialog displays an em dash.
-
-After deploying, verify the embedded image metadata and cache policy:
-
-```sh
-curl -i https://<nebari-host>/build-info.json
-```
-
-The response should contain the deployed `version`, short `commit`, and `lastUpdated` timestamp, with
-`Cache-Control: no-store`. If you build frontend images outside the release workflow, see
-[About dialog deployment metadata](docs/maintainers/release-checklist.md#about-dialog-deployment-metadata) for the
-required Docker build arguments and fallback behavior.
+The frontend client contract is in `frontend/src/api/buildInfo.ts`; the corresponding webapi endpoint is intentionally
+left as a skeleton for the backend implementation.
 
 ## Quick Start
 

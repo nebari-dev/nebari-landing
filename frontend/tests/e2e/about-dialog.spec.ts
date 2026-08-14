@@ -1,21 +1,6 @@
 import { expect, test } from "./fixtures/e2e";
 
 test("About opens a dialog with content, footer action, and close control", async ({ page }) => {
-  await page.route("**/config.json", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        keycloak: {
-          url: "http://localhost:8180",
-          realm: "nebari",
-          clientId: "nebari-frontend-spa",
-        },
-        environment: "Local development",
-      }),
-    });
-  });
-
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -52,19 +37,28 @@ test("About opens a dialog with content, footer action, and close control", asyn
   await expect(dialog.getByText("v0.1.0")).toBeVisible();
   await expect(dialog.getByText("a1b2c3d")).toBeVisible();
   await expect(dialog.getByText("Jun 28, 2026")).toBeVisible();
-  await expect(dialog.getByText("Local development")).toBeVisible();
-  await expect(dialog.getByRole("heading", { name: "Platform" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Source" })).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "Software packs" })).toBeVisible();
-  await expect(dialog.getByRole("heading", { name: "Services" })).toBeVisible();
-  await expect(dialog.getByText("JupyterHub")).toBeVisible();
-  await expect(dialog.getByText("v5.2.1")).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Services" })).toHaveCount(0);
+  const repositoryLink = dialog.getByRole("link", {
+    name: "nebari-infrastructure-core",
+  });
+  await expect(repositoryLink).toHaveAttribute(
+    "href",
+    "https://github.com/nebari-dev/nebari-infrastructure-core",
+  );
+  await expect(repositoryLink.locator("svg")).toBeVisible();
+  await expect(dialog.getByText("Repository", { exact: true })).toHaveCount(0);
   const reportLink = dialog.getByRole("link", { name: "Report an issue" });
   const docsLink = dialog.getByRole("link", { name: "Documentation" });
   await expect(reportLink).toHaveAttribute(
     "href",
-    "https://github.com/nebari-dev/nebari-landing/issues/new",
+    "https://github.com/nebari-dev/nebari-infrastructure-core/issues/new",
   );
-  await expect(docsLink).toHaveAttribute("href", "https://nebari.dev/docs/welcome");
+  await expect(docsLink).toHaveAttribute(
+    "href",
+    "https://github.com/nebari-dev/nebari-infrastructure-core",
+  );
   const copyButton = dialog.getByRole("button", { name: "Copy all" });
   await expect(copyButton).toBeVisible();
 
@@ -81,9 +75,12 @@ test("About opens a dialog with content, footer action, and close control", asyn
   expect(copiedText).toContain("Version: v0.1.0");
   expect(copiedText).toContain("Commit: a1b2c3d");
   expect(copiedText).toContain("Last updated: Jun 28, 2026");
-  expect(copiedText).toContain("Environment: Local development");
+  expect(copiedText).toContain("SOURCE");
+  expect(copiedText).toContain(
+    "Repository: https://github.com/nebari-dev/nebari-infrastructure-core",
+  );
   expect(copiedText).toContain("No software pack information available: —");
-  expect(copiedText).toMatch(/JupyterHub \(healthy\): v5\.2\.1/i);
+  expect(copiedText).not.toContain("SERVICES");
 
   const closeButton = dialog.getByRole("button", { name: /close/i });
   await expect(closeButton).toHaveCSS("width", "32px");
@@ -93,13 +90,6 @@ test("About opens a dialog with content, footer action, and close control", asyn
   const titleCenter = (titleBox?.y ?? 0) + (titleBox?.height ?? 0) / 2;
   const closeCenter = (closeBox?.y ?? 0) + (closeBox?.height ?? 0) / 2;
   expect(Math.abs(titleCenter - closeCenter)).toBeLessThanOrEqual(1);
-
-  const dialogStatusDot = dialog.locator('[data-slot="service-status-dot"]');
-  const tableStatusDot = page.getByText("Healthy", { exact: true }).locator("svg").first();
-  await expect(dialogStatusDot).toHaveCSS(
-    "background-color",
-    await tableStatusDot.evaluate((element) => getComputedStyle(element).color),
-  );
 
   await closeButton.click();
   await expect(dialog).not.toBeVisible();
