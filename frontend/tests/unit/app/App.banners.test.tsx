@@ -7,8 +7,6 @@ vi.mock("@/auth/user", () => ({ useUser: () => ({ user: null }) }));
 vi.mock("@/hooks/useLaunchpadData", () => ({
   useLaunchpadData: () => ({
     services: [],
-    notifications: [],
-    onNotificationsViewed: vi.fn(),
     onTogglePin: vi.fn(),
   }),
 }));

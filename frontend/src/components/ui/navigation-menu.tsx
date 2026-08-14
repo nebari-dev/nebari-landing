@@ -197,7 +197,7 @@ function MenuBarNav({ className, ...props }: MenuBarNavProps) {
   );
 }
 
-/** Right-side action slot for notifications, settings, and account controls. */
+/** Right-side action slot for settings and account controls. */
 function MenuBarActions({ className, ...props }: MenuBarActionsProps) {
   return (
     <div

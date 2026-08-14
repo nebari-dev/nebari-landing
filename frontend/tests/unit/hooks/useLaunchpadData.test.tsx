@@ -1,12 +1,8 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/api/client", () => ({ apiFetch: vi.fn() }));
 vi.mock("@/api/listServices", () => ({ listServices: vi.fn().mockResolvedValue([]) }));
-vi.mock("@/api/notifications", () => ({
-  listNotifications: vi.fn().mockResolvedValue([]),
-  markNotificationRead: vi.fn().mockResolvedValue(undefined),
-}));
 
 import { apiFetch } from "@/api/client";
 import { useLaunchpadData } from "@/hooks/useLaunchpadData";
@@ -29,6 +25,11 @@ class MockWebSocket {
   removeEventListener(): void {}
   send(): void {}
   close(): void {}
+
+  emitMessage(message: unknown): void {
+    const event = new MessageEvent("message", { data: JSON.stringify(message) });
+    for (const listener of this.listeners.message ?? []) listener(event);
+  }
 }
 
 const mockedApiFetch = vi.mocked(apiFetch);
@@ -80,5 +81,30 @@ describe("useLaunchpadData ws-ticket exchange", () => {
 
     await waitFor(() => expect(MockWebSocket.instances.length).toBe(1));
     expect(MockWebSocket.instances[0].url).not.toContain("ticket=");
+  });
+
+  it("ignores non-service WebSocket frames without updating hook state", async () => {
+    mockedApiFetch.mockResolvedValueOnce(new Response("Unauthorized", { status: 401 }));
+    let renderCount = 0;
+    const user = { name: "alice" };
+
+    const { result } = renderHook(() => {
+      renderCount += 1;
+      return useLaunchpadData(user);
+    });
+
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(1));
+    await waitFor(() => expect(renderCount).toBeGreaterThan(1));
+    const settledRenderCount = renderCount;
+
+    act(() => {
+      MockWebSocket.instances[0].emitMessage({
+        type: "notification.created",
+        notification: { id: "ignored" },
+      });
+    });
+
+    expect(renderCount).toBe(settledRenderCount);
+    expect(result.current).not.toHaveProperty("notifications");
   });
 });

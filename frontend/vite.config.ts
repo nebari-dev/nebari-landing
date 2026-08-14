@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
             "/api": {
               target: webapiTarget,
               changeOrigin: true,
-              // Forward WebSocket connections for the notifications hub.
+              // Forward WebSocket connections for real-time service updates.
               ws: true,
             },
           }

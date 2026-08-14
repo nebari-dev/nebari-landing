@@ -1,6 +1,13 @@
 import { expect, test } from "./fixtures/e2e";
 
 test("header controls are reachable by keyboard", async ({ page }) => {
+  const notificationRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/v1/notifications")) {
+      notificationRequests.push(request.url());
+    }
+  });
+
   await page.goto("/");
 
   await expect(page.getByRole("button", { name: /notifications/i })).toHaveCount(0);
@@ -12,6 +19,7 @@ test("header controls are reachable by keyboard", async ({ page }) => {
   // header control after the logo.
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: /account menu/i })).toBeFocused();
+  expect(notificationRequests).toEqual([]);
 });
 
 test("Ctrl+K focuses the search input", async ({ page }) => {

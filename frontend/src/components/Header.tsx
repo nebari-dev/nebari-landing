@@ -1,12 +1,5 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import {
-  // Bell,
-  ChevronDown,
-  LogOut,
-  Monitor,
-  Moon,
-  Sun,
-} from "lucide-react";
+import { ChevronDown, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
 import builtInLogoLight from "../assets/nebari-logo_light.svg";
@@ -24,15 +17,6 @@ import {
 } from "./ui/dropdown-menu";
 import { MenuBarActions, MenuBarBrand, NavigationMenu } from "./ui/navigation-menu";
 
-// type Notification = {
-//   id: string;
-//   title: string;
-//   message: string;
-//   createdAt: string;
-//   image?: string;
-//   read?: boolean;
-// };
-
 type User = {
   name?: string;
   email?: string;
@@ -47,8 +31,6 @@ export type HeaderProps = {
   user?: User | null;
   onSignIn?: () => void;
   onSignOut?: () => void;
-  // notifications?: Notification[];
-  // onNotificationsViewed?: (ids: string[]) => void | Promise<void>;
   logoSrc?: string;
   logoSrcDark?: string;
 };
@@ -62,14 +44,10 @@ export function Header(props: HeaderProps): ReactNode {
     user,
     onSignIn,
     onSignOut,
-    // notifications = [],
-    // onNotificationsViewed,
     logoSrc: logoSrcProp,
     logoSrcDark: logoSrcDarkProp,
   } = props;
 
-  // const unreadNotifications = notifications.filter((item) => !item.read);
-  // const unreadCount = unreadNotifications.length;
   // Dark mode prefers the dark logo, then the light/general custom logo, then
   // the built-in dark logo. Light mode uses the custom logo or the built-in.
   const logoSrc = isDarkMode
@@ -78,15 +56,6 @@ export function Header(props: HeaderProps): ReactNode {
 
   const initials = getUserInitials(user?.name, user?.email);
 
-  // const handleNotificationsOpen = () => {
-  //   if (!onNotificationsViewed) return;
-  //
-  //   const unreadIds = unreadNotifications.map((item) => item.id);
-  //   if (unreadIds.length > 0) {
-  //     void onNotificationsViewed(unreadIds);
-  //   }
-  // };
-
   return (
     <NavigationMenu className="h-14 justify-between border-header-border bg-header-background pl-4 text-header-foreground">
       <MenuBarBrand href={homeHref} aria-label="Go to homepage">
@@ -94,68 +63,6 @@ export function Header(props: HeaderProps): ReactNode {
       </MenuBarBrand>
 
       <MenuBarActions className="gap-2">
-        {/* Removed for now by the request in the meeting
-          <DropdownMenu modal={false} onOpenChange={(open) => open && handleNotificationsOpen()}>
-            <DropdownMenuTrigger
-              variant="ghost"
-              className="relative w-8 px-0 hover:bg-header-action-hover hover:no-underline focus-visible:ring-offset-0 active:bg-header-action-hover"
-              aria-label="Notifications"
-            >
-              <Bell />
-              {unreadCount > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-notification-badge px-1 pt-px text-[9px] font-semibold leading-none text-white tabular-nums">
-                  {unreadCount}
-                </span>
-              ) : null}
-            </DropdownMenuTrigger>
-
-            <DropdownMenuPortal>
-              <DropdownMenuContent
-                align="end"
-                className="max-h-(--available-height) w-[552px] overflow-y-auto p-0"
-              >
-                {notifications.length > 0 ? (
-                  notifications.map((notification) => (
-                    <DropdownMenuItem
-                      key={notification.id}
-                      className="items-start gap-4 rounded-none border-b px-4 py-4 whitespace-normal last:border-b-0"
-                    >
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
-                        {notification.image ? (
-                          <img
-                            src={notification.image}
-                            alt=""
-                            aria-hidden="true"
-                            className="h-9 w-9 object-contain"
-                          />
-                        ) : null}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <span className="text-[15px] font-semibold leading-6 text-foreground">
-                            {notification.title}
-                          </span>
-
-                          {!notification.read ? (
-                            <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                          ) : null}
-                        </div>
-
-                        <p className="text-(--text-secondary) text-sm leading-7">
-                          {notification.message}
-                        </p>
-                      </div>
-                    </DropdownMenuItem>
-                  ))
-                ) : (
-                  <div className="px-4 py-4 text-sm text-muted-foreground">No notifications</div>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenuPortal>
-          </DropdownMenu>
-        */}
-
         {user ? (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger

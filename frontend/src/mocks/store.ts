@@ -4,18 +4,10 @@
 // seed fixtures.
 
 import type { Service } from "../api/listServices";
-import type { Notification } from "../api/notifications";
-import {
-  type AccessRequest,
-  seedAccessRequests,
-  seedCategories,
-  seedNotifications,
-  seedServices,
-} from "./fixtures";
+import { type AccessRequest, seedAccessRequests, seedCategories, seedServices } from "./fixtures";
 
 type Store = {
   services: Service[];
-  notifications: Notification[];
   accessRequests: AccessRequest[];
   categories: Record<string, string>;
 };
@@ -23,7 +15,6 @@ type Store = {
 function snapshot(): Store {
   return {
     services: seedServices.map((s) => ({ ...s, category: [...s.category] })),
-    notifications: seedNotifications.map((n) => ({ ...n })),
     accessRequests: seedAccessRequests.map((r) => ({ ...r })),
     categories: { ...seedCategories },
   };
@@ -34,7 +25,6 @@ export const store: Store = snapshot();
 export function resetStore(): void {
   const fresh = snapshot();
   store.services = fresh.services;
-  store.notifications = fresh.notifications;
   store.accessRequests = fresh.accessRequests;
   store.categories = fresh.categories;
 }

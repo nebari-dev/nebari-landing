@@ -2,44 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../api/client";
 import { listServices, type Service } from "../api/listServices";
 import { mapService } from "../api/mapServices";
-import { listNotifications, markNotificationRead, type Notification } from "../api/notifications";
-import type { NotificationSocketMessage } from "../api/notificationsSocket";
 import { deletePin, putPin } from "../api/pin";
 import type { ServiceSocketMessage } from "../api/servicesSocket";
 import { createWebSocketClient } from "../api/ws";
 
-type AppSocketMessage = ServiceSocketMessage | NotificationSocketMessage;
-
 export function useLaunchpadData(user: unknown) {
   const [services, setServices] = useState<Service[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
     listServices().then(setServices).catch(console.error);
-    listNotifications().then(setNotifications).catch(console.error);
   }, [user]);
-
-  const onNotificationsViewed = useCallback(async (ids: string[]) => {
-    const uniqueIds = [...new Set(ids)];
-    if (uniqueIds.length === 0) return;
-
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        uniqueIds.includes(notification.id) ? { ...notification, read: true } : notification,
-      ),
-    );
-
-    try {
-      await Promise.all(uniqueIds.map((id) => markNotificationRead(id)));
-    } catch (err) {
-      console.error("markNotificationRead failed", err);
-      setNotifications((prev) =>
-        prev.map((notification) =>
-          uniqueIds.includes(notification.id) ? { ...notification, read: false } : notification,
-        ),
-      );
-    }
-  }, []);
 
   const onTogglePin = useCallback(async (serviceId: string, nextPinned: boolean) => {
     let previousPinned: boolean | undefined;
@@ -84,7 +56,7 @@ export function useLaunchpadData(user: unknown) {
   const appSocket = useMemo(() => {
     const isAuthenticated = Boolean(user);
 
-    return createWebSocketClient<AppSocketMessage>({
+    return createWebSocketClient<ServiceSocketMessage>({
       path: "/ws",
       // Fetch a fresh single-use ticket before each connect (and each reconnect).
       // Browsers cannot send Authorization headers on WebSocket upgrade requests,
@@ -106,23 +78,9 @@ export function useLaunchpadData(user: unknown) {
       onClose: () => console.log("app websocket disconnected"),
       onError: (event) => console.error("app websocket error", event),
       onMessage: (message) => {
-        if (message.type === "notification.created") {
-          const nextNotification: Notification = {
-            id: message.notification.id,
-            title: message.notification.title,
-            message: message.notification.message,
-            createdAt: message.notification.createdAt,
-            image: message.notification.image ?? "",
-            read: message.notification.read ?? false,
-          };
-
-          setNotifications((prev) => {
-            const exists = prev.some((n) => n.id === nextNotification.id);
-            return exists ? prev : [nextNotification, ...prev];
-          });
-
-          return;
-        }
+        // The backend WebSocket also carries other event types. Ignore any
+        // frame that is not a service event without changing React state.
+        if (!message.service) return;
 
         const nextService = mapService(message.service);
 
@@ -174,8 +132,6 @@ export function useLaunchpadData(user: unknown) {
 
   return {
     services,
-    notifications,
-    onNotificationsViewed,
     onTogglePin,
   };
 }

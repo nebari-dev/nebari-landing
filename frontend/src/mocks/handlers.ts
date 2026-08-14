@@ -1,6 +1,6 @@
 // Stateful MSW handlers. These override a subset of the generated handlers
-// so the SPA sees realistic mutation across calls (pin/unpin, mark-read,
-// request access, approve/deny). Anything not listed here falls through to
+// so the SPA sees realistic mutation across calls (pin/unpin, request access,
+// approve/deny). Anything not listed here falls through to
 // the generated layer in ./generated/handlers.ts.
 
 import { HttpResponse, http } from "msw";
@@ -54,15 +54,6 @@ const overrides = [
     };
     store.accessRequests.push(req);
     return HttpResponse.json({ success: true, message: "Request submitted" });
-  }),
-
-  http.get("/api/v1/notifications", () => HttpResponse.json(store.notifications)),
-
-  http.put("/api/v1/notifications/:id/read", ({ params }) => {
-    const n = store.notifications.find((x) => x.id === params.id);
-    if (!n) return new HttpResponse(null, { status: 404 });
-    n.read = true;
-    return new HttpResponse(null, { status: 204 });
   }),
 
   http.get("/api/v1/pins", () => {

@@ -41,33 +41,6 @@ export const test = base.extend<{
       );
 
       await context.route(
-        /^https?:\/\/[^/]+\/api\/v1\/notifications\/?(?:\?.*)?$/,
-        async (route) => {
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify([
-              {
-                id: "notif-1",
-                image: "",
-                title: "JupyterHub is back online",
-                message: "Ready to use.",
-                read: false,
-                createdAt: new Date().toISOString(),
-              },
-            ]),
-          });
-        },
-      );
-
-      await context.route(
-        /^https?:\/\/[^/]+\/api\/v1\/notifications\/[^/?]+\/read(?:\?.*)?$/,
-        async (route) => {
-          await route.fulfill({ status: 204, body: "" });
-        },
-      );
-
-      await context.route(
         /^https?:\/\/[^/]+\/api\/v1\/pins\/[^/?]+(?:\?.*)?$/,
         async (route) => {
           if (route.request().method() === "GET") {

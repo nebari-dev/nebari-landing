@@ -2,7 +2,6 @@
 // place that defines what the SPA renders under VITE_USE_MOCKS=1.
 
 import type { Service } from "../api/listServices";
-import type { Notification } from "../api/notifications";
 
 export type AccessRequest = {
   id: string;
@@ -57,25 +56,6 @@ export const seedServices: Service[] = [
     pinned: false,
     image: "",
     url: "https://mlflow.example.com",
-  },
-];
-
-export const seedNotifications: Notification[] = [
-  {
-    id: "ntf-1",
-    image: "",
-    title: "Welcome to Nebari (mocked)",
-    message: "You are running against MSW mocks. Set VITE_USE_MOCKS=0 to hit a real webapi.",
-    read: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-  },
-  {
-    id: "ntf-2",
-    image: "",
-    title: "Maintenance window scheduled",
-    message: "Brief restart of JupyterHub planned for tonight at 22:00 UTC.",
-    read: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
   },
 ];
 
