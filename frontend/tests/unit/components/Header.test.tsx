@@ -6,12 +6,12 @@ import { Header } from "@/components/Header";
 
 describe("Header", () => {
   it("shows sign in button when no user is present", () => {
-    render(<Header notifications={[]} />);
+    render(<Header />);
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 
   it("shows user name when signed in", () => {
-    render(<Header user={{ name: "John Doe", email: "john@example.com" }} notifications={[]} />);
+    render(<Header user={{ name: "John Doe", email: "john@example.com" }} />);
 
     expect(screen.getByText("John Doe")).toBeInTheDocument();
   });
@@ -25,7 +25,6 @@ describe("Header", () => {
         user={{ name: "John Doe" }}
         themeMode="system"
         onThemeChange={onThemeChange}
-        notifications={[]}
       />,
     );
 
@@ -43,7 +42,7 @@ describe("Header", () => {
   it("reflects the current theme mode via aria-checked", async () => {
     const user = userEvent.setup();
 
-    render(<Header user={{ name: "John Doe" }} themeMode="dark" notifications={[]} />);
+    render(<Header user={{ name: "John Doe" }} themeMode="dark" />);
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
 
@@ -65,7 +64,7 @@ describe("Header", () => {
     const user = userEvent.setup();
     const onSignOut = vi.fn();
 
-    render(<Header user={{ name: "John Doe" }} onSignOut={onSignOut} notifications={[]} />);
+    render(<Header user={{ name: "John Doe" }} onSignOut={onSignOut} />);
 
     await user.click(screen.getByRole("button", { name: /account menu/i }));
     await user.click(await screen.findByRole("menuitem", { name: /sign out/i }));
