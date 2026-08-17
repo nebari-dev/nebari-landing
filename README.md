@@ -130,10 +130,16 @@ settings to the document before React mounts. No image rebuild is needed — cha
 
 The `theme.light` and `theme.dark` maps accept any combination of these token names (camelCase):
 
-`primary` · `primaryForeground` · `background` · `foreground` · `secondary` · `secondaryForeground` · `muted` · `mutedForeground` · `accent` · `accentForeground` · `border` · `ring` · `radius`
+`primary` · `primaryForeground` · `primaryHover` · `background` · `foreground` · `secondary` · `secondaryForeground` · `muted` · `mutedForeground` · `accent` · `accentForeground` · `border` · `ring` · `sidebarRing` · `radius`
 
 Each token maps to a CSS custom property on `:root` (light) or `.dark` (dark). For example, `primary: "#0066cc"`
-becomes `--primary: #0066cc;`.
+becomes `--primary: #0066cc;`. Keys outside this list are passed through unchanged (camelCase is kebab-cased), but
+only the tokens above are supported.
+
+`primaryHover` (the hover/active fill of primary buttons and badges) and `sidebarRing` are **derived** from
+`primary` and `ring`: `--primary-hover` is `primary` mixed 15% toward black in light mode and 18% toward white in
+dark mode, and `--sidebar-ring` is an alias for `--ring`. Setting `primary` therefore rebrands the hover state too;
+override `primaryHover` / `sidebarRing` only when you need a different shade than the derived one.
 
 ### Classification banners
 

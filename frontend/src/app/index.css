@@ -62,7 +62,7 @@
   --sidebar-accent: oklch(95.04% 0.0042 236.5);
   --sidebar-accent-foreground: oklch(32.95% 0.0209 254.12);
   --sidebar-border: oklch(78.06% 0.0056 286.27);
-  --sidebar-ring: oklch(61.98% 0.2159 311.67);
+  --sidebar-ring: var(--ring);
 
   --status-healthy-bg: var(--success);
   --status-healthy-fg: var(--success-foreground);
@@ -78,7 +78,9 @@
   --category-badge-background: var(--secondary);
   --category-badge-foreground: var(--control-muted-foreground);
   --scrim: rgba(0, 0, 0, 0.5);
-  --primary-hover: oklch(47.01% 0.1577 311.26);
+  /* Derived from --primary so a rebranded primary carries into hover/active
+     states. Default renders #77379a — the previous literal was #77399a. */
+  --primary-hover: color-mix(in oklch, var(--primary), black 15%);
   --muted-foreground-strong: oklch(47.01% 0.0112 285.96);
   --destructive-foreground: oklch(54.97% 0.2151 27.33);
   --warning: oklch(95.02% 0.0692 92.11);
@@ -143,7 +145,7 @@
   --sidebar-accent: oklch(40% 0.0269 250.57);
   --sidebar-accent-foreground: oklch(95.04% 0.0042 236.5);
   --sidebar-border: oklch(47.01% 0.0112 285.96);
-  --sidebar-ring: oklch(69.98% 0.1926 311.48);
+  --sidebar-ring: var(--ring);
   --status-healthy-bg: var(--success);
   --status-healthy-fg: var(--success-foreground);
   --status-healthy-dot: var(--success-foreground);
@@ -158,7 +160,9 @@
   --category-badge-background: #47474b;
   --category-badge-foreground: #b7b7bb;
   --scrim: rgba(0, 0, 0, 0.6);
-  --primary-hover: oklch(69.98% 0.1926 311.48);
+  /* Dark mode brightens on hover instead of darkening.
+     Default renders #bf76e9 — the previous literal was #c575f4. */
+  --primary-hover: color-mix(in oklch, var(--primary), white 18%);
   --muted-foreground-strong: oklch(78.06% 0.0056 286.27);
   --destructive-foreground: oklch(78.02% 0.1024 27.78);
   --warning: oklch(33.09% 0.0677 92.2);

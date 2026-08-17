@@ -5,9 +5,21 @@
 // Call loadAppConfig() once before the app renders (see main.tsx).
 // All subsequent callers use getAppConfig() to access the cached value.
 
+/**
+ * Documented theme tokens. Each key becomes a kebab-cased CSS custom property
+ * (`primaryForeground` → `--primary-foreground`) on `:root` (light) or `.dark`.
+ *
+ * `primaryHover` and `sidebarRing` are derived from `primary` / `ring` in
+ * index.css, so rebranding those two is normally enough — override them only
+ * to break the derivation.
+ *
+ * Note: this type documents the supported set; it is not enforced at runtime.
+ * applyAppConfig() writes through whatever keys /config.json carries.
+ */
 export type ThemeTokens = {
   primary?: string;
   primaryForeground?: string;
+  primaryHover?: string;
   background?: string;
   foreground?: string;
   secondary?: string;
@@ -18,6 +30,7 @@ export type ThemeTokens = {
   accentForeground?: string;
   border?: string;
   ring?: string;
+  sidebarRing?: string;
   radius?: string;
 };
 
