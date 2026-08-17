@@ -137,8 +137,8 @@ becomes `--primary: #0066cc;`. Keys outside this list are passed through unchang
 only the tokens above are supported.
 
 `primaryHover` (the hover/active fill of primary buttons and badges) and `sidebarRing` are **derived** from
-`primary` and `ring`: `--primary-hover` is `primary` mixed 15% toward black in light mode and 18% toward white in
-dark mode, and `--sidebar-ring` is an alias for `--ring`. Setting `primary` therefore rebrands the hover state too;
+`primary` and `ring`: `--primary-hover` is `primary` mixed (in oklab) 15% toward black in light mode and 18% toward
+white in dark mode, and `--sidebar-ring` is an alias for `--ring`. Setting `primary` therefore rebrands the hover state too;
 override `primaryHover` / `sidebarRing` only when you need a different shade than the derived one.
 
 ### Classification banners

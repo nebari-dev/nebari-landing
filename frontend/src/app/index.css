@@ -79,8 +79,11 @@
   --category-badge-foreground: var(--control-muted-foreground);
   --scrim: rgba(0, 0, 0, 0.5);
   /* Derived from --primary so a rebranded primary carries into hover/active
-     states. Default renders #77379a — the previous literal was #77399a. */
-  --primary-hover: color-mix(in oklch, var(--primary), black 15%);
+     states. Default renders #77379a — the previous literal was #77399a.
+     oklab, not oklch: mixing toward an achromatic anchor is identical in
+     both, but the polar form relies on the powerless-hue rule to carry the
+     brand hue through, and the rectangular form cannot get that wrong. */
+  --primary-hover: color-mix(in oklab, var(--primary), black 15%);
   --muted-foreground-strong: oklch(47.01% 0.0112 285.96);
   --destructive-foreground: oklch(54.97% 0.2151 27.33);
   --warning: oklch(95.02% 0.0692 92.11);
@@ -162,7 +165,7 @@
   --scrim: rgba(0, 0, 0, 0.6);
   /* Dark mode brightens on hover instead of darkening.
      Default renders #bf76e9 — the previous literal was #c575f4. */
-  --primary-hover: color-mix(in oklch, var(--primary), white 18%);
+  --primary-hover: color-mix(in oklab, var(--primary), white 18%);
   --muted-foreground-strong: oklch(78.06% 0.0056 286.27);
   --destructive-foreground: oklch(78.02% 0.1024 27.78);
   --warning: oklch(33.09% 0.0677 92.2);
