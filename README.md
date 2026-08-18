@@ -313,6 +313,23 @@ npm run dev
 > docker-compose + MSW workflow in [docs/dev-quickstart.md](docs/dev-quickstart.md) — real Keycloak login, mocked
 > `/api/v1/*` driven by the OpenAPI spec, ~10-second boot.
 
+### Iterate with Tilt
+
+For backend/full-stack changes against the running dev cluster, [Tilt](https://tilt.dev) replaces the manual
+`make image-build install` cycle with a watch-rebuild-redeploy loop driven by a [`Tiltfile`](Tiltfile) at the repo root.
+
+```sh
+# Prereqs: the dev cluster is up (make -f dev/Makefile setup) and Tilt is installed.
+eval $(minikube --profile=nebari-local docker-env)   # Tilt builds straight into the cluster's docker
+tilt up                                              # opens the Tilt UI at http://localhost:10350
+```
+
+Save a `cmd/` or `internal/` file → webapi image rebuilds → pod rolls. Same for `frontend/src/`.
+`tilt down` tears down the workloads Tilt manages without touching Keycloak / operator / MetalLB.
+
+The Tiltfile is restricted to the `nebari-local` context via `allow_k8s_contexts`, so it can't accidentally
+deploy to any other cluster.
+
 ## Development
 
 ### Project structure
