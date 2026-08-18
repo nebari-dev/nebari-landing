@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -48,19 +49,27 @@ func eToBytes(e int) []byte {
 	return b[i:]
 }
 
-func startJWKSServer(t *testing.T, key *rsa.PrivateKey) *httptest.Server {
-	t.Helper()
-	jwks := map[string]interface{}{
+func jwkForKey(key *rsa.PrivateKey, kid string) map[string]interface{} {
+	return map[string]interface{}{
+		"kty": "RSA",
+		"kid": kid,
+		"use": "sig",
+		"n":   encodeBase64URL(key.N),
+		"e":   base64.RawURLEncoding.EncodeToString(eToBytes(key.E)),
+	}
+}
+
+func jwksForKey(key *rsa.PrivateKey) map[string]interface{} {
+	return map[string]interface{}{
 		"keys": []map[string]interface{}{
-			{
-				"kty": "RSA",
-				"kid": testKID,
-				"use": "sig",
-				"n":   encodeBase64URL(key.N),
-				"e":   base64.RawURLEncoding.EncodeToString(eToBytes(key.E)),
-			},
+			jwkForKey(key, testKID),
 		},
 	}
+}
+
+func startJWKSServer(t *testing.T, key *rsa.PrivateKey) *httptest.Server {
+	t.Helper()
+	jwks := jwksForKey(key)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(jwks)
@@ -71,6 +80,11 @@ func startJWKSServer(t *testing.T, key *rsa.PrivateKey) *httptest.Server {
 
 func signJWT(t *testing.T, key *rsa.PrivateKey, issuer string, exp time.Time, extra *Claims) string {
 	t.Helper()
+	return signJWTWithKID(t, key, issuer, exp, testKID, extra)
+}
+
+func signJWTWithKID(t *testing.T, key *rsa.PrivateKey, issuer string, exp time.Time, kid string, extra *Claims) string {
+	t.Helper()
 	if extra == nil {
 		extra = &Claims{}
 	}
@@ -80,7 +94,7 @@ func signJWT(t *testing.T, key *rsa.PrivateKey, issuer string, exp time.Time, ex
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, extra)
-	tok.Header["kid"] = testKID
+	tok.Header["kid"] = kid
 	s, err := tok.SignedString(key)
 	if err != nil {
 		t.Fatalf("sign: %v", err)
@@ -127,6 +141,18 @@ func waitForCalls(t *testing.T, calls *atomic.Int32, want int32, timeout time.Du
 		time.Sleep(2 * time.Millisecond)
 	}
 	t.Fatalf("expected at least %d calls within %v, got %d", want, timeout, calls.Load())
+}
+
+func waitForRefreshFailures(t *testing.T, v *JWTValidator, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if v.Stats().JWKSRefreshFailures > 0 {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("expected a JWKS refresh failure within %v", timeout)
 }
 
 // --- parseRSAPublicKey ---
@@ -291,6 +317,271 @@ func TestValidateToken_UnknownKID(t *testing.T) {
 	}
 }
 
+func TestValidateToken_UnknownKIDRefreshesAreCoalescedAndCooledDown(t *testing.T) {
+	withJWTRefreshSettings(t, 200*time.Millisecond, time.Minute, 1024)
+
+	key := generateTestKey(t)
+	jwks := jwksForKey(key)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		if n > 1 {
+			time.Sleep(75 * time.Millisecond)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(jwks)
+	}))
+	defer srv.Close()
+
+	v := newValidator(t, srv)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("expected initial JWKS fetch only, got %d calls", got)
+	}
+
+	v.keysMu.Lock()
+	v.lastFetch = time.Now().Add(-2 * jwksStaleRefreshInterval)
+	v.keysMu.Unlock()
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	const requests = 20
+	tokens := make([]string, requests)
+	for i := range tokens {
+		tokens[i] = signJWTWithKID(t, key, issuer, time.Now().Add(time.Hour), fmt.Sprintf("unknown-%d", i), nil)
+	}
+
+	start := make(chan struct{})
+	errCh := make(chan error, requests)
+	var wg sync.WaitGroup
+	for i := range tokens {
+		wg.Add(1)
+		go func(token string) {
+			defer wg.Done()
+			<-start
+			_, err := v.ValidateToken(token)
+			errCh <- err
+		}(tokens[i])
+	}
+	close(start)
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err == nil {
+			t.Error("expected unknown kid validation to fail")
+		}
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("expected one coalesced request-time refresh, got %d JWKS calls", got)
+	}
+
+	stats := v.Stats()
+	if stats.UnknownKIDTotal != requests {
+		t.Errorf("unknown kid count: got %d, want %d", stats.UnknownKIDTotal, requests)
+	}
+	if stats.JWKSRefreshAttempts != uint64(calls.Load()) {
+		t.Errorf("refresh attempts: got %d, want %d", stats.JWKSRefreshAttempts, calls.Load())
+	}
+	if stats.JWKSRefreshCoalesced == 0 {
+		t.Error("expected concurrent refreshes to be coalesced")
+	}
+	if stats.UnknownKIDCacheEntries == 0 {
+		t.Error("expected unknown kid negative cache entries")
+	}
+}
+
+func TestValidateToken_ConcurrentRotatedKIDWaitsForSharedRefresh(t *testing.T) {
+	withJWTRefreshSettings(t, 200*time.Millisecond, time.Minute, 1024)
+
+	oldKey := generateTestKey(t)
+	newKey := generateTestKey(t)
+	const rotatedKID = "rotated-key"
+
+	oldJWKS := jwksForKey(oldKey)
+	rotatedJWKS := map[string]interface{}{
+		"keys": []map[string]interface{}{
+			jwkForKey(oldKey, testKID),
+			jwkForKey(newKey, rotatedKID),
+		},
+	}
+
+	var calls atomic.Int32
+	refreshStarted := make(chan struct{})
+	releaseRefresh := make(chan struct{})
+	var refreshOnce sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if n == 1 {
+			_ = json.NewEncoder(w).Encode(oldJWKS)
+			return
+		}
+
+		refreshOnce.Do(func() { close(refreshStarted) })
+		<-releaseRefresh
+		_ = json.NewEncoder(w).Encode(rotatedJWKS)
+	}))
+	defer srv.Close()
+
+	v := newValidator(t, srv)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("expected initial JWKS fetch only, got %d calls", got)
+	}
+
+	v.keysMu.Lock()
+	v.lastFetch = time.Now().Add(-2 * jwksStaleRefreshInterval)
+	v.keysMu.Unlock()
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	const requests = 8
+	tokens := make([]string, requests)
+	for i := range tokens {
+		tokens[i] = signJWTWithKID(t, newKey, issuer, time.Now().Add(time.Hour), rotatedKID, &Claims{
+			PreferredUsername: fmt.Sprintf("user-%d", i),
+		})
+	}
+
+	start := make(chan struct{})
+	type validationResult struct {
+		claims *Claims
+		err    error
+	}
+	resultCh := make(chan validationResult, requests)
+	var wg sync.WaitGroup
+	for i := range tokens {
+		wg.Add(1)
+		go func(token string) {
+			defer wg.Done()
+			<-start
+			claims, err := v.ValidateToken(token)
+			resultCh <- validationResult{claims: claims, err: err}
+		}(tokens[i])
+	}
+	close(start)
+
+	select {
+	case <-refreshStarted:
+	case <-time.After(time.Second):
+		t.Fatal("request-time JWKS refresh did not start")
+	}
+	close(releaseRefresh)
+
+	wg.Wait()
+	close(resultCh)
+
+	for result := range resultCh {
+		if result.err != nil {
+			t.Errorf("rotated key should validate after shared refresh: %v", result.err)
+			continue
+		}
+		if result.claims == nil || result.claims.PreferredUsername == "" {
+			t.Errorf("expected claims from rotated token, got %#v", result.claims)
+		}
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("expected one shared request-time refresh, got %d JWKS calls", got)
+	}
+	if stats := v.Stats(); stats.JWKSRefreshCoalesced == 0 {
+		t.Error("expected concurrent rotated-key validations to share the refresh")
+	}
+}
+
+func TestValidateToken_CooldownSkippedUnknownKIDDoesNotPoisonNegativeCache(t *testing.T) {
+	withJWTRefreshSettings(t, 50*time.Millisecond, time.Minute, 1024)
+
+	oldKey := generateTestKey(t)
+	newKey := generateTestKey(t)
+	const rotatedKID = "rotated-during-cooldown"
+
+	oldJWKS := jwksForKey(oldKey)
+	rotatedJWKS := map[string]interface{}{
+		"keys": []map[string]interface{}{
+			jwkForKey(oldKey, testKID),
+			jwkForKey(newKey, rotatedKID),
+		},
+	}
+
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if n == 1 {
+			_ = json.NewEncoder(w).Encode(oldJWKS)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(rotatedJWKS)
+	}))
+	defer srv.Close()
+
+	v := newValidator(t, srv)
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	token := signJWTWithKID(t, newKey, issuer, time.Now().Add(time.Hour), rotatedKID, &Claims{PreferredUsername: "jdoe"})
+
+	v.keysMu.Lock()
+	v.lastFetch = time.Now()
+	v.keysMu.Unlock()
+
+	if _, err := v.ValidateToken(token); err == nil || !strings.Contains(err.Error(), "key refresh skipped by cooldown") {
+		t.Fatalf("expected cooldown-skipped unknown kid error, got %v", err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("cooldown skip should not fetch JWKS, got %d calls", got)
+	}
+	if entries := v.Stats().UnknownKIDCacheEntries; entries != 0 {
+		t.Fatalf("cooldown-skipped kid should not be negative-cached, got %d entries", entries)
+	}
+
+	time.Sleep(2 * jwksRefreshMinInterval)
+	got, err := v.ValidateToken(token)
+	if err != nil {
+		t.Fatalf("rotated key should validate after cooldown refresh: %v", err)
+	}
+	if got.PreferredUsername != "jdoe" {
+		t.Errorf("username: got %q, want jdoe", got.PreferredUsername)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("expected initial fetch plus post-cooldown refresh, got %d calls", got)
+	}
+}
+
+func TestValidateToken_UnknownKIDNegativeCacheSkipsRefreshAfterCooldown(t *testing.T) {
+	withJWTRefreshSettings(t, 10*time.Millisecond, time.Minute, 1024)
+
+	key := generateTestKey(t)
+	jwks := jwksForKey(key)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(jwks)
+	}))
+	defer srv.Close()
+
+	v := newValidator(t, srv)
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	token := signJWTWithKID(t, key, issuer, time.Now().Add(time.Hour), "missing-key", nil)
+
+	v.keysMu.Lock()
+	v.lastFetch = time.Now().Add(-2 * jwksStaleRefreshInterval)
+	v.keysMu.Unlock()
+	if _, err := v.ValidateToken(token); err == nil {
+		t.Fatal("expected first unknown kid validation to fail")
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("expected initial fetch plus first refresh, got %d calls", got)
+	}
+
+	time.Sleep(2 * jwksRefreshMinInterval)
+	if _, err := v.ValidateToken(token); err == nil {
+		t.Fatal("expected cached unknown kid validation to fail")
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("negative cache should skip second refresh, got %d JWKS calls", got)
+	}
+	if hits := v.Stats().UnknownKIDCacheHits; hits == 0 {
+		t.Error("expected unknown kid cache hit to be observable")
+	}
+}
+
 func TestValidateToken_Tampered(t *testing.T) {
 	key := generateTestKey(t)
 	srv := startJWKSServer(t, key)
@@ -327,6 +618,96 @@ func TestValidateToken_WrongAlgorithm(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for wrong algorithm")
 	}
+}
+
+func TestValidateToken_TooLargeTokenRejectedBeforeParsing(t *testing.T) {
+	v := &JWTValidator{}
+	v.ready.Store(true)
+
+	_, err := v.ValidateToken(strings.Repeat("a", maxJWTBytes+1))
+	if err == nil {
+		t.Fatal("expected oversized token to fail")
+	}
+}
+
+func TestValidateToken_ValidTokenSurvivesInvalidJWKSRefresh(t *testing.T) {
+	key := generateTestKey(t)
+	jwks := jwksForKey(key)
+	var invalid atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if invalid.Load() {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"keys": []interface{}{}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(jwks)
+	}))
+	defer srv.Close()
+
+	v := newValidator(t, srv)
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), &Claims{PreferredUsername: "jdoe"})
+
+	invalid.Store(true)
+	v.keysMu.Lock()
+	v.lastFetch = time.Now().Add(-2 * jwksStaleRefreshInterval)
+	v.keysMu.Unlock()
+
+	got, err := v.ValidateToken(tokenStr)
+	if err != nil {
+		t.Fatalf("valid token should use last-known-good key after bad JWKS refresh: %v", err)
+	}
+	if got.PreferredUsername != "jdoe" {
+		t.Errorf("username: got %q, want jdoe", got.PreferredUsername)
+	}
+	waitForRefreshFailures(t, v, time.Second)
+}
+
+func TestValidateToken_StaleCachedKeyDoesNotWaitForJWKSRefresh(t *testing.T) {
+	key := generateTestKey(t)
+	jwks := jwksForKey(key)
+	var calls atomic.Int32
+	var blockRefresh atomic.Bool
+	releaseRefresh := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(releaseRefresh) })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if blockRefresh.Load() {
+			<-releaseRefresh
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(jwks)
+	}))
+	defer srv.Close()
+
+	v := newValidator(t, srv)
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), &Claims{PreferredUsername: "jdoe"})
+
+	blockRefresh.Store(true)
+	v.keysMu.Lock()
+	v.lastFetch = time.Now().Add(-2 * jwksStaleRefreshInterval)
+	v.keysMu.Unlock()
+
+	start := time.Now()
+	got, err := v.ValidateToken(tokenStr)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("valid token should use cached key while stale refresh runs: %v", err)
+	}
+	if got.PreferredUsername != "jdoe" {
+		t.Errorf("username: got %q, want jdoe", got.PreferredUsername)
+	}
+	if elapsed > 100*time.Millisecond {
+		t.Fatalf("cached-key validation waited for JWKS refresh: %v", elapsed)
+	}
+	waitForCalls(t, &calls, 2, time.Second)
+	releaseOnce.Do(func() { close(releaseRefresh) })
+	waitForRefreshFailures(t, v, time.Second)
 }
 
 // --- Claims struct ---
@@ -373,6 +754,23 @@ func withNoBackoff(t *testing.T, maxAttempts int) {
 		retryDelay = origDelay
 		retryMaxAttempts = origMax
 		retryInitialBackoff = origBackoff
+	})
+}
+
+func withJWTRefreshSettings(t *testing.T, minInterval, negativeTTL time.Duration, negativeMaxEntries int) {
+	t.Helper()
+	origMinInterval := jwksRefreshMinInterval
+	origNegativeTTL := unknownKIDCacheTTL
+	origNegativeMaxEntries := unknownKIDCacheMaxEntries
+
+	jwksRefreshMinInterval = minInterval
+	unknownKIDCacheTTL = negativeTTL
+	unknownKIDCacheMaxEntries = negativeMaxEntries
+
+	t.Cleanup(func() {
+		jwksRefreshMinInterval = origMinInterval
+		unknownKIDCacheTTL = origNegativeTTL
+		unknownKIDCacheMaxEntries = origNegativeMaxEntries
 	})
 }
 

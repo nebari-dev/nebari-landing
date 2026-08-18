@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/sync/singleflight"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -35,6 +36,22 @@ var (
 	// but long enough that an operator looking at logs sees a clear "still
 	// failing" cadence rather than a tight retry storm.
 	slowPollInterval = 30 * time.Second
+	// jwksStaleRefreshInterval is the normal background refresh cadence driven
+	// by request traffic after the validator has become ready.
+	jwksStaleRefreshInterval = time.Hour
+	// jwksRefreshMinInterval is a floor across on-demand refresh attempts. It
+	// prevents unknown-kid traffic from mapping 1:1 to outbound JWKS requests.
+	jwksRefreshMinInterval = time.Minute
+	// unknownKIDCacheTTL remembers key IDs that remained unknown after refresh.
+	unknownKIDCacheTTL = 5 * time.Minute
+	// unknownKIDCacheMaxEntries bounds memory used by the negative cache.
+	unknownKIDCacheMaxEntries = 1024
+	// maxJWTBytes is an application-level cap before jwt.ParseWithClaims sees
+	// untrusted input. Keycloak tokens are usually far smaller; 64 KiB leaves
+	// room for large group claims while bounding pathological headers.
+	maxJWTBytes = 64 * 1024
+	// maxKIDBytes bounds the untrusted JWT header value we use as a map key.
+	maxKIDBytes = 1024
 )
 
 // ErrNotReady is returned by ValidateToken when the validator's initial JWKS
@@ -42,6 +59,8 @@ var (
 // surface a 503 Service Unavailable so clients distinguish "Keycloak not
 // reachable yet" from "your token is bad" (401).
 var ErrNotReady = errors.New("jwt validator: initial JWKS fetch not yet complete")
+
+var errJWKSRefreshSkipped = errors.New("jwt validator: JWKS refresh skipped by cooldown")
 
 // Claims represents the JWT claims we care about
 type Claims struct {
@@ -79,10 +98,30 @@ type JWTValidator struct {
 	publicKeys map[string]*rsa.PublicKey
 	keysMu     sync.RWMutex
 	lastFetch  time.Time
+	// refreshGroup coalesces concurrent request-time refreshes. The initial
+	// background fetch path stays direct so startup retry logging remains simple.
+	refreshGroup singleflight.Group
+	refreshMu    sync.Mutex
+	// lastRefreshAttempt tracks failed attempts too; lastFetch only records
+	// successful key loads.
+	lastRefreshAttempt time.Time
+	refreshCall        *jwksRefreshCall
+	unknownKIDMu       sync.Mutex
+	unknownKIDs        map[string]time.Time
 	// ready flips to true once the first JWKS fetch succeeds. Reads must use
 	// atomic.Bool because the writer runs on the background init goroutine
 	// while readers run on every request-handling goroutine.
 	ready atomic.Bool
+	// Counters are intentionally process-local; they surface via Stats() and the
+	// existing debug endpoint so operators can see refresh pressure without a
+	// separate metrics subsystem.
+	jwksRefreshAttempts  atomic.Uint64
+	jwksRefreshSuccesses atomic.Uint64
+	jwksRefreshFailures  atomic.Uint64
+	jwksRefreshSkipped   atomic.Uint64
+	jwksRefreshCoalesced atomic.Uint64
+	unknownKIDTotal      atomic.Uint64
+	unknownKIDCacheHits  atomic.Uint64
 	// stopCh is closed by Stop() to interrupt the slow-poll loop. The active
 	// retry path uses retryDelay (overrideable in tests) and does not need
 	// the channel — it always completes within retryMaxAttempts iterations.
@@ -93,6 +132,27 @@ type JWTValidator struct {
 	// stopOnce guards the close(stopCh) in Stop so concurrent callers cannot
 	// double-close the channel.
 	stopOnce sync.Once
+}
+
+type jwksRefreshCall struct {
+	done chan struct{}
+	err  error
+}
+
+// ValidatorStats exposes process-local counters for JWKS refresh behavior.
+type ValidatorStats struct {
+	Ready                  bool      `json:"ready"`
+	KeyCount               int       `json:"key_count"`
+	LastFetch              time.Time `json:"last_fetch,omitempty"`
+	LastRefreshAttempt     time.Time `json:"last_refresh_attempt,omitempty"`
+	JWKSRefreshAttempts    uint64    `json:"jwks_refresh_attempts"`
+	JWKSRefreshSuccesses   uint64    `json:"jwks_refresh_successes"`
+	JWKSRefreshFailures    uint64    `json:"jwks_refresh_failures"`
+	JWKSRefreshSkipped     uint64    `json:"jwks_refresh_skipped"`
+	JWKSRefreshCoalesced   uint64    `json:"jwks_refresh_coalesced"`
+	UnknownKIDTotal        uint64    `json:"unknown_kid_total"`
+	UnknownKIDCacheHits    uint64    `json:"unknown_kid_cache_hits"`
+	UnknownKIDCacheEntries int       `json:"unknown_kid_cache_entries"`
 }
 
 // JWK represents a JSON Web Key
@@ -125,6 +185,7 @@ func NewJWTValidator(keycloakURL, realm string) *JWTValidator {
 		issuerURL:   cleanURL, // default; override with SetIssuerURL if needed
 		realm:       realm,
 		publicKeys:  make(map[string]*rsa.PublicKey),
+		unknownKIDs: make(map[string]time.Time),
 		stopCh:      make(chan struct{}),
 		doneCh:      make(chan struct{}),
 	}
@@ -210,6 +271,36 @@ func (v *JWTValidator) Ready() bool {
 	return v.ready.Load()
 }
 
+// Stats returns a snapshot of JWKS refresh and unknown-key counters.
+func (v *JWTValidator) Stats() ValidatorStats {
+	stats := ValidatorStats{
+		Ready:                v.Ready(),
+		JWKSRefreshAttempts:  v.jwksRefreshAttempts.Load(),
+		JWKSRefreshSuccesses: v.jwksRefreshSuccesses.Load(),
+		JWKSRefreshFailures:  v.jwksRefreshFailures.Load(),
+		JWKSRefreshSkipped:   v.jwksRefreshSkipped.Load(),
+		JWKSRefreshCoalesced: v.jwksRefreshCoalesced.Load(),
+		UnknownKIDTotal:      v.unknownKIDTotal.Load(),
+		UnknownKIDCacheHits:  v.unknownKIDCacheHits.Load(),
+	}
+
+	v.keysMu.RLock()
+	stats.KeyCount = len(v.publicKeys)
+	stats.LastFetch = v.lastFetch
+	v.keysMu.RUnlock()
+
+	v.refreshMu.Lock()
+	stats.LastRefreshAttempt = v.lastRefreshAttempt
+	v.refreshMu.Unlock()
+
+	v.unknownKIDMu.Lock()
+	v.pruneUnknownKIDsLocked(time.Now())
+	stats.UnknownKIDCacheEntries = len(v.unknownKIDs)
+	v.unknownKIDMu.Unlock()
+
+	return stats
+}
+
 // Stop signals the background init goroutine to exit and waits for it.
 // Safe to call multiple times, including concurrently from multiple goroutines
 // (stopOnce guards against a double-close panic). In production,
@@ -254,10 +345,8 @@ func (v *JWTValidator) ValidateToken(tokenString string) (*Claims, error) {
 		return nil, ErrNotReady
 	}
 
-	if time.Since(v.lastFetch) > time.Hour {
-		if err := v.fetchPublicKeys(); err != nil {
-			log.Error(err, "Failed to refresh public keys")
-		}
+	if len(tokenString) > maxJWTBytes {
+		return nil, fmt.Errorf("token exceeds maximum size of %d bytes", maxJWTBytes)
 	}
 
 	claims := &Claims{}
@@ -270,23 +359,41 @@ func (v *JWTValidator) ValidateToken(tokenString string) (*Claims, error) {
 		if !ok {
 			return nil, fmt.Errorf("missing kid in token header")
 		}
+		if len(kid) > maxKIDBytes {
+			return nil, fmt.Errorf("kid exceeds maximum size of %d bytes", maxKIDBytes)
+		}
 
 		v.keysMu.RLock()
-		defer v.keysMu.RUnlock()
-
 		publicKey, exists := v.publicKeys[kid]
+		v.keysMu.RUnlock()
 		if !exists {
-			// Key not cached — try a one-shot refresh (Keycloak may have rotated keys).
-			v.keysMu.RUnlock()
-			if refreshErr := v.fetchPublicKeys(); refreshErr != nil {
-				v.keysMu.RLock()
+			v.unknownKIDTotal.Add(1)
+			if v.unknownKIDCached(kid) {
+				return nil, fmt.Errorf("unknown key ID: %s (cached)", kid)
+			}
+
+			// Key not cached — try a bounded refresh (Keycloak may have rotated
+			// keys), coalesced with other callers and subject to a cooldown.
+			if refreshErr := v.refreshPublicKeysIfDue(); refreshErr != nil {
+				if errors.Is(refreshErr, errJWKSRefreshSkipped) {
+					return nil, fmt.Errorf("unknown key ID %s and key refresh skipped by cooldown: %w", kid, refreshErr)
+				}
+				v.rememberUnknownKID(kid)
 				return nil, fmt.Errorf("unknown key ID %s and key refresh failed: %w", kid, refreshErr)
 			}
 			v.keysMu.RLock()
 			publicKey, exists = v.publicKeys[kid]
+			v.keysMu.RUnlock()
 			if !exists {
-				return nil, fmt.Errorf("unknown key ID: %s (not found after key refresh)", kid)
+				v.rememberUnknownKID(kid)
+				return nil, fmt.Errorf("unknown key ID: %s (not found in current key set)", kid)
 			}
+		}
+		v.keysMu.RLock()
+		lastFetch := v.lastFetch
+		v.keysMu.RUnlock()
+		if lastFetch.IsZero() || time.Since(lastFetch) > jwksStaleRefreshInterval {
+			v.refreshPublicKeysIfDueAsync()
 		}
 
 		return publicKey, nil
@@ -317,6 +424,16 @@ func (v *JWTValidator) ValidateToken(tokenString string) (*Claims, error) {
 }
 
 func (v *JWTValidator) fetchPublicKeys() error {
+	v.jwksRefreshAttempts.Add(1)
+	if err := v.fetchPublicKeysOnce(); err != nil {
+		v.jwksRefreshFailures.Add(1)
+		return err
+	}
+	v.jwksRefreshSuccesses.Add(1)
+	return nil
+}
+
+func (v *JWTValidator) fetchPublicKeysOnce() error {
 	certsURL := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/certs", v.keycloakURL, v.realm)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -346,10 +463,7 @@ func (v *JWTValidator) fetchPublicKeys() error {
 		return fmt.Errorf("failed to decode JWKS: %w", err)
 	}
 
-	v.keysMu.Lock()
-	defer v.keysMu.Unlock()
-
-	v.publicKeys = make(map[string]*rsa.PublicKey)
+	newPublicKeys := make(map[string]*rsa.PublicKey)
 
 	for _, jwk := range jwks.Keys {
 		if jwk.Kty != "RSA" {
@@ -362,18 +476,142 @@ func (v *JWTValidator) fetchPublicKeys() error {
 			continue
 		}
 
-		v.publicKeys[jwk.Kid] = publicKey
+		newPublicKeys[jwk.Kid] = publicKey
 		log.Info("Loaded public key", "kid", jwk.Kid)
 	}
 
-	v.lastFetch = time.Now()
-
-	if len(v.publicKeys) == 0 {
+	if len(newPublicKeys) == 0 {
 		return fmt.Errorf("no valid RSA keys found")
 	}
 
-	log.Info("Public keys refreshed", "count", len(v.publicKeys))
+	v.keysMu.Lock()
+	v.publicKeys = newPublicKeys
+	v.lastFetch = time.Now()
+	v.keysMu.Unlock()
+
+	log.Info("Public keys refreshed", "count", len(newPublicKeys))
 	return nil
+}
+
+func (v *JWTValidator) refreshPublicKeysIfDue() error {
+	call, skipped := v.startPublicKeysRefresh()
+	if skipped {
+		return errJWKSRefreshSkipped
+	}
+	if call == nil {
+		return nil
+	}
+	<-call.done
+	v.refreshMu.Lock()
+	err := call.err
+	v.refreshMu.Unlock()
+	return err
+}
+
+func (v *JWTValidator) refreshPublicKeysIfDueAsync() {
+	call, _ := v.startPublicKeysRefresh()
+	if call == nil {
+		return
+	}
+
+	go func() {
+		<-call.done
+		v.refreshMu.Lock()
+		err := call.err
+		v.refreshMu.Unlock()
+		if err != nil {
+			log.Error(err, "Failed to refresh public keys")
+		}
+	}()
+}
+
+func (v *JWTValidator) startPublicKeysRefresh() (*jwksRefreshCall, bool) {
+	now := time.Now()
+	v.keysMu.RLock()
+	lastFetch := v.lastFetch
+	v.keysMu.RUnlock()
+
+	v.refreshMu.Lock()
+	defer v.refreshMu.Unlock()
+
+	if v.refreshCall != nil {
+		v.jwksRefreshCoalesced.Add(1)
+		return v.refreshCall, false
+	}
+	if !v.lastRefreshAttempt.IsZero() && now.Sub(v.lastRefreshAttempt) < jwksRefreshMinInterval {
+		v.jwksRefreshSkipped.Add(1)
+		return nil, true
+	}
+	if !lastFetch.IsZero() && now.Sub(lastFetch) < jwksRefreshMinInterval {
+		v.jwksRefreshSkipped.Add(1)
+		return nil, true
+	}
+
+	v.lastRefreshAttempt = now
+	call := &jwksRefreshCall{done: make(chan struct{})}
+	v.refreshCall = call
+	ch := v.refreshGroup.DoChan("jwks-refresh", func() (interface{}, error) {
+		return nil, v.fetchPublicKeys()
+	})
+
+	go func() {
+		res := <-ch
+		v.refreshMu.Lock()
+		call.err = res.Err
+		if v.refreshCall == call {
+			v.refreshCall = nil
+		}
+		close(call.done)
+		v.refreshMu.Unlock()
+	}()
+
+	return call, false
+}
+
+func (v *JWTValidator) unknownKIDCached(kid string) bool {
+	v.unknownKIDMu.Lock()
+	defer v.unknownKIDMu.Unlock()
+
+	expiresAt, ok := v.unknownKIDs[kid]
+	if !ok {
+		return false
+	}
+	if time.Now().After(expiresAt) {
+		delete(v.unknownKIDs, kid)
+		return false
+	}
+	v.unknownKIDCacheHits.Add(1)
+	return true
+}
+
+func (v *JWTValidator) rememberUnknownKID(kid string) {
+	if unknownKIDCacheTTL <= 0 || unknownKIDCacheMaxEntries <= 0 {
+		return
+	}
+
+	now := time.Now()
+	v.unknownKIDMu.Lock()
+	defer v.unknownKIDMu.Unlock()
+
+	v.pruneUnknownKIDsLocked(now)
+	if len(v.unknownKIDs) >= unknownKIDCacheMaxEntries {
+		for cachedKID := range v.unknownKIDs {
+			delete(v.unknownKIDs, cachedKID)
+			break
+		}
+	}
+	if v.unknownKIDs == nil {
+		v.unknownKIDs = make(map[string]time.Time)
+	}
+	v.unknownKIDs[kid] = now.Add(unknownKIDCacheTTL)
+}
+
+func (v *JWTValidator) pruneUnknownKIDsLocked(now time.Time) {
+	for kid, expiresAt := range v.unknownKIDs {
+		if now.After(expiresAt) {
+			delete(v.unknownKIDs, kid)
+		}
+	}
 }
 
 func parseRSAPublicKey(jwk JWK) (*rsa.PublicKey, error) {

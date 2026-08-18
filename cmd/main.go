@@ -327,6 +327,9 @@ func main() {
 		// Per-frame write deadlines are enforced inside the Hub.Broadcast instead.
 		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
+		// Bound aggregate request headers before they reach handler code. The
+		// API applies a tighter Authorization-specific cap before JWT parsing.
+		MaxHeaderBytes: 128 * 1024,
 	}
 
 	go func() {
