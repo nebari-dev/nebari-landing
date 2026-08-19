@@ -43,6 +43,7 @@ frontend:
     # The SPA client is a separate *public* Keycloak client (no secret, PKCE only)
     # provisioned by the operator when nebariApp.spaClient.enabled=true.
     # Override only when using a manually provisioned client with a different ID.
+    # For operator-managed NebariApp deployments, set nebariApp.spaClient.clientId instead.
     clientId: ""
 
   # Branding settings — rendered into /config.json at deploy time.
@@ -134,7 +135,14 @@ webapi:
     realm: "nebari"
     issuerUrl: ""     # overrides `url` for `iss` claim validation when different
     enableAuth: true
-    adminGroup: "admin"
+    # Dedicated Keycloak client role required for /api/v1/admin/* endpoints.
+    # The webapi ensures this role exists on the SPA client when Keycloak admin
+    # credentials are configured. Assign it directly to admin users or through
+    # Keycloak group role mappings.
+    adminRole: "nebari-landing-admin"
+    # Leave empty to use the chart's SPA client ID. Set only when the admin
+    # role belongs to another Keycloak client.
+    adminClientId: ""
     # Name of a Kubernetes Secret (in keycloak namespace) holding admin creds.
     # Keys: username / password  (or admin-username / admin-password)
     adminSecretName: "nebari-realm-admin-credentials"

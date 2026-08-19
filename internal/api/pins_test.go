@@ -13,6 +13,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
+	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
 )
@@ -31,6 +32,17 @@ func newPinHandler(t *testing.T, sc *cache.ServiceCache) (*Handler, *pins.PinSto
 	t.Helper()
 	ps := newPinStore(t)
 	h := NewHandler(sc, nil, false, nil, ps)
+	return h, ps
+}
+
+func newPinHandlerWithClaims(t *testing.T, sc *cache.ServiceCache, claims *auth.Claims) (*Handler, *pins.PinStore) {
+	t.Helper()
+	ps := newPinStore(t)
+	h := NewHandler(sc, nil, true, nil, ps,
+		WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
+			return claims, true
+		}),
+	)
 	return h, ps
 }
 
@@ -107,6 +119,65 @@ func TestHandleGetPins_ReturnsCachedService(t *testing.T) {
 	}
 	if len(resp.UIDs) != 1 || resp.UIDs[0] != "uid-1" {
 		t.Errorf("expected UIDs=[uid-1], got %v", resp.UIDs)
+	}
+}
+
+func TestHandleGetPins_FiltersPinnedServicesByAccessPolicy(t *testing.T) {
+	sc := cache.NewServiceCache()
+	addApp(sc, "uid-public", "grafana")
+	sc.Add(&sdapp.App{
+		UID: "uid-allowed", Name: "research-a", Namespace: "default",
+		Hostname: "a.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"/division-a/research"},
+		},
+	})
+	sc.Add(&sdapp.App{
+		UID: "uid-denied", Name: "research-b", Namespace: "default",
+		Hostname: "b.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"/division-b/research"},
+		},
+	})
+	sc.Add(&sdapp.App{
+		UID: "uid-invalid", Name: "legacy-research", Namespace: "default",
+		Hostname: "legacy.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"research"},
+		},
+	})
+
+	claims := &auth.Claims{PreferredUsername: "alice", Groups: []string{"/division-a/research"}}
+	h, ps := newPinHandlerWithClaims(t, sc, claims)
+	for _, uid := range []string{"uid-public", "uid-allowed", "uid-denied", "uid-invalid"} {
+		if err := ps.Pin("alice", uid); err != nil {
+			t.Fatalf("pre-pin %s: %v", uid, err)
+		}
+	}
+
+	rr := doGet(t, h.Routes(), "/api/v1/pins")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp PinsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	got := map[string]bool{}
+	for _, pin := range resp.Pins {
+		got[pin.UID] = true
+	}
+	if !got["uid-public"] || !got["uid-allowed"] {
+		t.Fatalf("expected accessible pins uid-public and uid-allowed, got %+v", resp.Pins)
+	}
+	if got["uid-denied"] || got["uid-invalid"] {
+		t.Fatalf("inaccessible pins leaked in response: %+v", resp.Pins)
+	}
+	if len(resp.UIDs) != 4 {
+		t.Fatalf("raw stored UIDs should still be returned, got %v", resp.UIDs)
 	}
 }
 

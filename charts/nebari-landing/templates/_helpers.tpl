@@ -77,3 +77,15 @@ Uses the Bitnami standalone service naming convention.
 {{- define "nebari-landing.redisAddr" -}}
 {{- printf "%s-redis-master:6379" .Release.Name }}
 {{- end }}
+
+{{/*
+SPA Keycloak client ID.
+*/}}
+{{- define "nebari-landing.spaClientID" -}}
+{{- $defaultID := printf "%s-%s-spa" .Release.Namespace (include "nebari-landing.fullname" .) -}}
+{{- if and .Values.nebariApp.enabled .Values.nebariApp.spaClient.enabled -}}
+{{- default $defaultID .Values.nebariApp.spaClient.clientId }}
+{{- else -}}
+{{- default $defaultID .Values.frontend.keycloak.clientId }}
+{{- end -}}
+{{- end }}

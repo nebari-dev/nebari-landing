@@ -221,7 +221,11 @@ func TestValidateToken_Valid(t *testing.T) {
 		PreferredUsername: "jdoe",
 		Email:             "jdoe@example.com",
 		Name:              "John Doe",
-		Groups:            []string{"admin", "data-science"},
+		Groups:            []string{"/admin", "/data-science"},
+		AuthorizedParty:   "landing-spa",
+		ResourceAccess: RolesMap{
+			"landing-spa": {Roles: []string{"nebari-landing-admin"}},
+		},
 	}
 	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
 
@@ -237,6 +241,9 @@ func TestValidateToken_Valid(t *testing.T) {
 	}
 	if len(got.Groups) != 2 {
 		t.Errorf("groups: got %v, want 2 items", got.Groups)
+	}
+	if !got.HasClientRole("", "nebari-landing-admin") {
+		t.Error("expected admin role to round-trip through resource_access")
 	}
 }
 
@@ -336,7 +343,11 @@ func TestClaims_JSON_RoundTrip(t *testing.T) {
 		Email:             "user@example.com",
 		Name:              "Test User",
 		PreferredUsername: "testuser",
-		Groups:            []string{"group-a", "group-b"},
+		Groups:            []string{"/group-a", "/group-b"},
+		AuthorizedParty:   "landing-spa",
+		ResourceAccess: RolesMap{
+			"landing-spa": {Roles: []string{"nebari-landing-admin"}},
+		},
 	}
 	data, err := json.Marshal(c)
 	if err != nil {
@@ -351,6 +362,21 @@ func TestClaims_JSON_RoundTrip(t *testing.T) {
 	}
 	if len(got.Groups) != 2 {
 		t.Errorf("expected 2 groups, got %v", got.Groups)
+	}
+	if !got.HasClientRole("landing-spa", "nebari-landing-admin") {
+		t.Errorf("expected client role in round-trip, got %+v", got.ResourceAccess)
+	}
+}
+
+func TestClaims_HasClientRole_UsesAuthorizedParty(t *testing.T) {
+	claims := &Claims{
+		AuthorizedParty: "landing-spa",
+		ResourceAccess: RolesMap{
+			"landing-spa": {Roles: []string{"nebari-landing-admin"}},
+		},
+	}
+	if !claims.HasClientRole("", "nebari-landing-admin") {
+		t.Error("expected role lookup to fall back to azp")
 	}
 }
 

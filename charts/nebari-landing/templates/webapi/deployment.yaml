@@ -73,8 +73,10 @@ spec:
               value: {{ .Values.webapi.keycloak.adminSecretName | quote }}
             - name: KEYCLOAK_ADMIN_SECRET_NAMESPACE
               value: {{ .Values.webapi.keycloak.adminSecretNamespace | quote }}
-            - name: ADMIN_GROUP
-              value: {{ .Values.webapi.keycloak.adminGroup | quote }}
+            - name: ADMIN_ROLE
+              value: {{ .Values.webapi.keycloak.adminRole | quote }}
+            - name: ADMIN_CLIENT_ID
+              value: {{ default (include "nebari-landing.spaClientID" .) .Values.webapi.keycloak.adminClientId | quote }}
             # CORS — comma-separated allowed origins; "*" permits all.
             # The webapi is ClusterIP-only (never exposed by the Gateway); this
             # setting matters only when using a Vite dev server with port-forward.

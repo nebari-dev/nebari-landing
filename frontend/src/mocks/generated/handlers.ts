@@ -9,8 +9,10 @@ export const generatedHandlers = [
   http.put("/api/v1/admin/access-requests/:id/:action", () =>
     HttpResponse.json({
       id: "",
+      invalidRequiredGroups: [],
       message: "",
       requestedAt: "",
+      requiredGroups: [],
       resolvedAt: "",
       resolvedBy: "",
       serviceName: "",
@@ -82,8 +84,10 @@ export const generatedHandlers = [
   http.post("/api/v1/services/:id/request_access", () =>
     HttpResponse.json({
       id: "",
+      invalidRequiredGroups: [],
       message: "",
       requestedAt: "",
+      requiredGroups: [],
       resolvedAt: "",
       resolvedBy: "",
       serviceName: "",

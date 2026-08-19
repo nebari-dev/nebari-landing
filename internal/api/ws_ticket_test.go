@@ -309,7 +309,7 @@ func TestHandleWS_Unauthorized_WithTicketCarryingExpiredJWTExp(t *testing.T) {
 			if r.Header.Get("Authorization") == "Bearer near-exp" {
 				return &auth.Claims{
 					PreferredUsername: "alice",
-					Groups:            []string{"admin"},
+					Groups:            []string{"/admin"},
 					RegisteredClaims: jwt.RegisteredClaims{
 						// Already expired — production JWT validator would
 						// reject this on the Bearer path, but the issue is
@@ -522,14 +522,14 @@ func TestWSTicketExchange_TicketIsNotReusable_AfterSuccessfulUpgrade(t *testing.
 // test for issue #95. It drives a complete production-shape path:
 //
 //  1. POST /api/v1/ws-ticket with a Bearer token whose claims include
-//     groups=[admin]. The handler stores the claims into wsticket.
+//     groups=[/admin]. The handler stores the claims into wsticket.
 //  2. Upgrade WS using ?ticket=<id>. The handler redeems the ticket, builds
 //     a Principal from the snapshot, and registers the client on the hub.
 //  3. hub.SetAccessPolicy(handler) wires the canAccessPolicy rule the REST
 //     path enforces.
-//  4. Publish a private service requiring "admin". The entitled client
+//  4. Publish a private service requiring "/admin". The entitled client
 //     receives the frame.
-//  5. A second client, registered with groups=[data-science], must NOT
+//  5. A second client, registered with groups=[/data-science], must NOT
 //     receive the frame — the per-client filter drops it before write.
 //
 // If `handleWS` ever regresses to discarding claims on the ticket path, the
@@ -547,13 +547,13 @@ func TestWSTicketExchange_FullFlow_FiltersBroadcastByGroups(t *testing.T) {
 			case "Bearer alice-admin":
 				return &auth.Claims{
 					PreferredUsername: "alice",
-					Groups:            []string{"admin"},
+					Groups:            []string{"/admin"},
 					RegisteredClaims:  jwt.RegisteredClaims{ExpiresAt: futureExp()},
 				}, true
 			case "Bearer bob-ds":
 				return &auth.Claims{
 					PreferredUsername: "bob",
-					Groups:            []string{"data-science"},
+					Groups:            []string{"/data-science"},
 					RegisteredClaims:  jwt.RegisteredClaims{ExpiresAt: futureExp()},
 				}, true
 			}
@@ -614,7 +614,7 @@ func TestWSTicketExchange_FullFlow_FiltersBroadcastByGroups(t *testing.T) {
 		Name:           "grafana",
 		UID:            "g-1",
 		Visibility:     "private",
-		RequiredGroups: []string{"admin"},
+		RequiredGroups: []string{"/admin"},
 	})
 
 	// Alice (admin) receives the frame, with the right UID.
