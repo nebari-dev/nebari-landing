@@ -13,6 +13,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
+	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
 )
@@ -173,6 +174,47 @@ func TestHandlePinByUID_Put_Idempotent(t *testing.T) {
 	uids, _ := ps.Get("_anonymous")
 	if len(uids) != 1 {
 		t.Errorf("expected 1 pin (idempotent), got %d", len(uids))
+	}
+}
+
+func TestPinsUseStableSubjectNotUsername(t *testing.T) {
+	sc := cache.NewServiceCache()
+	addApp(sc, "uid-1", "jupyter")
+	ps := newPinStore(t)
+
+	claims := claimsWithIdentity("https://keycloak.example/realms/main", "subject-1", "alice")
+	h := NewHandler(sc, nil, true, nil, ps,
+		WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) { return claims, true }),
+	)
+
+	if rr := doMethod(t, h.Routes(), http.MethodPut, "/api/v1/pins/uid-1"); rr.Code != http.StatusNoContent {
+		t.Fatalf("pin: expected 204, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	claims = claimsWithIdentity("https://keycloak.example/realms/main", "subject-1", "alice-renamed")
+	rr := doGet(t, h.Routes(), "/api/v1/pins")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("renamed user: expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var renamed PinsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &renamed); err != nil {
+		t.Fatalf("renamed response: %v", err)
+	}
+	if len(renamed.UIDs) != 1 || renamed.UIDs[0] != "uid-1" {
+		t.Fatalf("renamed subject should keep pin, got UIDs=%v", renamed.UIDs)
+	}
+
+	claims = claimsWithIdentity("https://keycloak.example/realms/main", "subject-2", "alice")
+	rr = doGet(t, h.Routes(), "/api/v1/pins")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("reused username: expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var reused PinsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &reused); err != nil {
+		t.Fatalf("reused response: %v", err)
+	}
+	if len(reused.UIDs) != 0 {
+		t.Fatalf("reused username must not inherit pin, got UIDs=%v", reused.UIDs)
 	}
 }
 

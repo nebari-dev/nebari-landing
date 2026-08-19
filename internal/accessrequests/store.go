@@ -16,7 +16,7 @@
 //	nebari:ar:{id}                Hash  — all AccessRequest fields
 //	nebari:ar:all                 Sorted Set — score=unix-ms, member=id
 //	nebari:ar:pending             Sorted Set — score=unix-ms, member=id (pending only)
-//	nebari:ar:user:{userID}       Sorted Set — score=unix-ms, member=id (per-user)
+//	nebari:ar:user:{userID}       Sorted Set — score=unix-ms, member=id (per-user issuer+subject key)
 //	nebari:ar:dedup:{userID}:{svcUID}  String key (SET NX) — O(1) pending dedup
 package accessrequests
 
@@ -55,8 +55,14 @@ type AccessRequest struct {
 	ServiceUID string `json:"serviceUID"`
 	// ServiceName is the human-readable name of the service at request time.
 	ServiceName string `json:"serviceName"`
-	// UserID is the caller's preferred_username (or JWT sub fallback).
+	// UserID is the caller's stable issuer+subject identity key.
 	UserID string `json:"userID"`
+	// UserIssuer is the immutable JWT issuer recorded at request time.
+	UserIssuer string `json:"userIssuer,omitempty"`
+	// UserSubject is the immutable JWT subject recorded at request time.
+	UserSubject string `json:"userSubject,omitempty"`
+	// Username is mutable display metadata from preferred_username.
+	Username string `json:"username,omitempty"`
 	// UserEmail is included when present in the JWT claims.
 	UserEmail string `json:"userEmail,omitempty"`
 	// Message is an optional free-text note from the requester.
@@ -67,8 +73,24 @@ type AccessRequest struct {
 	RequestedAt time.Time `json:"requestedAt"`
 	// ResolvedAt is set when the request is approved or denied.
 	ResolvedAt *time.Time `json:"resolvedAt,omitempty"`
-	// ResolvedBy is the admin username who approved or denied the request.
+	// ResolvedBy is the stable issuer+subject identity key of the admin who approved or denied the request.
 	ResolvedBy string `json:"resolvedBy,omitempty"`
+	// ResolvedByIssuer is the immutable JWT issuer of the resolving admin.
+	ResolvedByIssuer string `json:"resolvedByIssuer,omitempty"`
+	// ResolvedBySubject is the immutable JWT subject of the resolving admin.
+	ResolvedBySubject string `json:"resolvedBySubject,omitempty"`
+	// ResolvedByUsername is mutable display metadata from the resolving admin's preferred_username.
+	ResolvedByUsername string `json:"resolvedByUsername,omitempty"`
+}
+
+// UserIdentity is the durable identity metadata captured from JWT claims.
+// ID must be derived from issuer+subject; Username is display-only metadata.
+type UserIdentity struct {
+	ID       string
+	Issuer   string
+	Subject  string
+	Username string
+	Email    string
 }
 
 // Sentinel errors returned by Store operations.
@@ -95,23 +117,27 @@ func NewStore(rdb *redis.Client) *Store {
 // Close is a no-op; the Redis client lifetime is managed by the caller.
 func (s *Store) Close() error { return nil }
 
-// Create stores a new pending access request.
+// Create stores a new pending access request with immutable user identity
+// fields and mutable display metadata.
 //
 // Returns ErrDuplicatePending without writing if a pending request already
 // exists for the same (userID, serviceUID) pair — O(1) via SET NX.
-func (s *Store) Create(serviceUID, serviceName, userID, userEmail, message string) (*AccessRequest, error) {
+func (s *Store) Create(serviceUID, serviceName string, user UserIdentity, message string) (*AccessRequest, error) {
 	ctx := context.Background()
 	req := &AccessRequest{
 		ID:          uuid.NewString(),
 		ServiceUID:  serviceUID,
 		ServiceName: serviceName,
-		UserID:      userID,
-		UserEmail:   userEmail,
+		UserID:      user.ID,
+		UserIssuer:  user.Issuer,
+		UserSubject: user.Subject,
+		Username:    user.Username,
+		UserEmail:   user.Email,
 		Message:     message,
 		Status:      StatusPending,
 		RequestedAt: time.Now().UTC(),
 	}
-	dedupKey := arDedupKey(userID, serviceUID)
+	dedupKey := arDedupKey(req.UserID, serviceUID)
 	// Atomic dedup: SET NX returns OK only if the key did not exist.
 	if err := s.rdb.SetArgs(ctx, dedupKey, req.ID, redis.SetArgs{
 		Mode: "NX",
@@ -129,6 +155,9 @@ func (s *Store) Create(serviceUID, serviceName, userID, userEmail, message strin
 			"serviceUID", req.ServiceUID,
 			"serviceName", req.ServiceName,
 			"userID", req.UserID,
+			"userIssuer", req.UserIssuer,
+			"userSubject", req.UserSubject,
+			"username", req.Username,
 			"userEmail", req.UserEmail,
 			"message", req.Message,
 			"status", string(req.Status),
@@ -137,7 +166,7 @@ func (s *Store) Create(serviceUID, serviceName, userID, userEmail, message strin
 		z := redis.Z{Score: score, Member: req.ID}
 		pipe.ZAdd(ctx, arAllKey, z)
 		pipe.ZAdd(ctx, arPendingKey, z)
-		pipe.ZAdd(ctx, arUserKey(userID), z)
+		pipe.ZAdd(ctx, arUserKey(req.UserID), z)
 		return nil
 	})
 	if err != nil {
@@ -216,9 +245,9 @@ func (s *Store) listFromIndex(indexKey string) ([]*AccessRequest, error) {
 }
 
 // UpdateStatus transitions an access request to Approved or Denied and records
-// who performed the resolution. Returns the updated request.
-// Returns ErrNotFound when the ID does not exist.
-func (s *Store) UpdateStatus(id string, status Status, resolvedBy string) (*AccessRequest, error) {
+// immutable resolver identity fields plus display metadata. Returns the updated
+// request. Returns ErrNotFound when the ID does not exist.
+func (s *Store) UpdateStatus(id string, status Status, resolver UserIdentity) (*AccessRequest, error) {
 	ctx := context.Background()
 	// Fetch the full record so we can clean up the dedup key.
 	fields, err := s.rdb.HGetAll(ctx, arKey(id)).Result()
@@ -235,13 +264,19 @@ func (s *Store) UpdateStatus(id string, status Status, resolvedBy string) (*Acce
 	now := time.Now().UTC()
 	req.Status = status
 	req.ResolvedAt = &now
-	req.ResolvedBy = resolvedBy
+	req.ResolvedBy = resolver.ID
+	req.ResolvedByIssuer = resolver.Issuer
+	req.ResolvedBySubject = resolver.Subject
+	req.ResolvedByUsername = resolver.Username
 	resolvedAtStr := now.Format(time.RFC3339Nano)
 	_, err = s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.HSet(ctx, arKey(id),
 			"status", string(status),
 			"resolvedAt", resolvedAtStr,
-			"resolvedBy", resolvedBy,
+			"resolvedBy", resolver.ID,
+			"resolvedByIssuer", resolver.Issuer,
+			"resolvedBySubject", resolver.Subject,
+			"resolvedByUsername", resolver.Username,
 		)
 		// Remove from pending index; keep in all + user indexes.
 		pipe.ZRem(ctx, arPendingKey, id)
@@ -273,6 +308,9 @@ func arFromHash(f map[string]string) (*AccessRequest, error) {
 		ServiceUID:  f["serviceUID"],
 		ServiceName: f["serviceName"],
 		UserID:      f["userID"],
+		UserIssuer:  f["userIssuer"],
+		UserSubject: f["userSubject"],
+		Username:    f["username"],
 		UserEmail:   f["userEmail"],
 		Message:     f["message"],
 		Status:      Status(f["status"]),
@@ -286,5 +324,8 @@ func arFromHash(f map[string]string) (*AccessRequest, error) {
 		req.ResolvedAt = &t
 	}
 	req.ResolvedBy = f["resolvedBy"]
+	req.ResolvedByIssuer = f["resolvedByIssuer"]
+	req.ResolvedBySubject = f["resolvedBySubject"]
+	req.ResolvedByUsername = f["resolvedByUsername"]
 	return req, nil
 }
