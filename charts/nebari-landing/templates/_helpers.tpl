@@ -77,3 +77,17 @@ Uses the Bitnami standalone service naming convention.
 {{- define "nebari-landing.redisAddr" -}}
 {{- printf "%s-redis-master:6379" .Release.Name }}
 {{- end }}
+
+{{/*
+Render an image reference. If a digest is set, it wins over tag so released
+charts can resolve to immutable images while development values can keep using
+tag overrides.
+*/}}
+{{- define "nebari-landing.image" -}}
+{{- $tag := default .root.Chart.AppVersion .image.tag -}}
+{{- if .image.digest -}}
+{{- printf "%s@%s" .image.repository .image.digest -}}
+{{- else -}}
+{{- printf "%s:%s" .image.repository $tag -}}
+{{- end -}}
+{{- end }}

@@ -35,9 +35,10 @@ Enter the version (e.g. `0.2.0`) and click **Run workflow**. The workflow will:
 - ✅ Tag `v<version>` at the bump commit and push only the tag.
 
 Publishing a GitHub Release against the new tag triggers `release.yml`, which
-produces the images, binaries, and chart tarball.
+produces scanned, signed, and attested images; signed Go archives with
+SBOMs; signed checksums; and a signed chart tarball.
 
-> **Why a tag-only commit?** The `values.yaml` image tags are empty and the deployment templates fall back to `.Chart.AppVersion`. Source-based consumers (e.g. ArgoCD pointing at the git tag) need the bumped `appVersion` to be committed at the tag so the fallback resolves to a real image. The tag carries that commit directly — no branch ref is needed, and `main`'s `appVersion` stays as `"latest"`. See **How It Works** at the bottom of this doc for the full picture.
+> **Why a tag-only commit?** Source-based consumers (e.g. ArgoCD pointing at the git tag) still need the bumped `appVersion` to be committed at the tag so the tag fallback resolves to a real versioned image. The release artifacts go further: `release.yml` resolves the final multi-arch image manifest digests and writes them into the packaged chart, so the `.tgz` and synced helm-repository chart install immutable images. The tag carries the version bump commit directly — no branch ref is needed.
 
 ### 3. Create the GitHub Release
 
@@ -55,14 +56,17 @@ The GitHub Actions workflow will automatically:
 1. **Verify** `Chart.yaml` is pinned to the release tag (the release-prep
    workflow does this for you; the verification step catches the case where a
    maintainer tagged manually without running release-prep).
-2. **Build** multi-arch Docker images:
+2. **Build** multi-arch Docker images with BuildKit provenance and SBOM attestations:
    - `quay.io/nebari/nebari-webapi:0.2.0`
    - `quay.io/nebari/nebari-landing:0.2.0`
-3. **Publish** images to Quay.io with semver tags (no `v` prefix —
-   docker/metadata-action strips it).
-4. **Release** Go binary via GoReleaser (attached to the GitHub release).
-5. **Package** and attach Helm chart to the release.
-6. **Sync** chart to helm-repository via `sync-helm-chart.yml` (opens PR automatically).
+3. **Publish** images to Quay.io with the exact semver tag and commit SHA tag
+   only (no `latest`, major, or minor aliases for releases).
+4. **Scan, sign, and attest** the final image manifests by digest.
+5. **Release** Go binary via GoReleaser with signed archives, archive
+   SBOMs, SBOM attestations, and a signed checksum bundle.
+6. **Package** the Helm chart with the release image digests in `values.yaml`,
+   then attach the chart, checksum, and Sigstore bundles to the release.
+7. **Sync** the digest-pinned chart to helm-repository via `sync-helm-chart.yml` (opens PR automatically).
 
 Watch the workflow at:
 https://github.com/nebari-dev/nebari-landing/actions/workflows/release.yml
@@ -81,10 +85,34 @@ docker pull quay.io/nebari/nebari-landing:0.2.0
 
 **Helm Chart**:
 - Visit your release page: `https://github.com/nebari-dev/nebari-landing/releases/tag/v0.2.0`
-- Verify `nebari-landing-0.2.0.tgz` is attached.
-- Extract it and confirm `appVersion: "0.2.0"` in `Chart.yaml` and empty
-  `image.tag` for both nebari images in `values.yaml` (the deployment
-  templates resolve them via the AppVersion fallback at install time).
+- Verify `nebari-landing-0.2.0.tgz`, its `.sha256`, and `.sigstore.json`
+  bundles are attached.
+- Extract it and confirm `appVersion: "0.2.0"` in `Chart.yaml` and
+  `frontend.image.digest` / `webapi.image.digest` are populated in
+  `values.yaml`.
+- Verify the chart signature:
+  ```bash
+  cosign verify-blob \
+    --bundle nebari-landing-0.2.0.tgz.sigstore.json \
+    nebari-landing-0.2.0.tgz
+  ```
+
+**GoReleaser artifacts**:
+- Confirm `checksums.txt`, `checksums.txt.sigstore.json`, per-archive
+  `.sigstore.json` signatures, and per-archive `.spdx.json` SBOM files are
+  attached.
+- Verify the checksum bundle and at least one archive bundle:
+  ```bash
+  cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt
+  cosign verify-blob \
+    --bundle nebari-webapi_0.2.0_linux_amd64.tar.gz.sigstore.json \
+    nebari-webapi_0.2.0_linux_amd64.tar.gz
+  ```
+- Verify the archive provenance and SBOM attestations:
+  ```bash
+  gh attestation verify nebari-webapi_0.2.0_linux_amd64.tar.gz \
+    --repo nebari-dev/nebari-landing
+  ```
 
 **helm-repository PR**:
 - Visit https://github.com/nebari-dev/helm-repository/pulls
@@ -174,8 +202,10 @@ After a successful release:
 - [ ] Ran **Release prep** workflow with the new version.
 - [ ] Verified the workflow pushed the `v<version>` tag (no release branch is created).
 - [ ] Published GitHub release at the new tag.
-- [ ] Verified images built successfully (`:0.2.0` exists on Quay).
-- [ ] Verified Helm chart `.tgz` attached to release with the right `appVersion`.
+- [ ] Verified images built successfully (`:0.2.0` exists on Quay) and resolve to immutable digests.
+- [ ] Verified Helm chart `.tgz`, checksum, signatures, and attestations are present.
+- [ ] Verified GoReleaser archive signatures, checksum signature, and SBOM attestations are present.
+- [ ] Verified released chart values contain webapi/frontend image digests.
 - [ ] Merged helm-repository PR.
 - [ ] Tested chart installation.
 - [ ] Updated documentation (if needed).
@@ -184,28 +214,34 @@ After a successful release:
 
 Three pieces drive the release flow:
 
-1. **`values.yaml` image tags are empty.** Both `webapi.image.tag` and `frontend.image.tag` default to `""` — not `"latest"`.
-2. **Deployment templates fall back to `.Chart.AppVersion`.** The image string renders as `{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}`. When the tag is empty, Helm fills it in from `Chart.yaml`.
-3. **`appVersion` is the per-release knob.** `main` carries `appVersion: "latest"` so non-release commits resolve to the floating image. Each release tag carries a single commit that bumps `appVersion` to the real version.
+1. **`values.yaml` image tags are empty and digests are supported.** Both `webapi.image.tag` and `frontend.image.tag` default to `""`; `webapi.image.digest` and `frontend.image.digest` default to `""`.
+2. **Deployment templates prefer digests.** When `image.digest` is populated, the image string renders as `{{ .Values.image.repository }}@sha256:...`. Otherwise it renders as `{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}`.
+3. **`appVersion` remains the source-install fallback.** On `main`, it stays
+   `"latest"` for source consumers that track non-release commits. Release-prep
+   bumps it to the release version in the tag-only release commit.
+4. **Released chart artifacts are digest-pinned.** `release.yml` packages the chart after final image manifests are published, scanned, signed, and resolved to digests. The packaged `.tgz` and synced helm-repository PR contain those digests in `values.yaml`.
 
-Same files in both states; only `Chart.yaml` differs:
+Source checkout states still differ only by `Chart.yaml`; packaged/synced
+release charts also carry nebari image digests in `values.yaml`:
 
 | File | On `main` | On `v0.1.0-alpha.6` |
 | --- | --- | --- |
 | `Chart.yaml` `appVersion` | `"latest"` | `"0.1.0-alpha.6"` |
-| `values.yaml` image tags | `""` | `""` (unchanged) |
+| `values.yaml` image tags | `""` | `""` |
+| `values.yaml` nebari image digests | `""` | populated in packaged/synced chart artifacts |
 | `templates/.../deployment.yaml` | template expression | template expression (unchanged) |
 
-**When the substitution happens.** Not at release time. `release.yml` runs `helm package` against the tagged source and ships the templates as-is in the `.tgz`. Helm evaluates the `default` fallback at install time, when a consumer runs `helm install` or ArgoCD reconciles. So the chart artifact stays generic; the appVersion at the tag drives the result.
+**When the substitution happens.** For source installs, Helm evaluates the `default` fallback at install time. For release artifacts, `release.yml` first writes the final image manifest digests into `values.yaml`, then runs `helm package`, so reinstalling the same chart version resolves the same images.
 
 **Three consumer scenarios:**
 
 | Scenario | What the consumer sets | Rendered image |
 | --- | --- | --- |
 | `main`, no overrides | (defaults) | `quay.io/nebari/nebari-{webapi,landing}:latest` |
-| Release tag, no overrides | (defaults) | `quay.io/nebari/nebari-{webapi,landing}:0.1.0-alpha.6` |
+| Release chart artifact, no overrides | (defaults) | `quay.io/nebari/nebari-{webapi,landing}@sha256:...` |
+| Release git tag source, no overrides | (defaults) | `quay.io/nebari/nebari-{webapi,landing}:0.1.0-alpha.6` |
 | Explicit override | `--set webapi.image.tag=feat-foo` | `quay.io/nebari/nebari-webapi:feat-foo` |
 
-The first two scenarios share the same code path — both rely on the `AppVersion` fallback. The third bypasses the fallback because `.tag` is non-empty (used for testing PR builds or pinning to a specific main commit; available tags come from `webapi.yml`'s per-PR and per-SHA builds).
+Digest-pinned release chart artifacts are the immutable distribution path. Source installs still share the `AppVersion` fallback with development flows, and explicit tag or digest overrides remain available for testing PR builds or pinning to a specific main commit.
 
 **Why no release branch.** Tags carry commits independently of branches, and no part of the build pipeline triggers on `release/*` (image builds fire on push-to-main and on `release: published`). `release-prep` makes the bump commit on a detached HEAD and pushes only the tag; git's push protocol bundles the otherwise-unreachable commit along with it. The branch list stays clean and there's no post-release cleanup step.
