@@ -8,7 +8,7 @@
 #   - ArgoCD managing all foundational apps
 #
 # The workflow adds on top:
-#   - Builds the webapi Docker image and imports it into k3d
+#   - Runs against the matching webapi image, building/importing locally for fork PRs
 #   - Installs the NebariApp CRD directly (deterministic, no ArgoCD sync wait)
 #   - Runs the Ginkgo e2e suite with USE_EXISTING_CLUSTER=true
 
@@ -70,20 +70,23 @@ jobs:
           restore-keys: |
             go-${{ runner.os }}-
 
-      # ── Resolve and wait for the webapi image on Quay ────────────────────────
-      # webapi.yml triggers only on cmd/** and internal/** changes, while
-      # e2e.yml additionally triggers on charts/**, test/e2e/**, and
-      # .github/workflows/e2e.yml. For events that don't touch webapi-relevant
-      # files, webapi.yml is skipped — no per-event tag is published — and any
-      # naive wait against the expected tag would hang for the full timeout.
+      # ── Resolve the webapi image source ──────────────────────────────────────
+      # webapi.yml triggers only for webapi-relevant changes, while e2e.yml also
+      # triggers on chart/e2e/workflow-only changes. For events that don't touch
+      # webapi-relevant files, webapi.yml is skipped — no per-event tag is
+      # published — and any naive wait against the expected tag would hang.
       #
       # Strategy:
-      #   1. Resolve the tag webapi.yml would publish for this event:
+      #   1. Resolve the tag used for this event:
       #        - pull_request → :<sanitised-head-ref>
       #        - push         → :<short-sha>
       #   2. Inspect the file diff for this event. If it contains any cmd/**
-      #      or internal/** path, webapi.yml is expected to build the tag —
-      #      wait up to 10 min for the manifest to appear.
+      #      or internal/** path, the e2e suite must run against this event's
+      #      webapi image.
+      #        - same-repo PRs / main pushes: wait for the Quay tag published by
+      #          webapi.yml.
+      #        - fork PRs: build locally after the k3d sandbox exists, because
+      #          repository secrets are not available to publish a Quay PR image.
       #   3. Otherwise, webapi.yml will not run. Fall back to :latest
       #      (the current main webapi), which is what the unmodified webapi
       #      code in this PR/push would have used anyway.
@@ -95,6 +98,7 @@ jobs:
           set -euo pipefail
           EVENT="${GITHUB_EVENT_NAME}"
           HEAD_SHA="${GITHUB_SHA}"
+          PR_HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
 
           if [[ "$EVENT" == "pull_request" ]]; then
             BRANCH="${GITHUB_HEAD_REF}"
@@ -136,8 +140,14 @@ jobs:
 
           if $webapi_will_build; then
             TARGET="$EXPECTED_TAG"
+            if [[ "$EVENT" == "pull_request" && "$PR_HEAD_REPO" != "$GITHUB_REPOSITORY" ]]; then
+              echo "  → fork PR detected (${PR_HEAD_REPO}); will build/import :$TARGET locally"
+              echo "tag=$TARGET" >> "$GITHUB_OUTPUT"
+              echo "local_build=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             MAX_ATTEMPTS=60   # 10 min, comfortably above webapi.yml's typical 3-5 min build
-            echo "  → waiting for :$TARGET (up to 10 min)"
+            echo "  → waiting for :$TARGET on Quay (up to 10 min)"
           else
             TARGET="latest"
             MAX_ATTEMPTS=6    # 1 min, :latest should already exist
@@ -147,6 +157,7 @@ jobs:
           for i in $(seq 1 $MAX_ATTEMPTS); do
             if docker manifest inspect "quay.io/nebari/nebari-webapi:${TARGET}" >/dev/null 2>&1; then
               echo "tag=$TARGET" >> "$GITHUB_OUTPUT"
+              echo "local_build=false" >> "$GITHUB_OUTPUT"
               echo "✔ resolved webapi image tag: :$TARGET"
               exit 0
             fi
@@ -167,6 +178,16 @@ jobs:
         with:
           profile: platform
           cluster-name: nebari-e2e
+
+      - name: Build and import local webapi image
+        if: steps.branch.outputs.local_build == 'true'
+        env:
+          WEBAPI_IMAGE: quay.io/nebari/nebari-webapi:${{ steps.branch.outputs.tag }}
+          K3D_CLUSTER_NAME: ${{ steps.sandbox.outputs.cluster-name }}
+        run: |
+          set -euo pipefail
+          docker build -t "${WEBAPI_IMAGE}" .
+          k3d image import "${WEBAPI_IMAGE}" --cluster "${K3D_CLUSTER_NAME}"
 
       # ── NebariApp CRD ─────────────────────────────────────────────────────────
       # Apply directly so the tests don't depend on ArgoCD sync timing.
@@ -361,6 +382,13 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Wait for rollout to complete on the PR image"
+          # The sandbox currently deploys the released chart, so a PR webapi
+          # image can contain newer required env vars than that chart renders.
+          # Patch the e2e binding config before waiting for readiness; the
+          # test harness refreshes these env vars again after Keycloak setup.
+          kubectl -n nebari-system set env deployment/nebari-landing-webapi \
+            KEYCLOAK_AUDIENCE=nebari-landingpage \
+            KEYCLOAK_AUTHORIZED_PARTY=nebari-system-nebari-landing
           # Now that spec.image is fixed at the PR tag, this rollout-status
           # is guaranteed to wait on a rollout that produces PR-image pods.
           kubectl -n nebari-system rollout status \

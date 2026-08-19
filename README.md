@@ -214,12 +214,18 @@ helm upgrade --install nebari-landing nebari/nebari-landing \
   --set frontend.keycloak.realm=<realm> \
   --set webapi.keycloak.url=http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080 \
   --set webapi.keycloak.realm=<realm> \
-  --set webapi.keycloak.issuerUrl=https://<keycloak-host>
+  --set webapi.keycloak.issuerUrl=https://<keycloak-host> \
+  --set webapi.keycloak.audience=nebari-landingpage \
+  --set webapi.keycloak.authorizedParty=<frontend-client-id>
 ```
 
 `frontend.keycloak.url` is the public Keycloak base URL the browser uses for PKCE redirects (Keycloak 17+ does not
 have an `/auth` context root). `webapi.keycloak.url` is the in-cluster URL the webapi uses to fetch JWKS; the
-`issuerUrl` is what the webapi validates the `iss` claim against and must match what the browser sees.
+`issuerUrl` is what the webapi validates the `iss` claim against and must match what the browser sees. The webapi also
+requires access tokens whose `aud` includes `webapi.keycloak.audience`, and Keycloak's `azp` claim must match
+`webapi.keycloak.authorizedParty` (the frontend client ID that requested the token).
+For standalone/manual Keycloak setups, configure the frontend client with an audience mapper that includes
+`webapi.keycloak.audience` in access tokens; the chart adds this mapper only through the `NebariApp` integration path.
 
 See [`charts/nebari-landing/values.yaml`](charts/nebari-landing/values.yaml) for the full set of configurable values.
 

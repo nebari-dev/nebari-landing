@@ -56,6 +56,12 @@ spec:
             id.token.claim: "true"
             access.token.claim: "true"
             userinfo.token.claim: "true"
+        - name: landing-page-api-audience
+          protocolMapper: oidc-audience-mapper
+          config:
+            included.custom.audience: {{ .Values.webapi.keycloak.audience | quote }}
+            id.token.claim: "false"
+            access.token.claim: "true"
     # Public Keycloak client for the React SPA (keycloak-js PKCE flow).
     # Public clients carry no secret and use PKCE instead, which is the
     # OAuth 2.0 BCP recommendation for browser-based apps.

@@ -133,6 +133,12 @@ webapi:
     url: ""           # http://keycloak-keycloakx-http.keycloak.svc:8080
     realm: "nebari"
     issuerUrl: ""     # overrides `url` for `iss` claim validation when different
+    # Required JWT audience for this API. The webapi rejects tokens whose aud
+    # claim does not include this value.
+    audience: "nebari-landingpage"
+    # Required Keycloak authorized party (`azp`). Empty defaults to the
+    # frontend Keycloak client ID in the Deployment template.
+    authorizedParty: ""
     enableAuth: true
     adminGroup: "admin"
     # Name of a Kubernetes Secret (in keycloak namespace) holding admin creds.
