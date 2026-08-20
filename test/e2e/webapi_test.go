@@ -585,9 +585,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 				Skip("docs e2e disabled on existing-cluster path until ArgoCD image-override fix from #62 lands; httptest unit tests in internal/api/openapi_test.go cover the feature")
 			}
 			By("Port-forwarding to webapi on :18081 for the docs probe")
-			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18081:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred(), "port-forward should start")
+			pfCmd = startPortForwardAndWait(namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18081:8080")
 			DeferCleanup(func() {
 				if pfCmd != nil && pfCmd.Process != nil {
 					_ = pfCmd.Process.Kill()
@@ -672,9 +670,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			DeferCleanup(func() { _ = k8sClient.Delete(context.Background(), pinApp) })
 
 			By("Port-forwarding to webapi on :18087")
-			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", e2eNamespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18087:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred())
+			pfCmd = startPortForwardAndWait(e2eNamespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18087:8080")
 			webapiBase = "http://localhost:18087"
 
 			Eventually(func() error {
@@ -808,9 +804,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			adminToken = acquireToken(kcAdminUser, kcAdminPassword)
 
 			By("Port-forwarding to webapi on :18085")
-			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", e2eNamespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18085:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred())
+			pfCmd = startPortForwardAndWait(e2eNamespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18085:8080")
 			webapiBase = "http://localhost:18085"
 
 			Eventually(func() error {
@@ -953,9 +947,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			DeferCleanup(func() { _ = k8sClient.Delete(context.Background(), arApp) })
 
 			By("Port-forwarding to webapi on :18086")
-			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", e2eNamespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18086:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred())
+			pfCmd = startPortForwardAndWait(e2eNamespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18086:8080")
 			webapiBase = "http://localhost:18086"
 
 			Eventually(func() error {
@@ -1168,9 +1160,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			bearerToken = acquireToken(kcTestUser, kcTestPassword)
 
 			By("Port-forwarding to webapi on :18083")
-			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18083:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred())
+			pfCmd = startPortForwardAndWait(namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18083:8080")
 			webapiBase = "http://localhost:18083"
 
 			Eventually(func() error {
@@ -1259,9 +1249,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			userToken = acquireToken(kcTestUser, kcTestPassword)
 
 			By("Port-forwarding to webapi on :18088 (independent from ticket-exchange and pins Contexts)")
-			pfCmd = exec.Command("kubectl", "port-forward",
-				"-n", namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18088:8080")
-			Expect(pfCmd.Start()).NotTo(HaveOccurred())
+			pfCmd = startPortForwardAndWait(namespace, fmt.Sprintf("svc/%s", e2eWebapiService), "18088:8080")
 			webapiBase = "http://localhost:18088"
 
 			Eventually(func() error {
@@ -1368,9 +1356,9 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			By("Asserting the test-user connection does NOT receive the private added event")
 			// The public probe above proved both clients are reachable; a
 			// genuine filter regression would deliver this frame within the
-			// same window. We give a generous bound (5s) on top of that to
-			// absorb sandbox jitter.
-			Expect(userWS.expectNoNamed(privateAppKey, 5*time.Second)).
+			// same window. Keep this below the JWT session-expiry close window;
+			// by this point a leaked frame would already be queued or in flight.
+			Expect(userWS.expectNoNamed(privateAppKey, 500*time.Millisecond)).
 				To(Succeed(), "test-user (NOT in 'admin') must not receive the private added event")
 		})
 
@@ -1416,7 +1404,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 			By("Asserting admin receives the modified event, test-user does not")
 			Expect(adminWS.waitForNamed(modAppName, "modified", 30*time.Second)).
 				To(Succeed(), "admin must receive the modified event for the private app")
-			Expect(userWS.expectNoNamed(modAppName, 5*time.Second)).
+			Expect(userWS.expectNoNamed(modAppName, 500*time.Millisecond)).
 				To(Succeed(), "test-user must not receive the modified event for the private app")
 		})
 	})

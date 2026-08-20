@@ -160,10 +160,11 @@ jobs:
       # The image override below is applied via a Git commit to the local
       # file:// gitops repo ArgoCD reads from, so ArgoCD's auto-sync converges
       # on it as desired state — no cluster-side patch to revert, no need for
-      # an argocd-self-heal toggle. Pinned to @main until v1.1+ is cut.
+      # an argocd-self-heal toggle. Stay on v2 while this workflow relies on
+      # the k3d/existing-cluster platform profile.
       - name: Setup Nebari Sandbox
         id: sandbox
-        uses: nebari-dev/action-nebari-sandbox@09f542cdbcb0ed74307f86fee4f8ad0053a4cd8f # main
+        uses: nebari-dev/action-nebari-sandbox@1369c908d942913f4cda8cb9009e36a355d830e0 # v2.3.0
         with:
           profile: platform
           cluster-name: nebari-e2e
@@ -285,46 +286,43 @@ jobs:
           find "${GITOPS_DIR}" -maxdepth 6 -type f -not -path '*/\.git/*' | head -30 || true
           echo "::endgroup::"
 
-          # The chart's image is pinned by targetRevision (v0.1.0-alpha.4) and
-          # the gitops repo's Application does not redeclare it. Override the
-          # image tag by injecting into the existing inline values block of
-          # apps/nebari-landingpage.yaml.
+          # The Application reads Helm values from the GitOps repo via
+          # values/nebari-landingpage/base.yaml and overlays/*.yaml. Add a
+          # small overlay for the e2e image tag instead of mutating the
+          # generated Application manifest.
           APP_FILE="${GITOPS_DIR}/apps/nebari-landingpage.yaml"
           if [[ ! -f "${APP_FILE}" ]]; then
             echo "✗ expected Application file not found: ${APP_FILE}"
             exit 1
           fi
 
-          echo "::group::Inject webapi.image override into ${APP_FILE}"
-          before=$(sha1sum "${APP_FILE}" | cut -d' ' -f1)
-          # Insert an "image:" block immediately under the "webapi:" key in the
-          # inline values. The indent (10 spaces) matches the surrounding YAML
-          # produced by NIC's template.
-          NEW_TAG="$NEW_TAG" perl -0777 -i -pe '
-            s/^(        webapi:\n)(?!          image:)/$1."          image:\n            tag: \"$ENV{NEW_TAG}\"\n"/me;
-          ' "${APP_FILE}"
-          after=$(sha1sum "${APP_FILE}" | cut -d' ' -f1)
-          if [[ "$before" == "$after" ]]; then
-            echo "✗ patch left ${APP_FILE} unchanged — file content:"
-            cat "${APP_FILE}"
-            exit 1
-          fi
-          echo "  patched: ${APP_FILE}"
+          echo "::group::Write webapi.image override overlay"
+          OVERLAY_DIR="${GITOPS_DIR}/values/nebari-landingpage/overlays"
+          OVERLAY_FILE="${OVERLAY_DIR}/e2e-webapi-image.yaml"
+          mkdir -p "${OVERLAY_DIR}"
+          cat > "${OVERLAY_FILE}" <<EOF
+          webapi:
+            image:
+              tag: "${NEW_TAG}"
+          EOF
+          echo "  wrote: ${OVERLAY_FILE}"
           echo "::endgroup::"
 
+          git -C "${GITOPS_DIR}" add "${OVERLAY_FILE}"
+
           echo "::group::Diff in GitOps repo"
-          git -C "${GITOPS_DIR}" --no-pager diff || true
+          git -C "${GITOPS_DIR}" --no-pager diff --cached || true
           echo "::endgroup::"
 
           echo "::group::Commit override to local file:// repo"
-          if git -C "${GITOPS_DIR}" diff --quiet; then
+          if git -C "${GITOPS_DIR}" diff --cached --quiet; then
             echo "✗ patch produced no changes — selectors did not match expected layout"
             exit 1
           fi
           git -C "${GITOPS_DIR}" \
             -c user.email=ci@e2e \
             -c user.name="e2e bot" \
-            commit -am "ci: override webapi image tag to ${NEW_TAG} for e2e"
+            commit -m "ci: override webapi image tag to ${NEW_TAG} for e2e"
           echo "::endgroup::"
 
           echo "::group::Refresh ArgoCD nebari-landingpage Application"
