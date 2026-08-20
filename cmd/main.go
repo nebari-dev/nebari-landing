@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
@@ -40,7 +39,6 @@ import (
 	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 	"github.com/nebari-dev/nebari-landing/internal/health"
-	webkeycloak "github.com/nebari-dev/nebari-landing/internal/keycloak"
 	"github.com/nebari-dev/nebari-landing/internal/notifications"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
 	"github.com/nebari-dev/nebari-landing/internal/watcher"
@@ -76,22 +74,24 @@ func init() {
 
 func main() {
 	var (
-		port           int
-		keycloakURL    string
-		keycloakRealm  string
-		enableAuth     bool
-		debugMode      bool
-		healthInterval int
-		adminGroup     string
-		redisAddr      string
-		redisUsername  string
-		redisPassword  string
-		redisDB        int
-		allowedOrigins string
-		notifStartup   bool
-		notifLifecycle bool
-		notifRetention time.Duration
-		enableDocs     bool
+		port                         int
+		keycloakURL                  string
+		keycloakRealm                string
+		enableAuth                   bool
+		debugMode                    bool
+		healthInterval               int
+		adminGroup                   string
+		accessRequestApprovalTTL     time.Duration
+		accessRequestRefreshInterval time.Duration
+		redisAddr                    string
+		redisUsername                string
+		redisPassword                string
+		redisDB                      int
+		allowedOrigins               string
+		notifStartup                 bool
+		notifLifecycle               bool
+		notifRetention               time.Duration
+		enableDocs                   bool
 	)
 
 	// Flags fall back to environment variables so the binary works naturally when
@@ -110,6 +110,10 @@ func main() {
 		"Health check interval in seconds (env: HEALTH_INTERVAL)")
 	flag.StringVar(&adminGroup, "admin-group", envStr("ADMIN_GROUP", "admin"),
 		"Keycloak group whose members may access admin endpoints (env: ADMIN_GROUP)")
+	flag.DurationVar(&accessRequestApprovalTTL, "access-request-approval-ttl", envDuration("ACCESS_REQUEST_APPROVAL_TTL", 30*24*time.Hour),
+		"How long an approved access request grants service access, e.g. 720h (env: ACCESS_REQUEST_APPROVAL_TTL)")
+	flag.DurationVar(&accessRequestRefreshInterval, "access-request-refresh-interval", envDuration("ACCESS_REQUEST_REFRESH_INTERVAL", 30*time.Second),
+		"How often WebSocket access-request approvals are refreshed from Redis, e.g. 30s (env: ACCESS_REQUEST_REFRESH_INTERVAL)")
 	flag.StringVar(&redisAddr, "redis-addr", envStr("REDIS_ADDR", "localhost:6379"),
 		"Redis server address host:port (env: REDIS_ADDR)")
 	flag.StringVar(&redisUsername, "redis-username", os.Getenv("REDIS_USERNAME"),
@@ -150,18 +154,13 @@ func main() {
 		"allowedOrigins", allowedOrigins,
 		"notificationsStartup", notifStartup,
 		"notificationsLifecycle", notifLifecycle,
+		"accessRequestApprovalTTL", accessRequestApprovalTTL,
+		"accessRequestRefreshInterval", accessRequestRefreshInterval,
 	)
 
 	config, err := ctrl.GetConfig()
 	if err != nil {
 		setupLog.Error(err, "Failed to get kubeconfig")
-		os.Exit(1)
-	}
-
-	// Build a k8s client for cross-namespace secret reads (Keycloak admin creds).
-	k8sClient, err := client.New(config, client.Options{Scheme: scheme})
-	if err != nil {
-		setupLog.Error(err, "Failed to create Kubernetes client")
 		os.Exit(1)
 	}
 
@@ -274,28 +273,12 @@ func main() {
 	}
 	go healthChecker.Start(ctx)
 
-	// Build Keycloak admin client from the same env vars the operator uses.
-	// Supports cross-namespace secret lookup via KEYCLOAK_ADMIN_SECRET_NAME +
-	// KEYCLOAK_ADMIN_SECRET_NAMESPACE (identical to the operator); falls back to
-	// KEYCLOAK_ADMIN_USERNAME / KEYCLOAK_ADMIN_PASSWORD if no secret is named.
-	// Non-fatal: when creds are absent the approve endpoint still updates the
-	// store record; it just skips the Keycloak group-membership step and warns.
-	var keycloakAdminClient *webkeycloak.Client
-	if kc, err := webkeycloak.NewFromEnvWithK8sClient(ctx, k8sClient); err != nil {
-		setupLog.Info("Keycloak admin client not configured — group membership will not be updated on approval",
-			"hint", "set KEYCLOAK_ADMIN_SECRET_NAME or KEYCLOAK_ADMIN_USERNAME/PASSWORD")
-	} else {
-		keycloakAdminClient = kc
-		setupLog.Info("Keycloak admin client configured",
-			"url", os.Getenv("KEYCLOAK_URL"),
-			"realm", os.Getenv("KEYCLOAK_REALM"))
-	}
-
 	handlerOpts := []api.HandlerOption{
 		api.WithAccessRequestStore(accessRequestStore),
+		api.WithAccessRequestApprovalTTL(accessRequestApprovalTTL),
+		api.WithAccessRequestRefreshInterval(accessRequestRefreshInterval),
 		api.WithAdminGroup(adminGroup),
 		api.WithNotificationStore(notificationStore),
-		api.WithKeycloakAdminClient(keycloakAdminClient),
 		api.WithAllowedOrigins(splitOrigins(allowedOrigins)),
 		api.WithWSTicketStore(wsTicketStore),
 	}

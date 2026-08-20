@@ -77,8 +77,9 @@ func envOrDefault(key, def string) string {
 // directAccessGrantsEnabled is patched on by the e2e CI workflow (not set by
 // the operator, which correctly leaves it false in production).
 // TODO: remove the CI kcadm patch once nebari-operator supports
-//   spec.auth.keycloakConfig.directAccessGrantsEnabled.
-//   Tracking: https://github.com/nebari-dev/nebari-operator/issues/TBD
+//
+//	spec.auth.keycloakConfig.directAccessGrantsEnabled.
+//	Tracking: https://github.com/nebari-dev/nebari-operator/issues/TBD
 var (
 	e2eNamespace = envOrDefault("E2E_NAMESPACE", "nebari-system")
 
@@ -101,13 +102,13 @@ var (
 		return helmRelease + "-webapi"
 	}()
 
-	kcNamespace     = envOrDefault("E2E_KEYCLOAK_NAMESPACE", "keycloak")
-	kcService       = envOrDefault("E2E_KEYCLOAK_SERVICE", "keycloak-keycloakx-http")
+	kcNamespace = envOrDefault("E2E_KEYCLOAK_NAMESPACE", "keycloak")
+	kcService   = envOrDefault("E2E_KEYCLOAK_SERVICE", "keycloak-keycloakx-http")
 	// E2E_KEYCLOAK_PORT is the service port that the keycloakx chart exposes.
 	// keycloakx v7+ sets service.httpPort=8080 so the service listens on 8080,
 	// not the HTTP default 80.  Override to 80 only for older local deployments.
-	kcPort          = envOrDefault("E2E_KEYCLOAK_PORT", "8080")
-	kcRealm         = envOrDefault("E2E_KEYCLOAK_REALM", "nebari")
+	kcPort  = envOrDefault("E2E_KEYCLOAK_PORT", "8080")
+	kcRealm = envOrDefault("E2E_KEYCLOAK_REALM", "nebari")
 	// kcAdminUser is the realm admin — must be in the "admin" Keycloak group.
 	// Used only for tests that exercise admin-gated endpoints.
 	kcAdminUser     = envOrDefault("E2E_KEYCLOAK_ADMIN_USER", "admin")
@@ -168,7 +169,7 @@ func startPortForwardAndWait(namespace, target, ports string) *exec.Cmd {
 
 		// Wait for "Forwarding from..." in stdout or stderr, which signals the tunnel is ready
 		ready := make(chan error, 1)
-		
+
 		// Monitor stdout
 		go func() {
 			scanner := bufio.NewScanner(stdout)
@@ -183,7 +184,7 @@ func startPortForwardAndWait(namespace, target, ports string) *exec.Cmd {
 				ready <- fmt.Errorf("stdout scan error: %w", err)
 			}
 		}()
-		
+
 		// Monitor stderr for errors
 		go func() {
 			scanner := bufio.NewScanner(stderr)
@@ -577,7 +578,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 		// Until then, the gating + content is covered by httptest unit tests
 		// in internal/api/openapi_test.go.
 		var (
-			pfCmd  *exec.Cmd
+			pfCmd    *exec.Cmd
 			docsBase = "http://localhost:18081"
 		)
 		BeforeAll(func() {
@@ -793,10 +794,10 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 	// Notifications — e2e coverage for create / list / mark-read against a live cluster.
 	Context("Notifications", func() {
 		var (
-			webapiBase     string
-			pfCmd          *exec.Cmd
+			webapiBase string
+			pfCmd      *exec.Cmd
 			// userToken is for list/mark-read — regular authenticated user.
-			userToken      string
+			userToken string
 			// adminToken is for POST /api/v1/admin/notifications — requires admin group.
 			adminToken     string
 			notificationID string
@@ -804,7 +805,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 
 		BeforeAll(func() {
 			By("Acquiring tokens from Keycloak")
-			userToken  = acquireToken(kcTestUser, kcTestPassword)
+			userToken = acquireToken(kcTestUser, kcTestPassword)
 			adminToken = acquireToken(kcAdminUser, kcAdminPassword)
 
 			By("Port-forwarding to webapi on :18085")
@@ -929,10 +930,10 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 	// lists and approves it.
 	Context("Access Requests", func() {
 		var (
-			webapiBase  string
-			pfCmd       *exec.Cmd
+			webapiBase string
+			pfCmd      *exec.Cmd
 			// userToken is for the requester side (any authenticated user).
-			userToken   string
+			userToken string
 			// adminToken is for admin-gated endpoints (requires "admin" group).
 			adminToken    string
 			serviceUID    string
@@ -943,7 +944,7 @@ var _ = Describe("Webapi – Service Discovery", Ordered, func() {
 
 		BeforeAll(func() {
 			By("Acquiring tokens from Keycloak")
-			userToken  = acquireToken(kcTestUser, kcTestPassword)
+			userToken = acquireToken(kcTestUser, kcTestPassword)
 			adminToken = acquireToken(kcAdminUser, kcAdminPassword)
 
 			By("Creating a NebariApp to request access to")

@@ -135,10 +135,13 @@ webapi:
     issuerUrl: ""     # overrides `url` for `iss` claim validation when different
     enableAuth: true
     adminGroup: "admin"
-    # Name of a Kubernetes Secret (in keycloak namespace) holding admin creds.
-    # Keys: username / password  (or admin-username / admin-password)
-    adminSecretName: "nebari-realm-admin-credentials"
-    adminSecretNamespace: "keycloak"
+
+  # Landing-owned access-request entitlements.
+  accessRequests:
+    # How long a newly approved request grants access before expiring.
+    approvalTTL: "720h"
+    # Maximum time a WebSocket connection may use a cached approval set.
+    refreshInterval: "30s"
 
   # Comma-separated list of Origins the webapi CORS middleware will accept.
   # "*" (default) allows all origins — safe because the webapi is ClusterIP-only

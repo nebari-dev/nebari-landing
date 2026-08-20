@@ -5,17 +5,43 @@
 import { HttpResponse, http } from "msw";
 
 export const generatedHandlers = [
-  http.get("/api/v1/admin/access-requests", () => HttpResponse.json([])),
-  http.put("/api/v1/admin/access-requests/:id/:action", () =>
+  http.get("/api/v1/admin/access-requests", () =>
     HttpResponse.json({
+      accessRequests: [],
+    }),
+  ),
+  http.delete("/api/v1/admin/access-requests/:id", () =>
+    HttpResponse.json({
+      expiresAt: "",
       id: "",
       message: "",
       requestedAt: "",
       resolvedAt: "",
       resolvedBy: "",
+      resolvedByEmail: "",
+      resolvedByName: "",
       serviceName: "",
       serviceUID: "",
       status: "pending",
+      targetOwner: "",
+      userEmail: "",
+      userID: "",
+    }),
+  ),
+  http.put("/api/v1/admin/access-requests/:id/:action", () =>
+    HttpResponse.json({
+      expiresAt: "",
+      id: "",
+      message: "",
+      requestedAt: "",
+      resolvedAt: "",
+      resolvedBy: "",
+      resolvedByEmail: "",
+      resolvedByName: "",
+      serviceName: "",
+      serviceUID: "",
+      status: "pending",
+      targetOwner: "",
       userEmail: "",
       userID: "",
     }),
@@ -81,14 +107,18 @@ export const generatedHandlers = [
   ),
   http.post("/api/v1/services/:id/request_access", () =>
     HttpResponse.json({
+      expiresAt: "",
       id: "",
       message: "",
       requestedAt: "",
       resolvedAt: "",
       resolvedBy: "",
+      resolvedByEmail: "",
+      resolvedByName: "",
       serviceName: "",
       serviceUID: "",
       status: "pending",
+      targetOwner: "",
       userEmail: "",
       userID: "",
     }),

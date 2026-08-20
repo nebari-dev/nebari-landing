@@ -22,6 +22,3 @@ Pre-requisites to verify before using:
      • Public SPA (keycloak-js PKCE): "{{ default (printf "%s-%s-spa" .Release.Namespace (include "nebari-landing.fullname" .)) .Values.frontend.keycloak.clientId }}"
        redirect URI: {{ if .Values.httpRoute.tls }}https{{ else }}http{{ end }}://{{ .Values.httpRoute.hostname }}/*
      Auto-provisioned by the nebari-operator when nebariApp.enabled=true (spaClient.enabled=true).
-
-  2. Keycloak admin secret "{{ .Values.webapi.keycloak.adminSecretName }}" exists in
-     namespace "{{ .Values.webapi.keycloak.adminSecretNamespace }}" with keys: username, password

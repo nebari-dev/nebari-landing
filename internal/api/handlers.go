@@ -1,18 +1,17 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
 	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
-	webkeycloak "github.com/nebari-dev/nebari-landing/internal/keycloak"
 	"github.com/nebari-dev/nebari-landing/internal/notifications"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
@@ -21,6 +20,11 @@ import (
 )
 
 var log = ctrl.Log.WithName("api")
+
+const (
+	defaultAccessRequestApprovalTTL     = 30 * 24 * time.Hour
+	defaultAccessRequestRefreshInterval = 30 * time.Second
+)
 
 // Handler handles HTTP requests for the landing page API
 type Handler struct {
@@ -31,9 +35,14 @@ type Handler struct {
 	pinStore           *pins.PinStore
 	accessRequestStore *accessrequests.Store
 	notificationStore  *notifications.Store
-	// keycloakClient is used for admin operations (e.g. adding users to groups on approval).
-	// When nil, Keycloak group membership is not updated automatically.
-	keycloakClient *webkeycloak.Client
+	// accessRequestApprovalTTL controls how long a newly approved landing-owned
+	// service entitlement grants access before it expires automatically.
+	accessRequestApprovalTTL time.Duration
+	// accessRequestRefreshInterval bounds how long WebSocket service filtering
+	// may use a cached approval set before re-reading Redis.
+	accessRequestRefreshInterval time.Duration
+	approvedServicesMu           sync.Mutex
+	approvedServicesCache        map[string]approvedServicesCacheEntry
 	// adminGroup is the Keycloak group name whose members may access admin-only endpoints.
 	// Defaults to "admin" when not set.
 	adminGroup string
@@ -66,9 +75,34 @@ type Handler struct {
 // HandlerOption configures optional Handler fields.
 type HandlerOption func(*Handler)
 
+type approvedServicesCacheEntry struct {
+	services map[string]struct{}
+	expires  time.Time
+}
+
 // WithAccessRequestStore attaches an access-request store to the handler.
 func WithAccessRequestStore(s *accessrequests.Store) HandlerOption {
 	return func(h *Handler) { h.accessRequestStore = s }
+}
+
+// WithAccessRequestApprovalTTL sets the lifetime of newly approved access
+// requests. Non-positive values are ignored.
+func WithAccessRequestApprovalTTL(ttl time.Duration) HandlerOption {
+	return func(h *Handler) {
+		if ttl > 0 {
+			h.accessRequestApprovalTTL = ttl
+		}
+	}
+}
+
+// WithAccessRequestRefreshInterval sets the maximum interval a WebSocket
+// connection may use a cached access-request approval set.
+func WithAccessRequestRefreshInterval(interval time.Duration) HandlerOption {
+	return func(h *Handler) {
+		if interval > 0 {
+			h.accessRequestRefreshInterval = interval
+		}
+	}
 }
 
 // WithAdminGroup sets the Keycloak group name that grants admin privileges.
@@ -82,14 +116,6 @@ func WithAdminGroup(group string) HandlerOption {
 // PUT /api/v1/notifications/{id}/read becomes available.
 func WithNotificationStore(s *notifications.Store) HandlerOption {
 	return func(h *Handler) { h.notificationStore = s }
-}
-
-// WithKeycloakAdminClient attaches a Keycloak admin client to the handler.
-// When set, approving an access request automatically adds the user to the
-// service's required Keycloak groups. When nil (default), the status is
-// updated in the store but no Keycloak group change is made.
-func WithKeycloakAdminClient(c *webkeycloak.Client) HandlerOption {
-	return func(h *Handler) { h.keycloakClient = c }
 }
 
 // WithAllowedOrigins sets the list of Origins the CORS middleware will accept.
@@ -144,13 +170,16 @@ func WithWSTicketStore(s *wsticket.Store) HandlerOption {
 // pinStore may be nil; when nil the /api/v1/pins endpoints return 501.
 func NewHandler(serviceCache *cache.ServiceCache, jwtValidator *auth.JWTValidator, enableAuth bool, hub *wshub.Hub, pinStore *pins.PinStore, opts ...HandlerOption) *Handler {
 	h := &Handler{
-		cache:          serviceCache,
-		jwtValidator:   jwtValidator,
-		enableAuth:     enableAuth,
-		hub:            hub,
-		pinStore:       pinStore,
-		adminGroup:     "admin",
-		allowedOrigins: []string{"*"},
+		cache:                        serviceCache,
+		jwtValidator:                 jwtValidator,
+		enableAuth:                   enableAuth,
+		hub:                          hub,
+		pinStore:                     pinStore,
+		adminGroup:                   "admin",
+		allowedOrigins:               []string{"*"},
+		accessRequestApprovalTTL:     defaultAccessRequestApprovalTTL,
+		accessRequestRefreshInterval: defaultAccessRequestRefreshInterval,
+		approvedServicesCache:        make(map[string]approvedServicesCacheEntry),
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -304,7 +333,19 @@ func (h *Handler) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sessionEnd = h.boundAccessRequestSession(sessionEnd, principal)
 	h.hub.ServeWS(w, r, principal, sessionEnd)
+}
+
+func (h *Handler) boundAccessRequestSession(sessionEnd time.Time, principal wshub.Principal) time.Time {
+	if h.accessRequestStore == nil || !principal.Authenticated || h.accessRequestRefreshInterval <= 0 {
+		return sessionEnd
+	}
+	refreshEnd := time.Now().Add(h.accessRequestRefreshInterval)
+	if sessionEnd.IsZero() || refreshEnd.Before(sessionEnd) {
+		return refreshEnd
+	}
+	return sessionEnd
 }
 
 // principalFromClaims projects auth.Claims onto the narrow Principal the hub
@@ -315,8 +356,12 @@ func principalFromClaims(claims *auth.Claims) wshub.Principal {
 	if claims == nil {
 		return wshub.Principal{}
 	}
+	subject := claims.Subject
+	if subject == "" {
+		subject = claims.PreferredUsername
+	}
 	return wshub.Principal{
-		Subject:       claims.Subject,
+		Subject:       subject,
 		Groups:        claims.Groups,
 		Authenticated: true,
 	}
@@ -370,7 +415,7 @@ func (h *Handler) handleWSTicket(w http.ResponseWriter, r *http.Request) {
 	// these fields without re-touching the JWT validator. ExpiresAt carries
 	// through so the hub can close the WS at the JWT's exp.
 	tc := wsticket.TicketClaims{
-		Subject:           claims.Subject,
+		Subject:           stableUserID(claims),
 		PreferredUsername: claims.PreferredUsername,
 		Groups:            claims.Groups,
 		ExpiresAt:         expFromClaims(claims),
@@ -484,10 +529,66 @@ func (h *Handler) callerPinnedUIDs(claims *auth.Claims, authenticated bool) map[
 	return m
 }
 
+func (h *Handler) callerApprovedServiceUIDs(claims *auth.Claims, authenticated bool) map[string]struct{} {
+	return h.loadApprovedServiceUIDsForUser(stableUserID(claims), authenticated)
+}
+
+func (h *Handler) cachedApprovedServiceUIDsForUser(userID string, authenticated bool) map[string]struct{} {
+	if h.accessRequestStore == nil || !authenticated || userID == "" {
+		return nil
+	}
+	if h.accessRequestRefreshInterval <= 0 {
+		return h.loadApprovedServiceUIDsForUser(userID, authenticated)
+	}
+
+	now := time.Now()
+	h.approvedServicesMu.Lock()
+	if entry, ok := h.approvedServicesCache[userID]; ok && now.Before(entry.expires) {
+		h.approvedServicesMu.Unlock()
+		return entry.services
+	}
+	h.approvedServicesMu.Unlock()
+
+	services := h.loadApprovedServiceUIDsForUser(userID, authenticated)
+
+	h.approvedServicesMu.Lock()
+	h.approvedServicesCache[userID] = approvedServicesCacheEntry{
+		services: services,
+		expires:  now.Add(h.accessRequestRefreshInterval),
+	}
+	h.approvedServicesMu.Unlock()
+
+	return services
+}
+
+func (h *Handler) invalidateApprovedServiceCache(userID string) {
+	if userID == "" {
+		return
+	}
+	h.approvedServicesMu.Lock()
+	delete(h.approvedServicesCache, userID)
+	h.approvedServicesMu.Unlock()
+}
+
+func (h *Handler) loadApprovedServiceUIDsForUser(userID string, authenticated bool) map[string]struct{} {
+	if h.accessRequestStore == nil || !authenticated || userID == "" {
+		return nil
+	}
+	approved, err := h.accessRequestStore.ListActiveServiceUIDs(userID, time.Now().UTC())
+	if err != nil {
+		log.Error(err, "Failed to read approved access requests for caller", "user", userID)
+		return nil
+	}
+	if len(approved) == 0 {
+		return nil
+	}
+	return approved
+}
+
 // handleGetServices serves GET /api/v1/services.
 //
 //	@Summary		List discoverable services
-//	@Description	Returns the union of public services plus any private services the caller may access based on their JWT groups.
+//	@Description	Returns the union of public services plus any private services the caller may access based on their JWT groups or approved service-scoped access requests.
 //	@Description	Anonymous callers see public services only; bearer-token callers additionally see private services they have access to. The "pinned" flag reflects the caller's own pin list (always false for anonymous).
 //	@Tags			services
 //	@Produce		json
@@ -507,11 +608,12 @@ func (h *Handler) handleGetServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pinnedUIDs := h.callerPinnedUIDs(claims, authenticated)
+	approvedUIDs := h.callerApprovedServiceUIDs(claims, authenticated)
 
 	allServices := h.cache.GetAll()
 	views := make([]*ServiceView, 0, len(allServices))
 	for _, service := range allServices {
-		if !h.canAccessService(service, authenticated, claims) {
+		if !h.canAccessService(service, authenticated, claims, approvedUIDs) {
 			continue
 		}
 		views = append(views, toServiceView(service, pinnedUIDs[service.UID]))
@@ -551,7 +653,7 @@ func (h *Handler) handleServicesSub(w http.ResponseWriter, r *http.Request) {
 // handleGetServiceByUID serves GET /api/v1/services/{id}.
 //
 //	@Summary		Get a service by UID
-//	@Description	Returns the service if the caller may access it. Anonymous callers may only fetch public services; private services require a JWT whose groups intersect the service's required groups.
+//	@Description	Returns the service if the caller may access it. Anonymous callers may only fetch public services; private services require a JWT whose groups intersect the service's required groups or an approved access request for this service.
 //	@Tags			services
 //	@Produce		json
 //	@Param			id	path		string	true	"Service UID"
@@ -579,7 +681,7 @@ func (h *Handler) handleGetServiceByUID(w http.ResponseWriter, r *http.Request, 
 		writeAuthWarmupResponse(w)
 		return
 	}
-	if !h.canAccessService(service, authenticated, claims) {
+	if !h.canAccessService(service, authenticated, claims, h.callerApprovedServiceUIDs(claims, authenticated)) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -599,10 +701,10 @@ type RequestAccessBody struct {
 
 // handleRequestAccess serves POST /api/v1/services/{id}/request_access.
 // Requires authentication. Returns 202 Accepted on success, 409 Conflict when
-// a pending request already exists, 501 when the access-request store is not configured.
+// a pending request or active entitlement already exists, 501 when the access-request store is not configured.
 //
 //	@Summary		Request access to a private service
-//	@Description	Requires authentication. Creates a pending access request for the caller against the named service; an admin then approves or denies via /admin/access-requests/{id}/{approve|deny}.
+//	@Description	Requires authentication. Creates a pending access request for the caller against the named service; an admin then approves, denies, or revokes via /admin/access-requests. Approval grants access only to this service inside the landing API until expiresAt and does not mutate Keycloak groups.
 //	@Tags			services
 //	@Accept			json
 //	@Produce		json
@@ -613,7 +715,7 @@ type RequestAccessBody struct {
 //	@Failure		401		{string}	string	"Unauthorized"
 //	@Failure		404		{string}	string	"Service not found"
 //	@Failure		405		{string}	string	"Method not allowed"
-//	@Failure		409		{string}	string	"Pending request already exists"
+//	@Failure		409		{string}	string	"Pending request or active entitlement already exists"
 //	@Failure		501		{string}	string	"Access request feature not configured"
 //	@Security		BearerAuth
 //	@Router			/services/{id}/request_access [post]
@@ -647,15 +749,17 @@ func (h *Handler) handleRequestAccess(w http.ResponseWriter, r *http.Request, se
 		}
 	}
 
-	username := claims.PreferredUsername
-	if username == "" {
-		username = claims.Subject
+	userID := stableUserID(claims)
+	if userID == "" {
+		http.Error(w, "JWT missing user identity claim (sub or preferred_username)", http.StatusUnauthorized)
+		return
 	}
 
-	req, err := h.accessRequestStore.Create(
+	req, err := h.accessRequestStore.CreateWithOwner(
 		service.UID,
 		service.Name,
-		username,
+		targetOwnerForService(service),
+		userID,
 		claims.Email,
 		body.Message,
 	)
@@ -664,12 +768,16 @@ func (h *Handler) handleRequestAccess(w http.ResponseWriter, r *http.Request, se
 			http.Error(w, "A pending access request already exists for this service", http.StatusConflict)
 			return
 		}
-		log.Error(err, "Failed to create access request", "user", username, "serviceUID", service.UID)
+		if errors.Is(err, accessrequests.ErrActiveEntitlement) {
+			http.Error(w, "Access is already approved for this service", http.StatusConflict)
+			return
+		}
+		log.Error(err, "Failed to create access request", "user", userID, "serviceUID", service.UID)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	log.Info("Access request created", "id", req.ID, "user", username, "service", service.Name)
+	log.Info("Access request created", "id", req.ID, "user", userID, "service", service.Name)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	if err := json.NewEncoder(w).Encode(req); err != nil {
@@ -728,6 +836,7 @@ func (h *Handler) handleGetNotifications(w http.ResponseWriter, r *http.Request)
 		if readSet == nil {
 			readSet = map[string]bool{}
 		}
+		approvedUIDs := h.callerApprovedServiceUIDs(claims, authenticated)
 
 		items = make([]NotificationItem, 0, len(notifs))
 		for _, n := range notifs {
@@ -741,7 +850,7 @@ func (h *Handler) handleGetNotifications(w http.ResponseWriter, r *http.Request)
 				if authenticated && claims != nil {
 					groups = claims.Groups
 				}
-				if !canAccessPolicy(n.Visibility, authenticated, n.RequiredGroups, groups) {
+				if !canAccessPolicy(n.Visibility, authenticated, n.RequiredGroups, groups, hasApprovedService(approvedUIDs, n.ServiceUID)) {
 					continue
 				}
 			}
@@ -849,15 +958,20 @@ func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) (*auth.Cl
 	return claims, true
 }
 
+// AccessRequestListResponse is the response body for GET /api/v1/admin/access-requests.
+type AccessRequestListResponse struct {
+	AccessRequests []*accessrequests.AccessRequest `json:"accessRequests"`
+}
+
 // handleAdminListAccessRequests serves GET /api/v1/admin/access-requests.
-// Accepts an optional ?status=pending|approved|denied query parameter.
+// Accepts an optional ?status=pending|approved|denied|revoked query parameter.
 //
 //	@Summary		List access requests (admin)
 //	@Description	Returns access requests across the cluster. Admin-only — caller's JWT must include the configured admin group.
 //	@Tags			admin
 //	@Produce		json
-//	@Param			status	query		string	false	"Filter by status: pending, approved, or denied"
-//	@Success		200		{array}		accessrequests.AccessRequest
+//	@Param			status	query		string	false	"Filter by status: pending, approved, denied, or revoked"
+//	@Success		200		{object}	AccessRequestListResponse
 //	@Failure		401		{string}	string	"Unauthorized"
 //	@Failure		403		{string}	string	"Forbidden: admin group required"
 //	@Failure		405		{string}	string	"Method not allowed"
@@ -879,11 +993,14 @@ func (h *Handler) handleAdminListAccessRequests(w http.ResponseWriter, r *http.R
 
 	var reqs []*accessrequests.AccessRequest
 	var err error
-	switch r.URL.Query().Get("status") {
-	case "pending":
-		reqs, err = h.accessRequestStore.ListPending()
-	default:
+	switch status := accessrequests.Status(r.URL.Query().Get("status")); status {
+	case "":
 		reqs, err = h.accessRequestStore.ListAll()
+	case accessrequests.StatusPending, accessrequests.StatusApproved, accessrequests.StatusDenied, accessrequests.StatusRevoked:
+		reqs, err = h.accessRequestStore.ListByStatus(status)
+	default:
+		http.Error(w, "Unsupported status filter", http.StatusBadRequest)
+		return
 	}
 	if err != nil {
 		log.Error(err, "Failed to list access requests")
@@ -894,28 +1011,13 @@ func (h *Handler) handleAdminListAccessRequests(w http.ResponseWriter, r *http.R
 		reqs = []*accessrequests.AccessRequest{}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"accessRequests": reqs}); err != nil {
+	if err := json.NewEncoder(w).Encode(AccessRequestListResponse{AccessRequests: reqs}); err != nil {
 		log.Error(err, "Failed to encode access requests")
 	}
 }
 
-// handleAdminAccessRequestSub dispatches /api/v1/admin/access-requests/{id}/{action}.
-//
-//	@Summary		Approve or deny an access request (admin)
-//	@Description	Action is encoded in the URL: PUT .../{id}/approve or .../{id}/deny. Approving also adds the user to the service's required Keycloak groups when a Keycloak admin client is configured.
-//	@Tags			admin
-//	@Produce		json
-//	@Param			id		path		string	true	"Access request ID"
-//	@Param			action	path		string	true	"approve | deny"
-//	@Success		200		{object}	accessrequests.AccessRequest
-//	@Failure		400		{string}	string	"Bad request"
-//	@Failure		401		{string}	string	"Unauthorized"
-//	@Failure		403		{string}	string	"Forbidden: admin group required"
-//	@Failure		404		{string}	string	"Request not found"
-//	@Failure		405		{string}	string	"Method not allowed"
-//	@Failure		501		{string}	string	"Access request feature not configured"
-//	@Security		BearerAuth
-//	@Router			/admin/access-requests/{id}/{action} [put]
+// handleAdminAccessRequestSub dispatches /api/v1/admin/access-requests/{id}
+// and /api/v1/admin/access-requests/{id}/{action}.
 func (h *Handler) handleAdminAccessRequestSub(w http.ResponseWriter, r *http.Request) {
 	if h.accessRequestStore == nil {
 		http.Error(w, "Access request feature not configured", http.StatusNotImplemented)
@@ -926,95 +1028,144 @@ func (h *Handler) handleAdminAccessRequestSub(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	rest := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/access-requests/")
-	parts := strings.SplitN(rest, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		http.Error(w, "Path must be /api/v1/admin/access-requests/{id}/approve|deny", http.StatusBadRequest)
+	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/access-requests/"), "/")
+	if rest == "" {
+		http.Error(w, "Path must include an access request ID", http.StatusBadRequest)
 		return
 	}
-	id, action := parts[0], parts[1]
+	parts := strings.Split(rest, "/")
+	switch len(parts) {
+	case 1:
+		h.handleAdminDeleteAccessRequest(w, r, parts[0], claims)
+	case 2:
+		h.handleAdminResolveAccessRequest(w, r, parts[0], parts[1], claims)
+	default:
+		http.Error(w, "Path must be /api/v1/admin/access-requests/{id} or /api/v1/admin/access-requests/{id}/approve|deny|revoke", http.StatusBadRequest)
+	}
+}
 
-	adminUser := claims.PreferredUsername
-	if adminUser == "" {
-		adminUser = claims.Subject
+// handleAdminResolveAccessRequest serves PUT /api/v1/admin/access-requests/{id}/{action}.
+//
+//	@Summary		Approve, deny, or revoke an access request (admin)
+//	@Description	Action is encoded in the URL: PUT .../{id}/approve, .../{id}/deny, or .../{id}/revoke. Approving grants access only to the request's target service inside the landing API until its expiresAt timestamp; it records the human approver and target owner, and never creates or mutates Keycloak groups.
+//	@Tags			admin
+//	@Produce		json
+//	@Param			id		path		string	true	"Access request ID"
+//	@Param			action	path		string	true	"approve | deny | revoke"
+//	@Success		200		{object}	accessrequests.AccessRequest
+//	@Failure		400		{string}	string	"Bad request"
+//	@Failure		401		{string}	string	"Unauthorized"
+//	@Failure		403		{string}	string	"Forbidden: admin group required"
+//	@Failure		404		{string}	string	"Request not found"
+//	@Failure		405		{string}	string	"Method not allowed"
+//	@Failure		501		{string}	string	"Access request feature not configured"
+//	@Security		BearerAuth
+//	@Router			/admin/access-requests/{id}/{action} [put]
+func (h *Handler) handleAdminResolveAccessRequest(w http.ResponseWriter, r *http.Request, id, action string, claims *auth.Claims) {
+	if id == "" || action == "" {
+		http.Error(w, "Path must be /api/v1/admin/access-requests/{id}/approve|deny|revoke", http.StatusBadRequest)
+		return
+	}
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
 
 	var status accessrequests.Status
 	switch action {
 	case "approve":
-		if r.Method != http.MethodPut {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
 		status = accessrequests.StatusApproved
 	case "deny":
-		if r.Method != http.MethodPut {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
 		status = accessrequests.StatusDenied
+	case "revoke":
+		status = accessrequests.StatusRevoked
 	default:
 		http.NotFound(w, r)
 		return
 	}
 
-	updated, err := h.accessRequestStore.UpdateStatus(id, status, adminUser)
+	h.writeAccessRequestResolution(w, id, status, claims)
+}
+
+// handleAdminDeleteAccessRequest serves DELETE /api/v1/admin/access-requests/{id}.
+//
+//	@Summary		Revoke an access request entitlement (admin)
+//	@Description	Revokes a previously approved landing-owned entitlement. The record is retained for audit, but it no longer grants service access.
+//	@Tags			admin
+//	@Produce		json
+//	@Param			id	path		string	true	"Access request ID"
+//	@Success		200	{object}	accessrequests.AccessRequest
+//	@Failure		400	{string}	string	"Bad request"
+//	@Failure		401	{string}	string	"Unauthorized"
+//	@Failure		403	{string}	string	"Forbidden: admin group required"
+//	@Failure		404	{string}	string	"Request not found"
+//	@Failure		405	{string}	string	"Method not allowed"
+//	@Failure		501	{string}	string	"Access request feature not configured"
+//	@Security		BearerAuth
+//	@Router			/admin/access-requests/{id} [delete]
+func (h *Handler) handleAdminDeleteAccessRequest(w http.ResponseWriter, r *http.Request, id string, claims *auth.Claims) {
+	if id == "" {
+		http.Error(w, "Path must be /api/v1/admin/access-requests/{id}", http.StatusBadRequest)
+		return
+	}
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	h.writeAccessRequestResolution(w, id, accessrequests.StatusRevoked, claims)
+}
+
+func (h *Handler) writeAccessRequestResolution(w http.ResponseWriter, id string, status accessrequests.Status, claims *auth.Claims) {
+	resolution := h.accessRequestResolution(status, claims)
+	updated, err := h.accessRequestStore.Resolve(id, resolution)
 	if err != nil {
 		if errors.Is(err, accessrequests.ErrNotFound) {
 			http.Error(w, "Access request not found", http.StatusNotFound)
 			return
 		}
-		log.Error(err, "Failed to update access request", "id", id, "action", action)
+		if errors.Is(err, accessrequests.ErrInvalidStatus) {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		log.Error(err, "Failed to update access request", "id", id, "status", status)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Phase 2: when the request is approved, add the user to every Keycloak group
-	// that the service requires. This makes the user visible in private services
-	// immediately after approval without any manual Keycloak intervention.
-	if status == accessrequests.StatusApproved {
-		h.applyKeycloakGroupMembership(r.Context(), updated)
-	}
-	log.Info("Access request updated", "id", id, "status", status, "by", adminUser)
+	h.invalidateApprovedServiceCache(updated.UserID)
+	log.Info("Access request updated",
+		"id", id,
+		"status", status,
+		"by", resolution.ResolvedBy,
+		"serviceUID", updated.ServiceUID,
+		"targetOwner", updated.TargetOwner,
+		"targetUser", updated.UserID,
+		"expiresAt", updated.ExpiresAt,
+	)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(updated); err != nil {
 		log.Error(err, "Failed to encode access request")
 	}
 }
 
-// applyKeycloakGroupMembership adds the approved user to every Keycloak group
-// that the target service requires. It is called fire-and-forget style: errors
-// are logged but do not affect the HTTP response (the store record was already
-// updated successfully). When the keycloak client is not configured, a warning
-// is logged reminding operators to set KEYCLOAK_ADMIN_USERNAME/PASSWORD.
-func (h *Handler) applyKeycloakGroupMembership(ctx context.Context, req *accessrequests.AccessRequest) {
-	if h.keycloakClient == nil {
-		log.Info("Keycloak admin client not configured — skipping group membership update "+
-			"(set KEYCLOAK_ADMIN_USERNAME and KEYCLOAK_ADMIN_PASSWORD to enable)",
-			"user", req.UserID, "service", req.ServiceName)
-		return
+func (h *Handler) accessRequestResolution(status accessrequests.Status, claims *auth.Claims) accessrequests.Resolution {
+	resolution := accessrequests.Resolution{
+		Status:     status,
+		ResolvedBy: stableUserID(claims),
 	}
-
-	// Look up the service to discover its requiredGroups.
-	service := h.cache.Get(req.ServiceUID)
-	if service == nil {
-		log.Info("Service no longer in cache — cannot determine required groups for Keycloak",
-			"serviceUID", req.ServiceUID, "user", req.UserID)
-		return
+	if claims != nil {
+		resolution.ResolvedByName = claims.Name
+		resolution.ResolvedByEmail = claims.Email
 	}
-
-	if len(service.RequiredGroups) == 0 {
-		log.Info("Service has no requiredGroups — no Keycloak group update needed",
-			"service", service.Name, "user", req.UserID)
-		return
-	}
-
-	for _, groupName := range service.RequiredGroups {
-		if err := h.keycloakClient.AddUserToGroup(ctx, req.UserID, groupName); err != nil {
-			log.Error(err, "Failed to add user to Keycloak group — access request approved in store but group membership NOT updated",
-				"user", req.UserID, "group", groupName, "service", service.Name)
+	if status == accessrequests.StatusApproved {
+		ttl := h.accessRequestApprovalTTL
+		if ttl <= 0 {
+			ttl = defaultAccessRequestApprovalTTL
 		}
+		expiresAt := time.Now().UTC().Add(ttl)
+		resolution.ExpiresAt = &expiresAt
 	}
+	return resolution
 }
 
 // CreateNotificationBody is the request body for POST /api/v1/admin/notifications.
@@ -1210,27 +1361,32 @@ func writeAuthWarmupResponse(w http.ResponseWriter) {
 // canAccessService is the JWT-claims-flavored entry point used by the REST
 // handlers. It delegates to the pure canAccessPolicy helper so REST and the
 // WebSocket fan-out apply the same rule against the same inputs.
-func (h *Handler) canAccessService(service *cache.ServiceInfo, authenticated bool, claims *auth.Claims) bool {
+func (h *Handler) canAccessService(service *cache.ServiceInfo, authenticated bool, claims *auth.Claims, approvedServices map[string]struct{}) bool {
+	if service == nil {
+		return false
+	}
 	var groups []string
 	if claims != nil {
 		groups = claims.Groups
 	}
-	return canAccessPolicy(service.Visibility, authenticated, service.RequiredGroups, groups)
+	return canAccessPolicy(service.Visibility, authenticated, service.RequiredGroups, groups, hasApprovedService(approvedServices, service.UID))
 }
 
 // CanAccessService implements websocket.ServiceAccessPolicy. The hub calls it
-// once per connected client per service event; it must stay allocation-free
-// in the common case. The Principal carries only what the policy needs
-// (groups, authenticated) so the hub does not have to learn the shape of
-// auth.Claims.
+// once per connected client per service event. The Principal carries only what
+// the policy needs so the hub does not have to learn the shape of auth.Claims.
 func (h *Handler) CanAccessService(service *cache.ServiceInfo, p wshub.Principal) bool {
-	return canAccessPolicy(service.Visibility, p.Authenticated, service.RequiredGroups, p.Groups)
+	if service == nil {
+		return false
+	}
+	approvedServices := h.cachedApprovedServiceUIDsForUser(p.Subject, p.Authenticated)
+	return canAccessPolicy(service.Visibility, p.Authenticated, service.RequiredGroups, p.Groups, hasApprovedService(approvedServices, service.UID))
 }
 
 // canAccessPolicy is the pure access decision shared by the REST and
 // WebSocket paths. Keeping it free of *auth.Claims means the websocket
 // package never needs to import internal/auth.
-func canAccessPolicy(visibility string, authenticated bool, requiredGroups, userGroups []string) bool {
+func canAccessPolicy(visibility string, authenticated bool, requiredGroups, userGroups []string, approved bool) bool {
 	switch visibility {
 	case "public":
 		return true
@@ -1242,12 +1398,23 @@ func canAccessPolicy(visibility string, authenticated bool, requiredGroups, user
 		if !authenticated {
 			return false
 		}
+		if approved {
+			return true
+		}
 		return hasRequiredGroups(userGroups, requiredGroups)
 
 	default:
 		// Unknown / legacy visibility values default to private semantics.
-		return authenticated && hasRequiredGroups(userGroups, requiredGroups)
+		return authenticated && (approved || hasRequiredGroups(userGroups, requiredGroups))
 	}
+}
+
+func hasApprovedService(approvedServices map[string]struct{}, serviceUID string) bool {
+	if len(approvedServices) == 0 || serviceUID == "" {
+		return false
+	}
+	_, ok := approvedServices[serviceUID]
+	return ok
 }
 
 func hasRequiredGroups(userGroups, requiredGroups []string) bool {
@@ -1264,6 +1431,29 @@ func hasRequiredGroups(userGroups, requiredGroups []string) bool {
 	}
 
 	return false
+}
+
+func stableUserID(claims *auth.Claims) string {
+	if claims == nil {
+		return ""
+	}
+	if claims.Subject != "" {
+		return claims.Subject
+	}
+	return claims.PreferredUsername
+}
+
+func targetOwnerForService(service *cache.ServiceInfo) string {
+	if service == nil {
+		return ""
+	}
+	if service.Namespace != "" && service.Name != "" {
+		return service.Namespace + "/" + service.Name
+	}
+	if service.Name != "" {
+		return service.Name
+	}
+	return service.Namespace
 }
 
 // handleCallerIdentity serves GET /api/v1/caller-identity.
@@ -1559,6 +1749,7 @@ func (h *Handler) handleDebug(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Count services per visibility for this caller.
+	approvedUIDs := h.callerApprovedServiceUIDs(claims, authenticated)
 	counts := DebugServiceCounts{}
 	for _, svc := range h.cache.GetAll() {
 		counts.Total++
@@ -1566,7 +1757,7 @@ func (h *Handler) handleDebug(w http.ResponseWriter, r *http.Request) {
 		case "public":
 			counts.Public++
 		default: // "private" and any legacy values
-			if h.canAccessService(svc, authenticated, claims) {
+			if h.canAccessService(svc, authenticated, claims, approvedUIDs) {
 				counts.Private++
 			} else {
 				counts.Hidden++

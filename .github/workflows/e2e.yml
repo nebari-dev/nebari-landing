@@ -423,5 +423,12 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          k3d cluster delete ${{ steps.sandbox.outputs.cluster-name }}
-          docker network rm ${{ steps.sandbox.outputs.network-name }} 2>/dev/null || true
+          cluster_name="${{ steps.sandbox.outputs.cluster-name }}"
+          network_name="${{ steps.sandbox.outputs.network-name }}"
+
+          if [[ -n "$cluster_name" ]] && command -v k3d >/dev/null 2>&1; then
+            k3d cluster delete "$cluster_name" || true
+          fi
+          if [[ -n "$network_name" ]]; then
+            docker network rm "$network_name" 2>/dev/null || true
+          fi
