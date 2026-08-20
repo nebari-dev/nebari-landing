@@ -72,6 +72,12 @@ func init() {
 	nebariGV := schema.GroupVersion{Group: "reconcilers.nebari.dev", Version: "v1"}
 	scheme.AddKnownTypeWithName(nebariGV.WithKind("NebariApp"), &unstructured.Unstructured{})
 	scheme.AddKnownTypeWithName(nebariGV.WithKind("NebariAppList"), &unstructured.UnstructuredList{})
+
+	// Register Gateway API ReferenceGrant as unstructured. The watcher uses it
+	// as target-namespace consent for cross-namespace health-check probes.
+	gatewayGV := schema.GroupVersion{Group: "gateway.networking.k8s.io", Version: "v1beta1"}
+	scheme.AddKnownTypeWithName(gatewayGV.WithKind("ReferenceGrant"), &unstructured.Unstructured{})
+	scheme.AddKnownTypeWithName(gatewayGV.WithKind("ReferenceGrantList"), &unstructured.UnstructuredList{})
 }
 
 func main() {
@@ -92,6 +98,8 @@ func main() {
 		notifLifecycle bool
 		notifRetention time.Duration
 		enableDocs     bool
+		probeRunner    bool
+		probeRunnerURL string
 	)
 
 	// Flags fall back to environment variables so the binary works naturally when
@@ -130,6 +138,10 @@ func main() {
 		"How long notifications remain in Redis before expiring, e.g. 72h (env: NOTIFICATIONS_RETENTION)")
 	flag.BoolVar(&enableDocs, "enable-docs", envBool("ENABLE_DOCS", false),
 		"Expose the OpenAPI spec at /api/v1/docs/openapi.json and a Scalar viewer at /api/v1/docs. Never enable in production (env: ENABLE_DOCS)")
+	flag.BoolVar(&probeRunner, "probe-runner", envBool("PROBE_RUNNER", false),
+		"Run only the isolated health-probe runner service (env: PROBE_RUNNER)")
+	flag.StringVar(&probeRunnerURL, "health-probe-runner-url", os.Getenv("HEALTH_PROBE_RUNNER_URL"),
+		"URL of the isolated health-probe runner service (env: HEALTH_PROBE_RUNNER_URL)")
 
 	opts := zap.Options{
 		Development: true,
@@ -151,6 +163,11 @@ func main() {
 		"notificationsStartup", notifStartup,
 		"notificationsLifecycle", notifLifecycle,
 	)
+
+	if probeRunner {
+		runProbeRunner(port)
+		return
+	}
 
 	config, err := ctrl.GetConfig()
 	if err != nil {
@@ -267,6 +284,13 @@ func main() {
 	}
 
 	healthChecker := health.NewHealthChecker(serviceCache, time.Duration(healthInterval)*time.Second)
+	if probeRunnerURL != "" {
+		if err := healthChecker.SetProbeRunnerURL(probeRunnerURL); err != nil {
+			setupLog.Error(err, "Invalid health probe runner URL")
+			os.Exit(1)
+		}
+		setupLog.Info("Health probes delegated to isolated runner", "url", probeRunnerURL)
+	}
 	healthChecker.SetPublisher(hub)
 	if notifLifecycle {
 		healthChecker.SetNotificationStore(notificationStore)
@@ -351,6 +375,35 @@ func main() {
 	}
 
 	setupLog.Info("Server stopped")
+}
+
+func runProbeRunner(port int) {
+	setupLog.Info("Starting isolated health probe runner", "port", port)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	server := &http.Server{
+		Addr:         fmt.Sprintf(":%d", port),
+		Handler:      health.NewProbeRunnerHandler(),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 40 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			setupLog.Error(err, "Health probe runner failed")
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		setupLog.Error(err, "Health probe runner shutdown failed")
+	}
 }
 
 // envStr returns the value of the named environment variable, or def if unset/empty.

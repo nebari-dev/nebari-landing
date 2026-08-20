@@ -99,6 +99,10 @@ spec:
             # Health
             - name: HEALTH_INTERVAL
               value: {{ .Values.webapi.healthInterval | quote }}
+            {{- if .Values.webapi.healthProber.enabled }}
+            - name: HEALTH_PROBE_RUNNER_URL
+              value: {{ printf "http://%s-health-prober.%s.svc.cluster.local:%v" (include "nebari-landing.fullname" .) .Release.Namespace .Values.webapi.healthProber.service.port | quote }}
+            {{- end }}
             # Redis
             - name: REDIS_ADDR
               value: {{ include "nebari-landing.redisAddr" . | quote }}

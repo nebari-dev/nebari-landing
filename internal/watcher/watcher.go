@@ -28,6 +28,18 @@ var nebariAppGVK = schema.GroupVersionKind{
 	Kind:    "NebariApp",
 }
 
+var referenceGrantGVK = schema.GroupVersionKind{
+	Group:   "gateway.networking.k8s.io",
+	Version: "v1beta1",
+	Kind:    "ReferenceGrant",
+}
+
+var referenceGrantListGVK = schema.GroupVersionKind{
+	Group:   referenceGrantGVK.Group,
+	Version: referenceGrantGVK.Version,
+	Kind:    referenceGrantGVK.Kind + "List",
+}
+
 var log = ctrl.Log.WithName("watcher")
 
 // Publisher receives service change events. *websocket.Hub satisfies this interface.
@@ -183,7 +195,7 @@ func (w *NebariAppWatcher) syncInitial(ctx context.Context) error {
 				"namespace", u.GetNamespace(),
 				"displayName", displayName,
 			)
-			w.cache.Add(toApp(u))
+			w.cache.Add(w.toApp(ctx, u))
 		}
 	}
 
@@ -197,16 +209,77 @@ func (w *NebariAppWatcher) watch(ctx context.Context) error {
 	}
 
 	_, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    w.onAdd,
-		UpdateFunc: w.onUpdate,
+		AddFunc: func(obj interface{}) {
+			w.onAdd(ctx, obj)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			w.onUpdate(ctx, oldObj, newObj)
+		},
 		DeleteFunc: w.onDelete,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add event handler: %w", err)
 	}
 
+	if err := w.watchReferenceGrants(ctx); err != nil {
+		log.Info("ReferenceGrant watch unavailable; cross-namespace health-check consent will refresh on NebariApp updates",
+			"err", err)
+	}
+
 	<-ctx.Done()
 	return nil
+}
+
+func (w *NebariAppWatcher) watchReferenceGrants(ctx context.Context) error {
+	informer, err := w.kubeCache.GetInformerForKind(ctx, referenceGrantGVK)
+	if err != nil {
+		return fmt.Errorf("failed to get ReferenceGrant informer: %w", err)
+	}
+	_, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(interface{}) {
+			w.resyncCrossNamespaceApps(ctx)
+		},
+		UpdateFunc: func(interface{}, interface{}) {
+			w.resyncCrossNamespaceApps(ctx)
+		},
+		DeleteFunc: func(interface{}) {
+			w.resyncCrossNamespaceApps(ctx)
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add ReferenceGrant event handler: %w", err)
+	}
+	return nil
+}
+
+func (w *NebariAppWatcher) resyncCrossNamespaceApps(ctx context.Context) {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   nebariAppGVK.Group,
+		Version: nebariAppGVK.Version,
+		Kind:    nebariAppGVK.Kind + "List",
+	})
+	if err := w.client.List(ctx, list); err != nil {
+		log.Error(err, "Failed to resync NebariApps after ReferenceGrant change")
+		return
+	}
+
+	for i := range list.Items {
+		u := &list.Items[i]
+		if !lpEnabled(u) {
+			continue
+		}
+		serviceNamespace, _, _ := unstructured.NestedString(u.Object, "spec", "service", "namespace")
+		if serviceNamespace == "" || serviceNamespace == u.GetNamespace() {
+			continue
+		}
+		w.cache.Add(w.toApp(ctx, u))
+		if w.publisher != nil {
+			if svc := w.cache.Get(string(u.GetUID())); svc != nil {
+				w.publisher.Publish("modified", svc)
+			}
+		}
+	}
 }
 
 // asUnstructured casts obj to *unstructured.Unstructured, handling tombstones.
@@ -224,7 +297,7 @@ func asUnstructured(obj interface{}) (*unstructured.Unstructured, bool) {
 	return u, ok
 }
 
-func (w *NebariAppWatcher) onAdd(obj interface{}) {
+func (w *NebariAppWatcher) onAdd(ctx context.Context, obj interface{}) {
 	u, ok := asUnstructured(obj)
 	if !ok {
 		log.Error(nil, "Failed to cast object to Unstructured", "type", fmt.Sprintf("%T", obj))
@@ -238,7 +311,7 @@ func (w *NebariAppWatcher) onAdd(obj interface{}) {
 			"namespace", u.GetNamespace(),
 			"displayName", displayName,
 		)
-		w.cache.Add(toApp(u))
+		w.cache.Add(w.toApp(ctx, u))
 		uid := string(u.GetUID())
 		if w.publisher != nil {
 			w.publisher.Publish("added", w.cache.Get(uid))
@@ -263,7 +336,7 @@ func (w *NebariAppWatcher) onAdd(obj interface{}) {
 	}
 }
 
-func (w *NebariAppWatcher) onUpdate(_, newObj interface{}) {
+func (w *NebariAppWatcher) onUpdate(ctx context.Context, _ interface{}, newObj interface{}) {
 	u, ok := asUnstructured(newObj)
 	if !ok {
 		log.Error(nil, "Failed to cast object to Unstructured", "type", fmt.Sprintf("%T", newObj))
@@ -279,7 +352,7 @@ func (w *NebariAppWatcher) onUpdate(_, newObj interface{}) {
 			"namespace", u.GetNamespace(),
 			"displayName", displayName,
 		)
-		w.cache.Add(toApp(u))
+		w.cache.Add(w.toApp(ctx, u))
 		if w.publisher != nil {
 			w.publisher.Publish("modified", w.cache.Get(uid))
 		}
@@ -351,6 +424,89 @@ func (w *NebariAppWatcher) WaitForCacheSync(ctx context.Context) bool {
 func lpEnabled(u *unstructured.Unstructured) bool {
 	enabled, _, _ := unstructured.NestedBool(u.Object, "spec", "landingPage", "enabled")
 	return enabled
+}
+
+func (w *NebariAppWatcher) toApp(ctx context.Context, u *unstructured.Unstructured) *sdapp.App {
+	a := toApp(u)
+	if a.ServiceNamespace != "" && a.ServiceNamespace != a.Namespace {
+		a.HealthCheckCrossNamespaceAllowed = w.crossNamespaceHealthCheckAllowed(ctx, a)
+	}
+	return a
+}
+
+func (w *NebariAppWatcher) crossNamespaceHealthCheckAllowed(ctx context.Context, a *sdapp.App) bool {
+	serviceName := a.ServiceName
+	if serviceName == "" {
+		serviceName = a.Name
+	}
+
+	grants := &unstructured.UnstructuredList{}
+	grants.SetGroupVersionKind(referenceGrantListGVK)
+	if err := w.client.List(ctx, grants, client.InNamespace(a.ServiceNamespace)); err != nil {
+		log.Info("Cross-namespace health check denied; unable to list ReferenceGrants",
+			"name", a.Name,
+			"namespace", a.Namespace,
+			"targetNamespace", a.ServiceNamespace,
+			"targetService", serviceName,
+			"err", err,
+		)
+		return false
+	}
+	for i := range grants.Items {
+		if referenceGrantAllows(&grants.Items[i], a.Namespace, serviceName) {
+			return true
+		}
+	}
+	log.Info("Cross-namespace health check denied; no ReferenceGrant permits target Service",
+		"name", a.Name,
+		"namespace", a.Namespace,
+		"targetNamespace", a.ServiceNamespace,
+		"targetService", serviceName,
+	)
+	return false
+}
+
+func referenceGrantAllows(grant *unstructured.Unstructured, sourceNamespace, serviceName string) bool {
+	from, found, err := unstructured.NestedSlice(grant.Object, "spec", "from")
+	if err != nil || !found {
+		return false
+	}
+	to, found, err := unstructured.NestedSlice(grant.Object, "spec", "to")
+	if err != nil || !found {
+		return false
+	}
+
+	fromAllowed := false
+	for _, item := range from {
+		entry, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		group, _, _ := unstructured.NestedString(entry, "group")
+		kind, _, _ := unstructured.NestedString(entry, "kind")
+		namespace, _, _ := unstructured.NestedString(entry, "namespace")
+		if group == nebariAppGVK.Group && kind == nebariAppGVK.Kind && namespace == sourceNamespace {
+			fromAllowed = true
+			break
+		}
+	}
+	if !fromAllowed {
+		return false
+	}
+
+	for _, item := range to {
+		entry, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		group, _, _ := unstructured.NestedString(entry, "group")
+		kind, _, _ := unstructured.NestedString(entry, "kind")
+		name, _, _ := unstructured.NestedString(entry, "name")
+		if group == "" && kind == "Service" && (name == "" || name == serviceName) {
+			return true
+		}
+	}
+	return false
 }
 
 // toApp converts an unstructured NebariApp object to the internal sdapp.App
