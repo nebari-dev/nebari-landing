@@ -5,15 +5,26 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Theme tokens.
+ *
+ * The semantic tokens (`--background`, `--primary`, `--header`, …) are the
+ * `@nebari/theme` registry item, flattened to the resolved oklch values that
+ * `npx shadcn add @nebari/theme` writes. Re-run that command to pick up
+ * upstream changes, then re-apply the app-owned tokens in the blocks marked
+ * "App-defined" below (they are not shipped by the registry).
+ */
 :root {
-  --background: #ffffff;
-  --foreground: oklch(26.94% 0.0037 286.15);
+  --radius: 0.625rem;
 
-  --header-background: #f8f8f8;
-  --header-border: #b7b7bb;
-  --header-foreground: #262628;
-  --header-action-hover: #d9d9dc;
-  --scrollbar-thumb: #85858e;
+  --background: oklch(97.91% 0 0);
+  --foreground: oklch(26.94% 0.0037 286.15);
+  --scrim: rgba(0, 0, 0, 0.5);
+
+  --canvas: oklch(100% 0 0);
+  --canvas-foreground: oklch(26.94% 0.0037 286.15);
+  --header: oklch(97.91% 0 0);
+  --header-foreground: oklch(26.94% 0.0037 286.15);
 
   --card: oklch(100% 0 0);
   --card-foreground: oklch(26.94% 0.0037 286.15);
@@ -23,22 +34,36 @@
 
   --primary: oklch(55.06% 0.1886 311.45);
   --primary-foreground: oklch(100% 0 0);
+  /* Derived from --primary so a rebranded primary (frontend.branding.theme)
+     carries into hover/active states. The registry ships the resolved
+     oklch(47.01% 0.1577 311.26), which this renders for the default primary.
+     oklab, not oklch: mixing toward an achromatic anchor is identical in
+     both, but the polar form relies on the powerless-hue rule to carry the
+     brand hue through, and the rectangular form cannot get that wrong. */
+  --primary-hover: color-mix(in oklab, var(--primary), black 15%);
 
   --secondary: oklch(95.04% 0.0042 236.5);
   --secondary-foreground: oklch(32.95% 0.0209 254.12);
 
   --muted: oklch(94.94% 0.0013 286.37);
   --muted-foreground: oklch(54.86% 0.0154 285.88);
-  --control-muted-foreground: var(--muted-foreground);
+  --muted-foreground-strong: oklch(47.01% 0.0112 285.96);
 
   --accent: oklch(95.04% 0.0042 236.5);
   --accent-foreground: oklch(32.95% 0.0209 254.12);
 
+  --info: oklch(95.08% 0.0232 264.46);
+  --info-foreground: oklch(55.04% 0.2158 264.34);
   --destructive: oklch(95.06% 0.0247 29.93);
-  --sign-out-foreground: #d2161c;
+  --destructive-foreground: oklch(54.97% 0.2151 27.33);
+  --warning: oklch(95.02% 0.0692 92.11);
+  --warning-foreground: oklch(46.91% 0.096 91.9);
+  --success: oklch(94.94% 0.0433 149.41);
+  --success-foreground: oklch(47.01% 0.1313 149.41);
 
   --border: oklch(78.06% 0.0056 286.27);
   --input: oklch(69.88% 0.013 286.06);
+  --border-strong: oklch(61.96% 0.0134 286);
   --ring: oklch(61.98% 0.2159 311.67);
 
   --chart-1: oklch(61.98% 0.2159 311.67);
@@ -46,14 +71,6 @@
   --chart-3: oklch(70.05% 0.1417 86.43);
   --chart-4: oklch(62.1% 0.188 264.3);
   --chart-5: oklch(61.95% 0.1718 149.7);
-
-  --radius: 0.625rem;
-
-  --text-secondary: var(--muted-foreground-strong);
-  --accordion-trigger-foreground: var(--text-secondary);
-  --accordion-description-foreground: var(--text-secondary);
-
-  --table-row-hover-background: color-mix(in oklab, var(--muted) 50%, transparent);
 
   --sidebar: oklch(97.91% 0 0);
   --sidebar-foreground: oklch(26.94% 0.0037 286.15);
@@ -63,6 +80,20 @@
   --sidebar-accent-foreground: oklch(32.95% 0.0209 254.12);
   --sidebar-border: oklch(78.06% 0.0056 286.27);
   --sidebar-ring: var(--ring);
+
+  /* App-defined: header interaction colors, per the nebari-ui skill's
+     "App header" token contract. The registry provides --header and
+     --header-foreground; only these two are the app's to declare. */
+  --header-action-hover: #d9d9dc;
+  --sign-out-foreground: var(--destructive-foreground);
+
+  /* App-defined: launchpad surfaces, derived from registry tokens. */
+  --scrollbar-thumb: var(--border-strong);
+  --control-muted-foreground: var(--muted-foreground);
+  --text-secondary: var(--muted-foreground-strong);
+  --accordion-trigger-foreground: var(--text-secondary);
+  --accordion-description-foreground: var(--text-secondary);
+  --table-row-hover-background: color-mix(in oklab, var(--muted) 50%, transparent);
 
   --status-healthy-bg: var(--success);
   --status-healthy-fg: var(--success-foreground);
@@ -75,58 +106,55 @@
   --status-default-bg: var(--muted);
   --status-default-fg: var(--muted-foreground-strong);
   --status-default-dot: var(--muted-foreground-strong);
+
   --category-badge-background: var(--secondary);
   --category-badge-foreground: var(--control-muted-foreground);
-  --scrim: rgba(0, 0, 0, 0.5);
-  /* Derived from --primary so a rebranded primary carries into hover/active
-     states. Default renders #77379a — the previous literal was #77399a.
-     oklab, not oklch: mixing toward an achromatic anchor is identical in
-     both, but the polar form relies on the powerless-hue rule to carry the
-     brand hue through, and the rectangular form cannot get that wrong. */
-  --primary-hover: color-mix(in oklab, var(--primary), black 15%);
-  --muted-foreground-strong: oklch(47.01% 0.0112 285.96);
-  --destructive-foreground: oklch(54.97% 0.2151 27.33);
-  --warning: oklch(95.02% 0.0692 92.11);
-  --warning-foreground: oklch(46.91% 0.096 91.9);
-  --success: oklch(94.94% 0.0433 149.41);
-  --success-foreground: oklch(47.01% 0.1313 149.41);
-  --border-strong: oklch(61.96% 0.0134 286);
 }
 
 .dark {
-  --background: #262628;
-  --foreground: #f8f8f8;
+  --background: oklch(26.94% 0.0037 286.15);
+  --foreground: oklch(97.91% 0 0);
+  --scrim: rgba(0, 0, 0, 0.6);
 
-  --header-background: var(--card);
-  --header-border: #5a5a61;
-  --header-foreground: #f8f8f8;
-  --header-action-hover: #4a4a50;
-  --scrollbar-thumb: #5a5a61;
+  --canvas: oklch(21.86% 0.0039 286.08);
+  --canvas-foreground: oklch(97.91% 0 0);
+  --header: oklch(26.94% 0.0037 286.15);
+  --header-foreground: oklch(97.91% 0 0);
 
-  --card: #353538;
-  --card-foreground: #f8f8f8;
+  --card: oklch(33.01% 0.0052 286.11);
+  --card-foreground: oklch(97.91% 0 0);
 
-  --popover: oklch(26.94% 0.0037 286.15);
+  --popover: oklch(33.01% 0.0052 286.11);
   --popover-foreground: oklch(97.91% 0 0);
 
   --primary: oklch(61.98% 0.2159 311.67);
   --primary-foreground: oklch(0% 0 0);
+  /* Dark mode brightens on hover instead of darkening. Renders the registry's
+     oklch(69.98% 0.1926 311.48) for the default primary. */
+  --primary-hover: color-mix(in oklab, var(--primary), white 18%);
 
   --secondary: oklch(40% 0.0269 250.57);
   --secondary-foreground: oklch(95.04% 0.0042 236.5);
 
-  --muted: oklch(33.01% 0.0052 286.11);
+  --muted: oklch(39.94% 0.0066 286.1);
   --muted-foreground: oklch(69.88% 0.013 286.06);
-  --control-muted-foreground: #b7b7bb;
+  --muted-foreground-strong: oklch(78.06% 0.0056 286.27);
 
   --accent: oklch(40% 0.0269 250.57);
   --accent-foreground: oklch(95.04% 0.0042 236.5);
 
+  --info: oklch(33.01% 0.1387 264.4);
+  --info-foreground: oklch(69.95% 0.1433 264.44);
   --destructive: oklch(33.1% 0.1332 27.42);
-  --sign-out-foreground: #ff6b6b;
+  --destructive-foreground: oklch(78.02% 0.1024 27.78);
+  --warning: oklch(33.09% 0.0677 92.2);
+  --warning-foreground: oklch(87.09% 0.1248 91.93);
+  --success: oklch(32.88% 0.0887 149.73);
+  --success-foreground: oklch(87.04% 0.0814 149.55);
 
   --border: oklch(47.01% 0.0112 285.96);
   --input: oklch(54.86% 0.0154 285.88);
+  --border-strong: oklch(61.96% 0.0134 286);
   --ring: oklch(69.98% 0.1926 311.48);
 
   --chart-1: oklch(69.98% 0.1926 311.48);
@@ -134,12 +162,6 @@
   --chart-3: oklch(77.95% 0.1259 85.96);
   --chart-4: oklch(69.95% 0.1433 264.44);
   --chart-5: oklch(69.96% 0.1814 149.67);
-
-  --text-secondary: var(--muted-foreground-strong);
-  --accordion-trigger-foreground: #b7b7bb;
-  --accordion-description-foreground: #9d9da6;
-
-  --table-row-hover-background: #4a4a50;
 
   --sidebar: oklch(26.94% 0.0037 286.15);
   --sidebar-foreground: oklch(97.91% 0 0);
@@ -149,81 +171,80 @@
   --sidebar-accent-foreground: oklch(95.04% 0.0042 236.5);
   --sidebar-border: oklch(47.01% 0.0112 285.96);
   --sidebar-ring: var(--ring);
-  --status-healthy-bg: var(--success);
-  --status-healthy-fg: var(--success-foreground);
-  --status-healthy-dot: var(--success-foreground);
 
-  --status-unhealthy-bg: var(--destructive);
-  --status-unhealthy-fg: var(--destructive-foreground);
-  --status-unhealthy-dot: var(--destructive-foreground);
+  /* App-defined: header interaction colors (nebari-ui skill values). */
+  --header-action-hover: #4a4a50;
+  --sign-out-foreground: #ff6b6b;
 
-  --status-default-bg: #47474b;
-  --status-default-fg: #9d9da6;
-  --status-default-dot: #9d9da6;
-  --category-badge-background: #47474b;
-  --category-badge-foreground: #b7b7bb;
-  --scrim: rgba(0, 0, 0, 0.6);
-  /* Dark mode brightens on hover instead of darkening.
-     Default renders #bf76e9 — the previous literal was #c575f4. */
-  --primary-hover: color-mix(in oklab, var(--primary), white 18%);
-  --muted-foreground-strong: oklch(78.06% 0.0056 286.27);
-  --destructive-foreground: oklch(78.02% 0.1024 27.78);
-  --warning: oklch(33.09% 0.0677 92.2);
-  --warning-foreground: oklch(87.09% 0.1248 91.93);
-  --success: oklch(32.88% 0.0887 149.73);
-  --success-foreground: oklch(87.04% 0.0814 149.55);
-  --border-strong: oklch(61.96% 0.0134 286);
+  /* App-defined: launchpad surfaces, derived from registry tokens. */
+  --scrollbar-thumb: var(--border);
+  --control-muted-foreground: var(--muted-foreground-strong);
+  --accordion-description-foreground: var(--muted-foreground);
+  --table-row-hover-background: var(--muted);
+
+  --status-default-bg: var(--muted);
+  --status-default-fg: var(--muted-foreground);
+  --status-default-dot: var(--muted-foreground);
+
+  --category-badge-background: var(--muted);
 }
 
 @theme inline {
   --font-sans: "Geist Variable", sans-serif;
 
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-sign-out-foreground: var(--sign-out-foreground);
-
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-
-  --color-muted-foreground: var(--muted-foreground);
-  --color-control-muted-foreground: var(--control-muted-foreground);
-  --color-muted: var(--muted);
-
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-
-  --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --color-header-background: var(--header-background);
-  --color-header-border: var(--header-border);
+  --color-foreground: var(--foreground);
+  --color-scrim: var(--scrim);
+  --color-canvas: var(--canvas);
+  --color-canvas-foreground: var(--canvas-foreground);
+  --color-header: var(--header);
   --color-header-foreground: var(--header-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted-foreground-strong: var(--muted-foreground-strong);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-border-strong: var(--border-strong);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* App-defined tokens exposed as utilities (bg-header-action-hover, …). */
   --color-header-action-hover: var(--header-action-hover);
+  --color-sign-out-foreground: var(--sign-out-foreground);
+  --color-control-muted-foreground: var(--control-muted-foreground);
   --color-table-row-hover-background: var(--table-row-hover-background);
   --color-category-badge-background: var(--category-badge-background);
   --color-category-badge-foreground: var(--category-badge-foreground);
@@ -236,24 +257,20 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
   --radius: 0.625rem;
+
   --duration-fast: 100ms;
   --duration-base: 200ms;
   --duration-slow: 350ms;
+  --duration-loading: 1600ms;
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
   --animate-fade-in: nebari-fade-in var(--duration-base) var(--ease-standard) both;
   --animate-fade-out: nebari-fade-out var(--duration-base) var(--ease-standard) both;
   --animate-slide-up-fade: nebari-slide-up-fade var(--duration-base) var(--ease-emphasized) both;
   --animate-slide-down-fade: nebari-slide-down-fade var(--duration-base) var(--ease-emphasized) both;
-  --color-border-strong: var(--border-strong);
-  --color-success-foreground: var(--success-foreground);
-  --color-success: var(--success);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-warning: var(--warning);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-muted-foreground-strong: var(--muted-foreground-strong);
-  --color-primary-hover: var(--primary-hover);
-  --color-scrim: var(--scrim);
+  --animate-skeleton-pulse: nebari-skeleton-pulse var(--duration-loading) var(--ease-standard)
+    infinite;
+
   @keyframes nebari-fade-in {
     from {
       opacity: 0;
@@ -290,6 +307,15 @@
       transform: translateY(6px);
     }
   }
+  @keyframes nebari-skeleton-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
 }
 
 @layer base {
@@ -320,7 +346,7 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-canvas text-foreground;
   }
 
   html,
