@@ -49,9 +49,12 @@ test("view tabs use arrow-key focus and manual activation", async ({ page }) => 
   await page.keyboard.press("Enter");
   await expect(listView).toHaveAttribute("aria-selected", "true");
 
+  // The table's scroll container is only a tab stop when it overflows
+  // horizontally. At the default viewport it fits, so Tab moves straight from
+  // the tab list to the first service row.
   const tableContainer = allServices.locator('[data-slot="table-container"]');
-  await page.keyboard.press("Tab");
-  await expect(tableContainer).toBeFocused();
+  await expect(tableContainer).toBeVisible();
+  await expect(tableContainer).not.toHaveAttribute("tabindex");
 
   await page.keyboard.press("Tab");
   await expect(tableContainer.getByRole("link", { name: /JupyterHub/i })).toBeFocused();
