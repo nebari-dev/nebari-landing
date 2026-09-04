@@ -57,7 +57,7 @@ export function Header(props: HeaderProps): ReactNode {
   const initials = getUserInitials(user?.name, user?.email);
 
   return (
-    <NavigationMenu className="h-14 justify-between border-header-border bg-header-background pl-4 text-header-foreground">
+    <NavigationMenu className="h-14 justify-between border-border bg-header pl-4 text-header-foreground">
       <MenuBarBrand href={homeHref} aria-label="Go to homepage">
         <img src={logoSrc} alt="Nebari" className="h-8 w-auto" />
       </MenuBarBrand>
