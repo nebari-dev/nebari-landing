@@ -172,9 +172,12 @@
   --sidebar-border: oklch(47.01% 0.0112 285.96);
   --sidebar-ring: var(--ring);
 
-  /* App-defined: header interaction colors (nebari-ui skill values). */
+  /* App-defined: header interaction colors, per the nebari-ui skill's
+     "App header" token contract. The skill's literal #ff6b6b only reaches
+     4.4:1 against the registry's dark --popover, so the sign-out item
+     aliases the registry's destructive text color (5.9:1), as in light. */
   --header-action-hover: #4a4a50;
-  --sign-out-foreground: #ff6b6b;
+  --sign-out-foreground: var(--destructive-foreground);
 
   /* App-defined: launchpad surfaces, derived from registry tokens. */
   --scrollbar-thumb: var(--border);
