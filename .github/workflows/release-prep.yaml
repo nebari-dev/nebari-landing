@@ -11,9 +11,8 @@
 #      protocol bundles the otherwise-unreachable commit along with the tag, so
 #      no branch ref is left on the remote.
 #   6. Publishing a GitHub Release against the new tag triggers release.yml,
-#      which builds Quay images and packages the Helm chart from the tagged
-#      source — values.yaml's empty tag fields fall back to .Chart.AppVersion =
-#      <version>, pinning the image references in the published .tgz.
+#      which builds Quay images, resolves their final manifest digests, and
+#      packages the Helm chart with those digests written into values.yaml.
 #
 # main is intentionally untouched. The release commit is reachable only via
 # the tag, which is the source-of-truth artifact downstream consumers care
@@ -35,7 +34,7 @@ permissions:
 jobs:
   prep:
     name: Bump chart and tag release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Validate version
         env:

@@ -3,9 +3,8 @@
 # When called by release.yml or run manually, this workflow:
 #
 #   1. Bumps Chart.yaml version + appVersion to match the release tag.
-#   2. Pins nebari image tags (quay.io/nebari/*) in values.yaml to the
-#      release tag; third-party images (oauth2-proxy, busybox, …) are left
-#      untouched.
+#   2. Pins nebari image digests (quay.io/nebari/*) in values.yaml to the
+#      release manifest digests.
 #   3. Opens a PR in nebari-dev/helm-repository via the sync-chart composite
 #      action.  When that PR is merged the helm-repository CI packages and
 #      publishes the chart to both GitHub Pages and quay.io/nebari-dev (OCI).
@@ -17,11 +16,22 @@
 
 name: Sync Helm Chart to nebari-dev/helm-repository
 
+env:
+  HELM_VERSION: v3.21.3
+
 on:
   workflow_call:
     inputs:
       tag:
         description: "Release tag to sync (e.g. v0.2.0)"
+        required: true
+        type: string
+      webapi-digest:
+        description: "Immutable digest for the released webapi manifest"
+        required: true
+        type: string
+      frontend-digest:
+        description: "Immutable digest for the released frontend manifest"
         required: true
         type: string
       dry-run:
@@ -41,6 +51,16 @@ on:
         required: false
         default: ''
         type: string
+      webapi-digest:
+        description: "Immutable digest for the released webapi manifest"
+        required: false
+        default: ''
+        type: string
+      frontend-digest:
+        description: "Immutable digest for the released frontend manifest"
+        required: false
+        default: ''
+        type: string
       dry-run:
         description: "Lint only; skip PR creation"
         required: false
@@ -50,7 +70,8 @@ on:
 jobs:
   sync:
     name: Sync chart
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    environment: release
 
     permissions:
       contents: read  # to check out this repository
@@ -78,43 +99,74 @@ jobs:
           VERSION="${TAG#v}"   # strip leading 'v', e.g. v1.2.3 → 1.2.3
 
           sed -i "s/^version:.*/version: ${VERSION}/" charts/nebari-landing/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${TAG}\"/" charts/nebari-landing/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/nebari-landing/Chart.yaml
 
           echo "Chart version  → ${VERSION}"
-          echo "Chart appVersion → ${TAG}"
+          echo "Chart appVersion → ${VERSION}"
 
-      # ── Pin nebari image tags; leave third-party images alone ─────────────
-      # Only lines whose preceding `repository:` value starts with
-      # quay.io/nebari/ are updated.  The oauth2-proxy and busybox images
-      # (already pinned or third-party) are not touched.
-      - name: Pin nebari image tags in values.yaml
+      # ── Pin nebari image digests; leave third-party images alone ──────────
+      - name: Pin nebari image digests in values.yaml
+        if: ${{ inputs['dry-run'] != true }}
         run: |
-          TAG="${{ steps.tag.outputs.value }}"
-          python3 - <<PYEOF
-          import re, sys
-          tag = "$TAG"
-          path = "charts/nebari-landing/values.yaml"
-          content = open(path).read()
-          # Match: "repository: quay.io/nebari/<anything>\n<whitespace>tag: "latest""
-          # and replace tag value with the release tag.
-          updated = re.sub(
-              r'(repository: quay\.io/nebari/[^\n]+\n\s+tag:) "latest"',
-              fr'\1 "{tag}"',
-              content,
-          )
-          open(path, "w").write(updated)
-          changed = updated != content
-          print(f"values.yaml {'updated' if changed else 'unchanged'}")
-          PYEOF
+          python3 - <<'PY'
+          from pathlib import Path
+
+          targets = {
+              "frontend": "${{ inputs['frontend-digest'] }}",
+              "webapi": "${{ inputs['webapi-digest'] }}",
+          }
+          for name, digest in targets.items():
+              if not digest.startswith("sha256:"):
+                  raise SystemExit(f"{name} digest must start with sha256:")
+
+          path = Path("charts/nebari-landing/values.yaml")
+          lines = path.read_text().splitlines()
+          section = None
+          in_image = False
+          image_indent = None
+          seen = set()
+
+          for i, line in enumerate(lines):
+              stripped = line.strip()
+              indent = len(line) - len(line.lstrip(" "))
+
+              if stripped and indent == 0 and stripped.endswith(":"):
+                  section = stripped[:-1]
+                  in_image = False
+                  image_indent = None
+
+              if section in targets and stripped == "image:" and indent == 2:
+                  in_image = True
+                  image_indent = indent
+                  continue
+
+              if in_image:
+                  if stripped and indent <= image_indent:
+                      in_image = False
+                      image_indent = None
+                      continue
+                  if stripped.startswith("digest:"):
+                      prefix = line[:indent]
+                      lines[i] = f'{prefix}digest: "{targets[section]}"'
+                      seen.add(section)
+
+          missing = set(targets) - seen
+          if missing:
+              raise SystemExit(f"missing digest fields for: {', '.join(sorted(missing))}")
+          path.write_text("\n".join(lines) + "\n")
+          print("values.yaml updated with release digests")
+          PY
 
       # ── Update chart dependencies ─────────────────────────────────────────
       - name: Install Helm
         if: ${{ inputs['dry-run'] != true }}
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+        with:
+          version: ${{ env.HELM_VERSION }}
 
-      - name: Update Helm dependencies
+      - name: Build Helm dependencies
         if: ${{ inputs['dry-run'] != true }}
-        run: helm dependency update charts/nebari-landing
+        run: helm dependency build charts/nebari-landing
 
       # ── Sync to nebari-dev/helm-repository ────────────────────────────────
       # NOTE: Pinned to a specific commit instead of @main to avoid breaking changes.
@@ -132,10 +184,12 @@ jobs:
       - name: Install Helm (dry-run)
         if: ${{ inputs['dry-run'] == true }}
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+        with:
+          version: ${{ env.HELM_VERSION }}
 
-      - name: Update Helm dependencies (dry-run)
+      - name: Build Helm dependencies (dry-run)
         if: ${{ inputs['dry-run'] == true }}
-        run: helm dependency update charts/nebari-landing
+        run: helm dependency build charts/nebari-landing
 
       - name: Lint chart (dry-run)
         if: ${{ inputs['dry-run'] == true }}

@@ -39,6 +39,33 @@ archives:
 checksum:
   name_template: checksums.txt
 
+sboms:
+  - id: webapi-archives
+    artifacts: archive
+    documents:
+      - "${artifact}.spdx.json"
+    disable: false
+
+signs:
+  - id: checksums
+    cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+  - id: archives
+    cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: archive
+
 changelog:
   sort: asc
   filters:

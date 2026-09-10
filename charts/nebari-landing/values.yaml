@@ -18,12 +18,11 @@ frontend:
 
   image:
     repository: quay.io/nebari/nebari-landing
-    # Defaults to .Chart.AppVersion when empty. On main that is "latest"
-    # (the floating tag that always points at main's most recent build); on
-    # a release tag it is bumped to the release version (e.g. "0.1.0-alpha.6")
-    # so the chart at that tag pins to a matching image. Override explicitly
-    # to pull a specific PR build or short-SHA tag from Quay.
+    # Defaults to .Chart.AppVersion when empty. Release packaging writes digest,
+    # which takes precedence over tag so released chart artifacts resolve to an
+    # immutable image. Override tag explicitly for a PR build or short-SHA tag.
     tag: ""
+    digest: ""
     pullPolicy: IfNotPresent
 
   # Port nginx listens on. Must be > 1024 — the container runs as non-root
@@ -120,10 +119,10 @@ webapi:
 
   image:
     repository: quay.io/nebari/nebari-webapi
-    # Same convention as frontend.image.tag — empty falls back to
-    # .Chart.AppVersion. See the frontend.image.tag comment above for the
-    # full rationale.
+    # Same convention as frontend.image: digest wins for released artifacts,
+    # tag falls back to .Chart.AppVersion for development/source installs.
     tag: ""
+    digest: ""
     pullPolicy: IfNotPresent
 
   port: 8080
@@ -161,6 +160,13 @@ webapi:
   docsEnabled: false
 
   healthInterval: 30
+
+  waitForRedis:
+    image:
+      repository: docker.io/library/busybox
+      tag: "1.36"
+      digest: "sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
+      pullPolicy: IfNotPresent
 
   # Automatic platform notifications — require Redis (notifications.enabled implies redis.enabled).
   notifications:
@@ -267,6 +273,21 @@ redis:
   enabled: true
 
   architecture: standalone   # standalone is sufficient; use replication for HA
+
+  image:
+    # Bitnami's Redis subchart supports digest, which overrides its image tag.
+    digest: "sha256:08863c2c3f4e051fb6139b38fa223e9c13be5033326a59bead182860d899bf98"
+
+  kubectl:
+    image:
+      digest: "sha256:95de17e6eb92da83a58c90a9df0c4cede634f898d2e6b92ea04f4a6ee6ace08d"
+
+  secretInit:
+    image:
+      repository: docker.io/bitnami/kubectl
+      tag: "latest"
+      digest: "sha256:95de17e6eb92da83a58c90a9df0c4cede634f898d2e6b92ea04f4a6ee6ace08d"
+      pullPolicy: IfNotPresent
 
   auth:
     enabled: true

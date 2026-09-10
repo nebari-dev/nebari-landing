@@ -5,10 +5,11 @@
 # Jobs:
 #   validate-webapi  — go vet + unit tests
 #   validate-frontend — ESLint + Vite build
+#   source-scan      — source dependency vulnerability gate
 #   docker-webapi     — multi-arch build of quay.io/nebari/nebari-webapi
 #   docker-frontend   — multi-arch build of quay.io/nebari/nebari-frontend
-#   manifest-webapi   — stitch arch images → semver-tagged manifest
-#   manifest-frontend — stitch arch images → semver-tagged manifest
+#   manifest-webapi   — stitch arch images → exact-version manifest, scan, sign, attest
+#   manifest-frontend — stitch arch images → exact-version manifest, scan, sign, attest
 #   goreleaser        — build and release Go binary via GoReleaser
 #   publish-chart     — package and attach Helm chart to the GitHub release
 #   sync-helm-chart   — sync the published chart to nebari-dev/helm-repository
@@ -26,19 +27,25 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 env:
   REGISTRY: quay.io
   WEBAPI_IMAGE: nebari/nebari-webapi
   FRONTEND_IMAGE: nebari/nebari-landing
+  HELM_VERSION: v3.21.3
+  GORELEASER_VERSION: v2.17.1
+  COSIGN_VERSION: v3.1.2
+  SYFT_VERSION: v1.50.0
+  TRIVY_VERSION: v0.70.0
+  BUILDX_VERSION: v0.35.0
+  BUILDKIT_IMAGE: moby/buildkit:v0.31.2@sha256:2f5adac4ecd194d9f8c10b7b5d7bceb5186853db1b26e5abd3a657af0b7e26ec
 
 jobs:
   # ── Validate webapi ────────────────────────────────────────────────────────
   validate-webapi:
     name: Validate webapi
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
@@ -56,7 +63,7 @@ jobs:
   # ── Validate frontend ──────────────────────────────────────────────────────
   validate-frontend:
     name: Validate frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -78,17 +85,36 @@ jobs:
       - name: Type-check + Vite build
         run: npm run build
 
+  # ── Source vulnerability gate ─────────────────────────────────────────────
+  source-scan:
+    name: Vulnerability scan (source)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          version: ${{ env.TRIVY_VERSION }}
+
   # ── Multi-arch webapi build ────────────────────────────────────────────────
   docker-webapi:
     name: Build webapi (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    needs: validate-webapi
+    environment: release
+    needs: [validate-webapi, source-scan]
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:
@@ -98,6 +124,9 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+        with:
+          version: ${{ env.BUILDX_VERSION }}
+          driver-opts: image=${{ env.BUILDKIT_IMAGE }}
 
       - name: Log in to Quay.io
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
@@ -117,7 +146,8 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}
           cache-from: type=gha,scope=webapi-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=webapi-${{ matrix.arch }}
-          provenance: false
+          provenance: mode=max
+          sbom: true
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
@@ -138,13 +168,14 @@ jobs:
   docker-frontend:
     name: Build frontend (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    needs: validate-frontend
+    environment: release
+    needs: [validate-frontend, source-scan]
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:
@@ -154,6 +185,9 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+        with:
+          version: ${{ env.BUILDX_VERSION }}
+          driver-opts: image=${{ env.BUILDKIT_IMAGE }}
 
       - name: Log in to Quay.io
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
@@ -173,7 +207,8 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}
           cache-from: type=gha,scope=frontend-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=frontend-${{ matrix.arch }}
-          provenance: false
+          provenance: mode=max
+          sbom: true
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
@@ -193,11 +228,23 @@ jobs:
   # ── Merge webapi arch images → semver-tagged manifest ─────────────────────
   manifest-webapi:
     name: Publish webapi manifest
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    environment: release
     needs: docker-webapi
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    outputs:
+      digest: ${{ steps.manifest.outputs.digest }}
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+        with:
+          version: ${{ env.BUILDX_VERSION }}
+          driver-opts: image=${{ env.BUILDKIT_IMAGE }}
 
       - name: Log in to Quay.io
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
@@ -213,10 +260,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
             type=sha
-            type=raw,value=latest
 
       - name: Download digests
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -226,30 +270,89 @@ jobs:
           merge-multiple: true
 
       - name: Create manifest list and push
+        id: manifest
         run: |
+          set -euo pipefail
           cd "${{ runner.temp }}/digests"
+          VERSION="${GITHUB_REF_NAME#v}"
+          METADATA="${RUNNER_TEMP}/webapi-manifest-metadata.json"
           TAGS=$(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' ')
           TAG_ARGS=""
           for tag in $TAGS; do
             TAG_ARGS="$TAG_ARGS --tag $tag"
           done
           docker buildx imagetools create \
+            --metadata-file "$METADATA" \
             $TAG_ARGS \
             $(printf '${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}@sha256:%s ' *)
+          DIGEST=$(python3 - "$METADATA" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as f:
+              metadata = json.load(f)
+          print(metadata["containerimage.descriptor"]["digest"])
+          PY
+          )
+          if [[ ! "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::could not resolve registry digest for ${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}:${VERSION}"
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}:${VERSION} to $DIGEST"
 
       - name: Inspect manifest
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
           docker buildx imagetools inspect \
-            "${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}:latest"
+            "${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}:${VERSION}"
+
+      - name: Scan published image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}@${{ steps.manifest.outputs.digest }}
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          version: ${{ env.TRIVY_VERSION }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - name: Sign published image
+        run: |
+          cosign sign "${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}@${{ steps.manifest.outputs.digest }}" --yes
+
+      - name: Attest published image
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
 
   # ── Merge frontend arch images → semver-tagged manifest ───────────────────
   manifest-frontend:
     name: Publish frontend manifest
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    environment: release
     needs: docker-frontend
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    outputs:
+      digest: ${{ steps.manifest.outputs.digest }}
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+        with:
+          version: ${{ env.BUILDX_VERSION }}
+          driver-opts: image=${{ env.BUILDKIT_IMAGE }}
 
       - name: Log in to Quay.io
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
@@ -265,10 +368,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
             type=sha
-            type=raw,value=latest
 
       - name: Download digests
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -278,27 +378,80 @@ jobs:
           merge-multiple: true
 
       - name: Create manifest list and push
+        id: manifest
         run: |
+          set -euo pipefail
           cd "${{ runner.temp }}/digests"
+          VERSION="${GITHUB_REF_NAME#v}"
+          METADATA="${RUNNER_TEMP}/frontend-manifest-metadata.json"
           TAGS=$(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' ')
           TAG_ARGS=""
           for tag in $TAGS; do
             TAG_ARGS="$TAG_ARGS --tag $tag"
           done
           docker buildx imagetools create \
+            --metadata-file "$METADATA" \
             $TAG_ARGS \
             $(printf '${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}@sha256:%s ' *)
+          DIGEST=$(python3 - "$METADATA" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as f:
+              metadata = json.load(f)
+          print(metadata["containerimage.descriptor"]["digest"])
+          PY
+          )
+          if [[ ! "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::could not resolve registry digest for ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${VERSION}"
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${VERSION} to $DIGEST"
 
       - name: Inspect manifest
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
           docker buildx imagetools inspect \
-            "${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:latest"
+            "${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${VERSION}"
+
+      - name: Scan published image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}@${{ steps.manifest.outputs.digest }}
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          version: ${{ env.TRIVY_VERSION }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - name: Sign published image
+        run: |
+          cosign sign "${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}@${{ steps.manifest.outputs.digest }}" --yes
+
+      - name: Attest published image
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
 
   # ── Build and release Go webapi binary ───────────────────────────────────
   goreleaser:
     name: Release Go binary (GoReleaser)
-    runs-on: ubuntu-latest
-    needs: validate-webapi
+    runs-on: ubuntu-24.04
+    environment: release
+    needs: [validate-webapi, source-scan]
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
@@ -309,25 +462,92 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install Syft
+        id: syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          syft-version: ${{ env.SYFT_VERSION }}
+
+      - name: Add Syft to PATH
+        run: |
+          mkdir -p "${RUNNER_TEMP}/syft-bin"
+          ln -s "${{ steps.syft.outputs.cmd }}" "${RUNNER_TEMP}/syft-bin/syft"
+          echo "${RUNNER_TEMP}/syft-bin" >> "$GITHUB_PATH"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - name: Resolve release version
+        id: release-version
+        run: |
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
           distribution: goreleaser
-          version: "~> v2"
+          version: ${{ env.GORELEASER_VERSION }}
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Attest GoReleaser artifacts
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/checksums.txt
+            dist/*.spdx.json
+
+      - name: Attest GoReleaser SBOM (linux amd64)
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: dist/nebari-webapi_${{ steps.release-version.outputs.version }}_linux_amd64.tar.gz
+          sbom-path: dist/nebari-webapi_${{ steps.release-version.outputs.version }}_linux_amd64.tar.gz.spdx.json
+
+      - name: Attest GoReleaser SBOM (linux arm64)
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: dist/nebari-webapi_${{ steps.release-version.outputs.version }}_linux_arm64.tar.gz
+          sbom-path: dist/nebari-webapi_${{ steps.release-version.outputs.version }}_linux_arm64.tar.gz.spdx.json
+
+      - name: Attest GoReleaser SBOM (darwin amd64)
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: dist/nebari-webapi_${{ steps.release-version.outputs.version }}_darwin_amd64.tar.gz
+          sbom-path: dist/nebari-webapi_${{ steps.release-version.outputs.version }}_darwin_amd64.tar.gz.spdx.json
+
+      - name: Attest GoReleaser SBOM (darwin arm64)
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: dist/nebari-webapi_${{ steps.release-version.outputs.version }}_darwin_arm64.tar.gz
+          sbom-path: dist/nebari-webapi_${{ steps.release-version.outputs.version }}_darwin_arm64.tar.gz.spdx.json
+
   # ── Package and attach Helm chart to the GitHub release ───────────────────
   publish-chart:
     name: Publish Helm chart
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    environment: release
     needs: [manifest-webapi, manifest-frontend]
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
 
       - name: Verify chart is pinned to release tag
         run: |
@@ -335,8 +555,8 @@ jobs:
           # tag with a single commit that bumps Chart.yaml's version and
           # appVersion to match. If the source at this tag does not match
           # the tag's version, the release was not produced through
-          # release-prep and the packaged chart would float on whatever
-          # appVersion main has. Fail loudly rather than ship a broken artifact.
+          # release-prep. Fail loudly rather than ship a chart whose metadata
+          # does not match the release artifact.
           #
           # Note: this check assumes Chart.yaml's `version` and `appVersion`
           # move together (release-prep always writes both). If the project
@@ -357,33 +577,160 @@ jobs:
           fi
           echo "✔ Chart.yaml matches the release tag"
 
-      - name: Update Helm dependencies
+      - name: Build Helm dependencies
         run: |
-          helm dependency update charts/nebari-landing
+          helm dependency build charts/nebari-landing
+
+      - name: Pin chart images to release digests
+        env:
+          FRONTEND_DIGEST: ${{ needs.manifest-frontend.outputs.digest }}
+          WEBAPI_DIGEST: ${{ needs.manifest-webapi.outputs.digest }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("charts/nebari-landing/values.yaml")
+          targets = {
+              "frontend": os.environ["FRONTEND_DIGEST"],
+              "webapi": os.environ["WEBAPI_DIGEST"],
+          }
+          lines = path.read_text().splitlines()
+          section = None
+          in_image = False
+          image_indent = None
+          seen = set()
+
+          for i, line in enumerate(lines):
+              stripped = line.strip()
+              indent = len(line) - len(line.lstrip(" "))
+
+              if stripped and indent == 0 and stripped.endswith(":"):
+                  section = stripped[:-1]
+                  in_image = False
+                  image_indent = None
+
+              if section in targets and stripped == "image:" and indent == 2:
+                  in_image = True
+                  image_indent = indent
+                  continue
+
+              if in_image:
+                  if stripped and indent <= image_indent:
+                      in_image = False
+                      image_indent = None
+                      continue
+                  if stripped.startswith("digest:"):
+                      prefix = line[:indent]
+                      lines[i] = f'{prefix}digest: "{targets[section]}"'
+                      seen.add(section)
+
+          missing = set(targets) - seen
+          if missing:
+              raise SystemExit(f"missing digest fields for: {', '.join(sorted(missing))}")
+          path.write_text("\n".join(lines) + "\n")
+          PY
+
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          cache: true
+
+      - name: Scan chart runtime images
+        run: |
+          set -euo pipefail
+          manifest="${RUNNER_TEMP}/nebari-landing-rendered.yaml"
+          images="${RUNNER_TEMP}/nebari-landing-images.txt"
+
+          helm template nebari-landing charts/nebari-landing \
+            --namespace nebari-system \
+            > "$manifest"
+          helm template nebari-landing charts/nebari-landing \
+            --namespace nebari-system \
+            --set redis.auth.existingSecret=nebari-landing-redis \
+            >> "$manifest"
+
+          python3 - "$manifest" "$images" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          manifest = Path(sys.argv[1])
+          images_path = Path(sys.argv[2])
+          digest_ref = re.compile(r"@sha256:[a-f0-9]{64}$")
+          images = set()
+
+          for line in manifest.read_text().splitlines():
+              stripped = line.strip()
+              if not stripped.startswith("image:"):
+                  continue
+              _, value = stripped.split(":", 1)
+              image = value.strip().strip("\"'")
+              if image:
+                  images.add(image)
+
+          if not images:
+              raise SystemExit("::error::no container images found in rendered chart")
+
+          unpinned = sorted(image for image in images if not digest_ref.search(image))
+          if unpinned:
+              print("::error::rendered chart contains image references that are not pinned by digest")
+              for image in unpinned:
+                  print(image)
+              raise SystemExit(1)
+
+          images_path.write_text("\n".join(sorted(images)) + "\n")
+          PY
+
+          while IFS= read -r image; do
+            echo "::group::Trivy image scan: $image"
+            trivy image \
+              --scanners vuln \
+              --vuln-type os,library \
+              --severity HIGH,CRITICAL \
+              --exit-code 1 \
+              --no-progress \
+              "$image"
+            echo "::endgroup::"
+          done < "$images"
 
       - name: Package Helm chart
         run: |
           helm package charts/nebari-landing --destination dist/
 
+      - name: Checksum and sign chart
+        run: |
+          for chart in dist/*.tgz; do
+            sha256sum "$chart" > "${chart}.sha256"
+            cosign sign-blob --bundle "${chart}.sigstore.json" "$chart" --yes
+            cosign sign-blob --bundle "${chart}.sha256.sigstore.json" "${chart}.sha256" --yes
+          done
+
+      - name: Attest chart artifacts
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: |
+            dist/*.tgz
+            dist/*.tgz.sha256
+
       - name: Attach chart to release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3
         with:
-          files: dist/*.tgz
+          files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build summary
         run: |
-          # The git tag is v-prefixed (v0.2.0) but docker/metadata-action's
-          # type=semver,pattern={{version}} strips the v before pushing to
-          # Quay, so the actual image tag is the unprefixed VERSION. Use
-          # that for the summary so the printed pull commands are copy-pasteable.
+          # The git tag is v-prefixed (v0.2.0), while the chart filename uses
+          # the unprefixed version.
           VERSION="${GITHUB_REF_NAME#v}"
           echo "### Release ${{ github.event.release.tag_name }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Images published:**" >> "$GITHUB_STEP_SUMMARY"
-          echo "- \`${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}:${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- \`${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ env.REGISTRY }}/${{ env.WEBAPI_IMAGE }}@${{ needs.manifest-webapi.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}@${{ needs.manifest-frontend.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Helm chart:** \`nebari-landing-${VERSION}.tgz\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -392,9 +739,11 @@ jobs:
   # ── Sync Helm chart repository after the release artifact is published ────
   sync-helm-chart:
     name: Sync Helm chart repository
-    needs: publish-chart
+    needs: [publish-chart, manifest-webapi, manifest-frontend]
     uses: ./.github/workflows/sync-helm-chart.yml
     with:
       tag: ${{ github.event.release.tag_name }}
+      webapi-digest: ${{ needs.manifest-webapi.outputs.digest }}
+      frontend-digest: ${{ needs.manifest-frontend.outputs.digest }}
       dry-run: false
     secrets: inherit
