@@ -128,8 +128,17 @@ test("services table keeps headers and rows in bounds while resizing", async ({ 
     await expect(actionsHeader).toBeVisible();
     await expect(pinButton).toBeVisible();
     await expect(longDescription).toBeVisible();
-    await tableContainer.focus();
-    await expect(tableContainer).toBeFocused();
+    // The scroll container is a tab stop only while its content overflows.
+    const isScrollable = await tableContainer.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    );
+    if (isScrollable) {
+      await expect(tableContainer).toHaveAttribute("tabindex", "0");
+      await tableContainer.focus();
+      await expect(tableContainer).toBeFocused();
+    } else {
+      await expect(tableContainer).not.toHaveAttribute("tabindex");
+    }
 
     const iconBox = await getBox(serviceIcon);
     const titleBox = await getBox(serviceTitle);

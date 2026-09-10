@@ -21,8 +21,8 @@ export function ServicesAccordion({
 }: ServicesAccordionProps) {
   return (
     <Accordion multiple defaultValue={["pinned-services", "all-services"]}>
-      <AccordionItem value="pinned-services" className="not-last:border-b-0">
-        <AccordionTrigger className="z-10 w-fit flex-none justify-start gap-3 pr-0 transition-none hover:no-underline focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-ring [&>svg]:order-first [&>svg]:shrink-0">
+      <AccordionItem value="pinned-services" className="border-b-0">
+        <AccordionTrigger className="-ml-2 w-fit flex-none justify-start gap-3 hover:no-underline [&>svg]:order-first [&>svg]:shrink-0">
           <div>
             <div className="font-semibold text-(--accordion-trigger-foreground)">
               Pinned services
@@ -33,19 +33,19 @@ export function ServicesAccordion({
           </div>
         </AccordionTrigger>
 
-        <AccordionContent className="pt-2 pb-6">
+        <AccordionContent className="text-foreground" contentClassName="px-0 pt-2 pb-6">
           <PinnedServicesGrid services={pinnedServices} />
         </AccordionContent>
       </AccordionItem>
 
       <AccordionItem value="all-services">
-        <AccordionTrigger className="z-10 w-fit flex-none justify-start gap-3 pr-0 transition-none hover:no-underline focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-ring [&>svg]:order-first [&>svg]:shrink-0">
+        <AccordionTrigger className="-ml-2 w-fit flex-none justify-start gap-3 hover:no-underline [&>svg]:order-first [&>svg]:shrink-0">
           <div>
             <div className="font-semibold text-(--accordion-trigger-foreground)">All services</div>
           </div>
         </AccordionTrigger>
 
-        <AccordionContent className="pt-2 pb-6">
+        <AccordionContent className="text-foreground" contentClassName="px-0 pt-2 pb-6">
           <ServicesSection services={services} onTogglePin={onTogglePin} />
         </AccordionContent>
       </AccordionItem>
