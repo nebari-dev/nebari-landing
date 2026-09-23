@@ -2,11 +2,12 @@
 #
 # When called by release.yml or run manually, this workflow:
 #
-#   1. Bumps Chart.yaml version + appVersion to match the release tag.
-#   2. Pins nebari image tags (quay.io/nebari/*) in values.yaml to the
-#      release tag; third-party images (oauth2-proxy, busybox, …) are left
-#      untouched.
-#   3. Opens a PR in nebari-dev/helm-repository via the sync-chart composite
+#   1. Checks out the release tag and verifies Chart.yaml is already pinned to
+#      it (version and appVersion both equal the tag minus its leading 'v').
+#      release-prep.yaml writes that pin at tag time, so the chart is synced
+#      exactly as tagged: no rewriting here. values.yaml image tags stay
+#      empty and the deployment templates fall back to .Chart.AppVersion.
+#   2. Opens a PR in nebari-dev/helm-repository via the sync-chart composite
 #      action.  When that PR is merged the helm-repository CI packages and
 #      publishes the chart to both GitHub Pages and quay.io/nebari-dev (OCI).
 #
@@ -56,56 +57,44 @@ jobs:
       contents: read  # to check out this repository
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-
       # ── Resolve the release tag ───────────────────────────────────────────
       # Called runs pass the release tag from release.yml. Manual runs use the
       # supplied 'tag' input so dry-run / manual testing works.
       - name: Resolve release tag
         id: tag
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          TAG="${{ inputs.tag }}"
           if [[ -z "$TAG" ]]; then
             echo "::error::No release tag found. Provide the 'tag' input (e.g. v0.2.0)."
             exit 1
           fi
           echo "value=${TAG}" >> "$GITHUB_OUTPUT"
 
-      # ── Bump chart version to the release tag ─────────────────────────────
-      - name: Bump chart version to release tag
+      # Check out the tag itself, not the dispatching ref: only the tag carries
+      # the release-prep commit that pins Chart.yaml. A manual run dispatched
+      # from main would otherwise sync main's `appVersion: "latest"`.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.value }}
+
+      # ── Verify the tagged chart is pinned; do not rewrite it ──────────────
+      # Same check as release.yml's publish-chart job. It is repeated here
+      # because this workflow can also be run on its own from the Actions tab.
+      - name: Verify chart is pinned to release tag
+        env:
+          TAG: ${{ steps.tag.outputs.value }}
         run: |
-          TAG="${{ steps.tag.outputs.value }}"
-          VERSION="${TAG#v}"   # strip leading 'v', e.g. v1.2.3 → 1.2.3
-
-          sed -i "s/^version:.*/version: ${VERSION}/" charts/nebari-landing/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${TAG}\"/" charts/nebari-landing/Chart.yaml
-
-          echo "Chart version  → ${VERSION}"
-          echo "Chart appVersion → ${TAG}"
-
-      # ── Pin nebari image tags; leave third-party images alone ─────────────
-      # Only lines whose preceding `repository:` value starts with
-      # quay.io/nebari/ are updated.  The oauth2-proxy and busybox images
-      # (already pinned or third-party) are not touched.
-      - name: Pin nebari image tags in values.yaml
-        run: |
-          TAG="${{ steps.tag.outputs.value }}"
-          python3 - <<PYEOF
-          import re, sys
-          tag = "$TAG"
-          path = "charts/nebari-landing/values.yaml"
-          content = open(path).read()
-          # Match: "repository: quay.io/nebari/<anything>\n<whitespace>tag: "latest""
-          # and replace tag value with the release tag.
-          updated = re.sub(
-              r'(repository: quay\.io/nebari/[^\n]+\n\s+tag:) "latest"',
-              fr'\1 "{tag}"',
-              content,
-          )
-          open(path, "w").write(updated)
-          changed = updated != content
-          print(f"values.yaml {'updated' if changed else 'unchanged'}")
-          PYEOF
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          # `^` anchors skip the indented `version:` of the Redis dependency.
+          CHART_VERSION=$(awk '/^version:/ {print $2}' charts/nebari-landing/Chart.yaml)
+          APP_VERSION=$(awk '/^appVersion:/ {gsub(/"/, "", $2); print $2}' charts/nebari-landing/Chart.yaml)
+          echo "tag=$TAG  expected=$VERSION  version=$CHART_VERSION  appVersion=$APP_VERSION"
+          if [[ "$CHART_VERSION" != "$VERSION" || "$APP_VERSION" != "$VERSION" ]]; then
+            echo "::error::Chart.yaml at $TAG is not pinned to $VERSION. Cut the tag with the release-prep workflow."
+            exit 1
+          fi
 
       # ── Update chart dependencies ─────────────────────────────────────────
       - name: Install Helm
