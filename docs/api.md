@@ -64,7 +64,8 @@ directly on the upgrade. The `/ws` endpoint accepts either mechanism.
 | Method | Path | Summary |
 |--------|------|---------|
 | `GET` | [`/admin/access-requests`](#get-adminaccess-requests) | List access requests (admin) |
-| `PUT` | [`/admin/access-requests/{id}/{action}`](#put-adminaccess-requestsidaction) | Approve or deny an access request (admin) |
+| `DELETE` | [`/admin/access-requests/{id}`](#delete-adminaccess-requestsid) | Revoke an access request entitlement (admin) |
+| `PUT` | [`/admin/access-requests/{id}/{action}`](#put-adminaccess-requestsidaction) | Approve, deny, or revoke an access request (admin) |
 | `POST` | [`/admin/notifications`](#post-adminnotifications) | Create a notification (admin) |
 | `GET` | [`/caller-identity`](#get-caller-identity) | Get the caller's identity |
 | `GET` | [`/categories`](#get-categories) | List service categories |
@@ -95,11 +96,24 @@ curl -s -X GET http://localhost:8080/api/v1/admin/access-requests \
 
 ---
 
+### <a name="delete-adminaccess-requestsid"></a>`DELETE /admin/access-requests/{id}`
+
+Revoke an access request entitlement (admin)
+
+Revokes a previously approved landing-owned entitlement. The record is retained for audit, but it no longer grants service access.
+
+```sh
+curl -s -X DELETE http://localhost:8080/api/v1/admin/access-requests/{id} \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
 ### <a name="put-adminaccess-requestsidaction"></a>`PUT /admin/access-requests/{id}/{action}`
 
-Approve or deny an access request (admin)
+Approve, deny, or revoke an access request (admin)
 
-Action is encoded in the URL: PUT .../{id}/approve or .../{id}/deny. Approving also adds the user to the service's required Keycloak groups when a Keycloak admin client is configured.
+Action is encoded in the URL: PUT .../{id}/approve, .../{id}/deny, or .../{id}/revoke. Approving grants access only to the request's target service inside the landing API until its expiresAt timestamp; it records the human approver and target owner, and never creates or mutates Keycloak groups.
 
 ```sh
 curl -s -X PUT http://localhost:8080/api/v1/admin/access-requests/{id}/{action} \
@@ -235,7 +249,7 @@ curl -s -X DELETE http://localhost:8080/api/v1/pins/{uid} \
 
 List discoverable services
 
-Returns the union of public services plus any private services the caller may access based on their JWT groups.
+Returns the union of public services plus any private services the caller may access based on their JWT groups or approved service-scoped access requests.
 Anonymous callers see public services only; bearer-token callers additionally see private services they have access to. The "pinned" flag reflects the caller's own pin list (always false for anonymous).
 
 ```sh
@@ -249,7 +263,7 @@ curl -s -X GET http://localhost:8080/api/v1/services \
 
 Get a service by UID
 
-Returns the service if the caller may access it. Anonymous callers may only fetch public services; private services require a JWT whose groups intersect the service's required groups.
+Returns the service if the caller may access it. Anonymous callers may only fetch public services; private services require a JWT whose groups intersect the service's required groups or an approved access request for this service.
 
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/services/{id} \
@@ -262,7 +276,7 @@ curl -s -X GET http://localhost:8080/api/v1/services/{id} \
 
 Request access to a private service
 
-Requires authentication. Creates a pending access request for the caller against the named service; an admin then approves or denies via /admin/access-requests/{id}/{approve|deny}.
+Requires authentication. Creates a pending access request for the caller against the named service; an admin then approves, denies, or revokes via /admin/access-requests. Approval grants access only to this service inside the landing API until expiresAt and does not mutate Keycloak groups.
 
 ```sh
 curl -s -X POST http://localhost:8080/api/v1/services/{id}/request_access \

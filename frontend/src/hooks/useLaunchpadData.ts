@@ -9,9 +9,13 @@ import { createWebSocketClient } from "../api/ws";
 export function useLaunchpadData(user: unknown) {
   const [services, setServices] = useState<Service[]>([]);
 
-  useEffect(() => {
+  const refreshServices = useCallback(() => {
     listServices().then(setServices).catch(console.error);
-  }, [user]);
+  }, []);
+
+  useEffect(() => {
+    refreshServices();
+  }, [user, refreshServices]);
 
   const onTogglePin = useCallback(async (serviceId: string, nextPinned: boolean) => {
     let previousPinned: boolean | undefined;
@@ -74,7 +78,10 @@ export function useLaunchpadData(user: unknown) {
         }
         return {};
       },
-      onOpen: () => console.log("app websocket connected", { authenticated: isAuthenticated }),
+      onOpen: () => {
+        console.log("app websocket connected", { authenticated: isAuthenticated });
+        refreshServices();
+      },
       onClose: () => console.log("app websocket disconnected"),
       onError: (event) => console.error("app websocket error", event),
       onMessage: (message) => {
@@ -123,7 +130,7 @@ export function useLaunchpadData(user: unknown) {
         });
       },
     });
-  }, [user]);
+  }, [user, refreshServices]);
 
   useEffect(() => {
     appSocket.connect();

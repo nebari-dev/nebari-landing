@@ -325,7 +325,6 @@ npm run dev
   - `auth/` — JWT validation.
   - `cache/` — Service cache (backed by Redis).
   - `health/` — Health check endpoint.
-  - `keycloak/` — Keycloak client.
   - `notifications/` — Notification store.
   - `pins/` — Pin store.
   - `watcher/` — NebariApp CR watcher.

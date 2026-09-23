@@ -7,10 +7,6 @@
 #
 # The Makefile 'install' target uses this file automatically.
 #
-# Pre-requisites (already created by other make targets):
-#   Secret nebari-realm-admin-credentials  (make postgresql-secrets)
-#     keys: username, password
-
 # ---------------------------------------------------------------------------
 # Webapi
 # ---------------------------------------------------------------------------
@@ -23,7 +19,7 @@ webapi:
     pullPolicy: Never
 
   keycloak:
-    # Cluster-internal URL for back-channel calls (JWKS fetch, admin API)
+    # Cluster-internal URL for JWKS fetches.
     # keycloakx chart v7+ exposes the service on httpPort (8080), not the HTTP default 80.
     url: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080"
     # Issuer URL that Keycloak stamps in JWTs (matches KC_HOSTNAME_URL in values.yaml)
@@ -31,8 +27,10 @@ webapi:
     realm: "nebari"
     enableAuth: true
     adminGroup: "admin"
-    adminSecretName: "nebari-realm-admin-credentials"
-    adminSecretNamespace: "keycloak"
+
+  accessRequests:
+    approvalTTL: "720h"
+    refreshInterval: "30s"
 
   # Set debugMode: true to activate GET /api/v1/debug and verbose JWT logging.
   # Useful when authenticated services don't show up — the endpoint reveals
