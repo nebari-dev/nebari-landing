@@ -92,6 +92,13 @@ When updating deployment configuration:
 
 **Note**: Chart versioning is handled during releases. Don't manually update `Chart.yaml` versions.
 
+Releases follow [Effort-based Versioning (EffVer)](https://jacobtomlinson.dev/effver/),
+not SemVer: the bumped digit tells upgraders how much effort to expect, not
+whether an API technically broke. If your change means chart users have to edit
+their values or config, say so in the PR description so whoever cuts the
+release can pick the right bump. See
+[`docs/maintainers/release-checklist.md`](docs/maintainers/release-checklist.md#1-determine-release-version).
+
 ## Local Development
 
 ### Running Locally with Docker Compose

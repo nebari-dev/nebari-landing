@@ -14,13 +14,27 @@ This document provides step-by-step instructions for creating a new release of n
 
 ### 1. Determine Release Version
 
-Follow [Semantic Versioning](https://semver.org/):
-- **Patch** (`0.1.1`): Bug fixes, small improvements
-- **Minor** (`0.2.0`): New features, non-breaking changes
-- **Major** (`1.0.0`): Breaking changes
+nebari-landing has followed [Effort-based Versioning (EffVer)](https://jacobtomlinson.dev/effver/)
+since `v0.1.0`. Pick the digit to bump by how much effort someone upgrading a
+deployment (chart values, `config.json` branding, Keycloak wiring, API clients)
+should expect:
+
+| Bump | Example | Signal | Typical changes |
+|---|---|---|---|
+| **MACRO** (`X.y.z`) | `1.0.0` | "Expect significant effort." Read the upgrade notes before touching anything. | Chart values restructured or removed, auth/Keycloak contract changes, API changes clients must adapt to |
+| **MESO** (`x.Y.z`) | `0.2.0` | "Could require some effort." Check the release notes. | New chart values or opt-in features, new API fields, deprecations |
+| **MICRO** (`x.y.Z`) | `0.1.6` | "Should be safe." Bump without reading further. | Bug fixes, docs, internal refactors, dependency bumps with no config impact |
+
+While MACRO is `0` the project is still in early development, so a MESO or
+MICRO bump may occasionally cost more effort than the digit implies. When that
+happens, say so in the release notes.
+
+The tag format does not change: releases are still `vX.Y.Z`, the SemVer-shaped
+form that GitHub Releases, Helm chart versions and the image tagging in
+`release.yml` expect. Only the meaning of each digit follows EffVer.
 
 The release-prep workflow adds the `v` prefix when creating the git tag. You
-input the version without it (e.g. `0.1.0-alpha.6`, not `v0.1.0-alpha.6`).
+input the version without it (e.g. `0.1.6`, not `v0.1.6`).
 
 ### 2. Run the Release Prep workflow
 
@@ -28,7 +42,7 @@ Go to **Actions → [Release prep](https://github.com/nebari-dev/nebari-landing/
 
 Enter the version (e.g. `0.2.0`) and click **Run workflow**. The workflow will:
 
-- ✅ Validate the version (semver, no leading `v`).
+- ✅ Validate the version format (`X.Y.Z` with an optional pre-release suffix, no leading `v`).
 - ✅ Refuse to overwrite an existing tag.
 - ✅ Bump `charts/nebari-landing/Chart.yaml` (`version` + `appVersion`) on a detached HEAD.
 - ✅ Commit `chore: prepare chart for v<version>` on that detached HEAD.
@@ -58,7 +72,7 @@ The GitHub Actions workflow will automatically:
 2. **Build** multi-arch Docker images:
    - `quay.io/nebari/nebari-webapi:0.2.0`
    - `quay.io/nebari/nebari-landing:0.2.0`
-3. **Publish** images to Quay.io with semver tags (no `v` prefix —
+3. **Publish** images to Quay.io with `X.Y.Z` tags (no `v` prefix —
    docker/metadata-action strips it).
 4. **Release** Go binary via GoReleaser (attached to the GitHub release).
 5. **Package** and attach Helm chart to the release.
