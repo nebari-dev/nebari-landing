@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
 	"github.com/nebari-dev/nebari-landing/internal/auth"
@@ -612,6 +614,92 @@ func TestHandleDebug_OnlyRegisteredWhenDebugModeEnabled(t *testing.T) {
 	}
 	if body.Auth.Enabled {
 		t.Error("expected auth.enabled=false")
+	}
+}
+
+func TestHandleDebug_IncludesJWTValidatorStatsAndCapsAuthorizationHeader(t *testing.T) {
+	h := NewHandler(cache.NewServiceCache(), &auth.JWTValidator{}, true, nil, nil, WithDebugMode())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/debug", nil)
+	req.Header.Set("Authorization", "Bearer "+strings.Repeat("a", maxAuthorizationHeaderBytes))
+	rr := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var body DebugResponse
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode debug response: %v", err)
+	}
+	if body.Auth.JWTValidator == nil {
+		t.Fatal("expected JWT validator stats in debug response")
+	}
+	if body.Auth.JWTValidator.Ready {
+		t.Error("expected zero-value validator to report ready=false")
+	}
+	if !strings.Contains(body.Auth.ValidationError, "authorization header exceeds maximum size") {
+		t.Errorf("expected oversized header validation error, got %q", body.Auth.ValidationError)
+	}
+}
+
+func TestHandleMetrics_ExposesJWTValidatorStatsWithoutDebug(t *testing.T) {
+	h := NewHandler(cache.NewServiceCache(), &auth.JWTValidator{}, true, nil, nil)
+
+	rr := doGet(t, h.Routes(), "/metrics")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+	for _, want := range []string{
+		"nebari_landing_jwt_validator_configured 1",
+		"nebari_landing_jwt_validator_ready 0",
+		"nebari_landing_jwks_refresh_attempts_total 0",
+		"nebari_landing_unknown_kid_cache_entries 0",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("metrics response missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestRequestSource_UsesProxyAppendedForwardedIP(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/services", nil)
+	req.RemoteAddr = "10.2.0.15:41234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.250, 203.0.113.10")
+	req.Header.Set("X-Real-IP", "10.2.0.15")
+
+	if got := requestSource(req); got != "203.0.113.10" {
+		t.Errorf("expected proxy-appended forwarded IP, got %q", got)
+	}
+}
+
+func TestAuthFailureLimiter_LimitsPerSourceAndGlobally(t *testing.T) {
+	now := time.Unix(100, 0)
+	limiter := newAuthFailureLimiter(time.Minute, 2, 3, 10)
+	limiter.now = func() time.Time { return now }
+
+	if limiter.limited("10.0.0.1") {
+		t.Fatal("fresh source should not be limited")
+	}
+	limiter.recordFailure("10.0.0.1")
+	limiter.recordFailure("10.0.0.1")
+	if !limiter.limited("10.0.0.1") {
+		t.Fatal("source should be limited after reaching source threshold")
+	}
+	if limiter.limited("10.0.0.2") {
+		t.Fatal("different source should not be source-limited before global threshold")
+	}
+
+	limiter.recordFailure("10.0.0.2")
+	if !limiter.limited("10.0.0.2") {
+		t.Fatal("all sources should be limited after reaching global threshold")
+	}
+
+	now = now.Add(time.Minute)
+	if limiter.limited("10.0.0.1") {
+		t.Fatal("source should be allowed after the window rolls over")
 	}
 }
 

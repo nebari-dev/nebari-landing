@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
@@ -21,6 +24,14 @@ import (
 )
 
 var log = ctrl.Log.WithName("api")
+
+const (
+	maxAuthorizationHeaderBytes = 64*1024 + len("Bearer ")
+	authFailureWindow           = time.Minute
+	authFailurePerSourceLimit   = 60
+	authFailureGlobalLimit      = 600
+	authFailureMaxSources       = 4096
+)
 
 // Handler handles HTTP requests for the landing page API
 type Handler struct {
@@ -56,6 +67,10 @@ type Handler struct {
 	// Use WithClaimsExtractor in tests to inject synthetic claims without
 	// needing a real Keycloak instance or signed token.
 	claimsExtractor func(*http.Request) (*auth.Claims, bool)
+	// authFailureLimiter dampens repeated bad-token validation work by source
+	// and globally. It is process-local and intentionally applies only after
+	// observed validation failures; valid traffic is not pre-emptively charged.
+	authFailureLimiter *authFailureLimiter
 	// wsTicketStore, when non-nil, enables the POST /api/v1/ws-ticket endpoint.
 	// Browsers cannot send Authorization headers on WebSocket upgrade requests,
 	// so the frontend exchanges a short-lived single-use ticket via that endpoint
@@ -151,6 +166,12 @@ func NewHandler(serviceCache *cache.ServiceCache, jwtValidator *auth.JWTValidato
 		pinStore:       pinStore,
 		adminGroup:     "admin",
 		allowedOrigins: []string{"*"},
+		authFailureLimiter: newAuthFailureLimiter(
+			authFailureWindow,
+			authFailurePerSourceLimit,
+			authFailureGlobalLimit,
+			authFailureMaxSources,
+		),
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -169,6 +190,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/v1/health", h.handleHealth)
 	mux.HandleFunc("/api/v1/notifications", h.handleGetNotifications)
 	mux.HandleFunc("/api/v1/notifications/", h.handleNotificationSub) // /{id}/read
+	mux.HandleFunc("/metrics", h.handleMetrics)
 
 	// WebSocket — real-time service updates
 	if h.hub != nil {
@@ -330,6 +352,144 @@ func expFromClaims(claims *auth.Claims) time.Time {
 		return time.Time{}
 	}
 	return claims.ExpiresAt.Time
+}
+
+type authFailureBucket struct {
+	windowStart time.Time
+	count       int
+}
+
+type authFailureLimiter struct {
+	mu             sync.Mutex
+	window         time.Duration
+	perSourceLimit int
+	globalLimit    int
+	maxSources     int
+	sources        map[string]authFailureBucket
+	global         authFailureBucket
+	now            func() time.Time
+}
+
+func newAuthFailureLimiter(window time.Duration, perSourceLimit, globalLimit, maxSources int) *authFailureLimiter {
+	return &authFailureLimiter{
+		window:         window,
+		perSourceLimit: perSourceLimit,
+		globalLimit:    globalLimit,
+		maxSources:     maxSources,
+		sources:        make(map[string]authFailureBucket),
+		now:            time.Now,
+	}
+}
+
+func (l *authFailureLimiter) limited(source string) bool {
+	if l == nil {
+		return false
+	}
+	now := l.now()
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.global.resetIfExpired(now, l.window)
+	sourceBucket := l.sourceBucketLocked(source, now)
+	return l.globalLimit > 0 && l.global.count >= l.globalLimit ||
+		l.perSourceLimit > 0 && sourceBucket.count >= l.perSourceLimit
+}
+
+func (l *authFailureLimiter) recordFailure(source string) {
+	if l == nil {
+		return
+	}
+	now := l.now()
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.global.resetIfExpired(now, l.window)
+	l.global.count++
+
+	sourceBucket := l.sourceBucketLocked(source, now)
+	sourceBucket.count++
+	l.sources[source] = sourceBucket
+}
+
+func (l *authFailureLimiter) recordSuccess(source string) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	delete(l.sources, source)
+	l.mu.Unlock()
+}
+
+func (l *authFailureLimiter) sourceBucketLocked(source string, now time.Time) authFailureBucket {
+	if source == "" {
+		source = "unknown"
+	}
+	sourceBucket := l.sources[source]
+	sourceBucket.resetIfExpired(now, l.window)
+
+	if _, exists := l.sources[source]; !exists && l.maxSources > 0 && len(l.sources) >= l.maxSources {
+		l.pruneSourcesLocked(now)
+	}
+	if _, exists := l.sources[source]; !exists && l.maxSources > 0 && len(l.sources) >= l.maxSources {
+		for cachedSource := range l.sources {
+			delete(l.sources, cachedSource)
+			break
+		}
+	}
+	l.sources[source] = sourceBucket
+	return sourceBucket
+}
+
+func (l *authFailureLimiter) pruneSourcesLocked(now time.Time) {
+	for source, bucket := range l.sources {
+		bucket.resetIfExpired(now, l.window)
+		if bucket.count == 0 {
+			delete(l.sources, source)
+		}
+	}
+}
+
+func (b *authFailureBucket) resetIfExpired(now time.Time, window time.Duration) {
+	if b.windowStart.IsZero() || window <= 0 || now.Sub(b.windowStart) >= window {
+		b.windowStart = now
+		b.count = 0
+	}
+}
+
+func requestSource(r *http.Request) string {
+	// nginx appends its direct peer address to X-Forwarded-For before proxying
+	// to the webapi; use that rightmost entry so client-supplied prefixes cannot
+	// pick their own rate-limit bucket.
+	if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
+		parts := strings.Split(forwardedFor, ",")
+		if source := normalizeIP(parts[len(parts)-1]); source != "" {
+			return source
+		}
+	}
+	if source := normalizeIP(r.Header.Get("X-Real-IP")); source != "" {
+		return source
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil && host != "" {
+		return host
+	}
+	if r.RemoteAddr != "" {
+		return r.RemoteAddr
+	}
+	return "unknown"
+}
+
+func normalizeIP(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if ip := net.ParseIP(value); ip != nil {
+		return ip.String()
+	}
+	return ""
 }
 
 // WSTicketResponse is the response body for POST /api/v1/ws-ticket.
@@ -1131,17 +1291,91 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+
+	// Accumulate the exposition into a buffer so a single write reports any
+	// error once, rather than ignoring the return value of every line.
+	var b strings.Builder
+
+	configured := 0
+	if h.jwtValidator != nil {
+		configured = 1
+	}
+	fmt.Fprintf(&b, "# HELP nebari_landing_jwt_validator_configured Whether the JWT validator is configured.\n")
+	fmt.Fprintf(&b, "# TYPE nebari_landing_jwt_validator_configured gauge\n")
+	fmt.Fprintf(&b, "nebari_landing_jwt_validator_configured %d\n", configured)
+
+	if h.jwtValidator != nil {
+		stats := h.jwtValidator.Stats()
+		ready := 0
+		if stats.Ready {
+			ready = 1
+		}
+
+		fmt.Fprintf(&b, "# HELP nebari_landing_jwt_validator_ready Whether initial JWKS loading has completed.\n")
+		fmt.Fprintf(&b, "# TYPE nebari_landing_jwt_validator_ready gauge\n")
+		fmt.Fprintf(&b, "nebari_landing_jwt_validator_ready %d\n", ready)
+		fmt.Fprintf(&b, "# HELP nebari_landing_jwt_validator_keys Cached JWT signing keys.\n")
+		fmt.Fprintf(&b, "# TYPE nebari_landing_jwt_validator_keys gauge\n")
+		fmt.Fprintf(&b, "nebari_landing_jwt_validator_keys %d\n", stats.KeyCount)
+		if !stats.LastFetch.IsZero() {
+			fmt.Fprintf(&b, "# HELP nebari_landing_jwt_validator_last_fetch_timestamp_seconds Last successful JWKS fetch time.\n")
+			fmt.Fprintf(&b, "# TYPE nebari_landing_jwt_validator_last_fetch_timestamp_seconds gauge\n")
+			fmt.Fprintf(&b, "nebari_landing_jwt_validator_last_fetch_timestamp_seconds %d\n", stats.LastFetch.Unix())
+		}
+		if !stats.LastRefreshAttempt.IsZero() {
+			fmt.Fprintf(&b, "# HELP nebari_landing_jwt_validator_last_refresh_attempt_timestamp_seconds Last attempted JWKS refresh time.\n")
+			fmt.Fprintf(&b, "# TYPE nebari_landing_jwt_validator_last_refresh_attempt_timestamp_seconds gauge\n")
+			fmt.Fprintf(&b, "nebari_landing_jwt_validator_last_refresh_attempt_timestamp_seconds %d\n", stats.LastRefreshAttempt.Unix())
+		}
+
+		fmt.Fprintf(&b, "# HELP nebari_landing_jwks_refresh_attempts_total JWKS refresh attempts.\n")
+		fmt.Fprintf(&b, "# TYPE nebari_landing_jwks_refresh_attempts_total counter\n")
+		fmt.Fprintf(&b, "nebari_landing_jwks_refresh_attempts_total %d\n", stats.JWKSRefreshAttempts)
+		fmt.Fprintf(&b, "# HELP nebari_landing_jwks_refresh_successes_total Successful JWKS refreshes.\n")
+		fmt.Fprintf(&b, "# TYPE nebari_landing_jwks_refresh_successes_total counter\n")
+		fmt.Fprintf(&b, "nebari_landing_jwks_refresh_successes_total %d\n", stats.JWKSRefreshSuccesses)
+		fmt.Fprintf(&b, "# HELP nebari_landing_jwks_refresh_failures_total Failed JWKS refreshes.\n")
+		fmt.Fprintf(&b, "# TYPE nebari_landing_jwks_refresh_failures_total counter\n")
+		fmt.Fprintf(&b, "nebari_landing_jwks_refresh_failures_total %d\n", stats.JWKSRefreshFailures)
+		fmt.Fprintf(&b, "# HELP nebari_landing_jwks_refresh_skipped_total JWKS refreshes skipped by cooldown.\n")
+		fmt.Fprintf(&b, "# TYPE nebari_landing_jwks_refresh_skipped_total counter\n")
+		fmt.Fprintf(&b, "nebari_landing_jwks_refresh_skipped_total %d\n", stats.JWKSRefreshSkipped)
+		fmt.Fprintf(&b, "# HELP nebari_landing_jwks_refresh_coalesced_total JWKS refreshes coalesced while another refresh was running.\n")
+		fmt.Fprintf(&b, "# TYPE nebari_landing_jwks_refresh_coalesced_total counter\n")
+		fmt.Fprintf(&b, "nebari_landing_jwks_refresh_coalesced_total %d\n", stats.JWKSRefreshCoalesced)
+		fmt.Fprintf(&b, "# HELP nebari_landing_unknown_kid_total JWTs that referenced an unknown key ID.\n")
+		fmt.Fprintf(&b, "# TYPE nebari_landing_unknown_kid_total counter\n")
+		fmt.Fprintf(&b, "nebari_landing_unknown_kid_total %d\n", stats.UnknownKIDTotal)
+		fmt.Fprintf(&b, "# HELP nebari_landing_unknown_kid_cache_hits_total Unknown key IDs rejected from the negative cache.\n")
+		fmt.Fprintf(&b, "# TYPE nebari_landing_unknown_kid_cache_hits_total counter\n")
+		fmt.Fprintf(&b, "nebari_landing_unknown_kid_cache_hits_total %d\n", stats.UnknownKIDCacheHits)
+		fmt.Fprintf(&b, "# HELP nebari_landing_unknown_kid_cache_entries Unknown key IDs currently held in the negative cache.\n")
+		fmt.Fprintf(&b, "# TYPE nebari_landing_unknown_kid_cache_entries gauge\n")
+		fmt.Fprintf(&b, "nebari_landing_unknown_kid_cache_entries %d\n", stats.UnknownKIDCacheEntries)
+	}
+
+	if _, err := io.WriteString(w, b.String()); err != nil {
+		log.Info("Failed to write metrics response", "error", err, "path", r.URL.Path)
+	}
+}
+
 // extractAndValidateJWT returns the parsed claims for the request, a boolean
 // indicating whether validation succeeded, and an error.
 //
-// The error is non-nil only when the caller presented credentials but the JWT
-// validator's initial JWKS fetch has not yet completed (auth.ErrNotReady). All
-// other failure modes — missing header, malformed scheme, bad signature, wrong
-// issuer — return (nil, false, nil) so the caller can treat the request as
-// anonymous. Callers that gate behavior on auth (returning a 401/403/private
-// data) should check the error first and emit 503 + Retry-After via
-// writeAuthWarmupResponse so clients distinguish "auth offline" from "your
-// token is bad" (401) or "your stuff disappeared" (silent anonymous).
+// The ErrNotReady error is returned when the caller presented credentials but
+// the JWT validator's initial JWKS fetch has not yet completed. Other
+// validation failures are returned only for diagnostics; callers keep treating
+// them as unauthenticated by checking the authenticated boolean. Callers that
+// gate behavior on auth should check ErrNotReady first and emit 503 +
+// Retry-After via writeAuthWarmupResponse so clients distinguish "auth offline"
+// from "your token is bad" (401) or "your stuff disappeared" (silent anonymous).
 func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, error) {
 	// Test/debug hook: use the injected extractor when present.
 	if h.claimsExtractor != nil {
@@ -1165,15 +1399,25 @@ func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, er
 		}
 		return nil, false, nil
 	}
+	if len(authHeader) > maxAuthorizationHeaderBytes {
+		log.Info("Authorization header too large",
+			"bytes", len(authHeader), "maxBytes", maxAuthorizationHeaderBytes, "path", r.URL.Path)
+		return nil, false, fmt.Errorf("authorization header exceeds maximum size of %d bytes", maxAuthorizationHeaderBytes)
+	}
 
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || parts[0] != "Bearer" {
 		log.Info("Invalid Authorization header format",
 			"scheme", parts[0], "path", r.URL.Path)
-		return nil, false, nil
+		return nil, false, fmt.Errorf("authorization header is not in 'Bearer <token>' format")
 	}
 
 	tokenString := parts[1]
+	source := requestSource(r)
+	if h.authFailureLimiter != nil && h.authFailureLimiter.limited(source) {
+		log.Info("JWT validation temporarily rate limited", "source", source, "path", r.URL.Path)
+		return nil, false, fmt.Errorf("JWT validation temporarily rate limited")
+	}
 
 	claims, err := h.jwtValidator.ValidateToken(tokenString)
 	if err != nil {
@@ -1182,11 +1426,17 @@ func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, er
 			// degrading the user to anonymous during the warmup window.
 			return nil, false, err
 		}
+		if h.authFailureLimiter != nil {
+			h.authFailureLimiter.recordFailure(source)
+		}
 		log.Info("JWT validation failed",
 			"error", err.Error(),
 			"path", r.URL.Path,
 			"hint", "check KEYCLOAK_ISSUER_URL matches the 'iss' claim in the token")
-		return nil, false, nil
+		return nil, false, err
+	}
+	if h.authFailureLimiter != nil {
+		h.authFailureLimiter.recordSuccess(source)
 	}
 
 	if h.debugMode {
@@ -1471,13 +1721,14 @@ type DebugRequestInfo struct {
 
 // DebugAuthInfo is the auth section of the debug response.
 type DebugAuthInfo struct {
-	Enabled             bool     `json:"enabled"`
-	ValidatorConfigured bool     `json:"validator_configured"`
-	Authenticated       bool     `json:"authenticated"`
-	Username            string   `json:"username,omitempty"`
-	Email               string   `json:"email,omitempty"`
-	Groups              []string `json:"groups,omitempty"`
-	ValidationError     string   `json:"validation_error,omitempty"`
+	Enabled             bool                 `json:"enabled"`
+	ValidatorConfigured bool                 `json:"validator_configured"`
+	Authenticated       bool                 `json:"authenticated"`
+	Username            string               `json:"username,omitempty"`
+	Email               string               `json:"email,omitempty"`
+	Groups              []string             `json:"groups,omitempty"`
+	ValidationError     string               `json:"validation_error,omitempty"`
+	JWTValidator        *auth.ValidatorStats `json:"jwt_validator,omitempty"`
 }
 
 // DebugServiceCounts is the service-cache section of the debug response.
@@ -1515,17 +1766,19 @@ func (h *Handler) handleDebug(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve auth state.
-	// When a claimsExtractor is configured (test / dev injection) or when the full
-	// JWT validator is available, extractAndValidateJWT already handles everything.
-	// For the debug response we also want to surface the validation *error* when
-	// the real validator is present, so we run the two paths in parallel. The
-	// ErrNotReady signal is intentionally discarded — debug should still serve
-	// during warmup so operators can see the reason in ValidationError below.
-	claims, authenticated, _ := h.extractAndValidateJWT(r)
+	// When a claimsExtractor is configured (test / dev injection) or when the
+	// full JWT validator is available, extractAndValidateJWT already handles
+	// everything. Debug surfaces validation errors instead of converting
+	// ErrNotReady to a 503 so operators can inspect auth during warmup.
+	claims, authenticated, validationErr := h.extractAndValidateJWT(r)
 
 	authInfo := DebugAuthInfo{
 		Enabled:             h.enableAuth,
 		ValidatorConfigured: h.jwtValidator != nil || h.claimsExtractor != nil,
+	}
+	if h.jwtValidator != nil {
+		stats := h.jwtValidator.Stats()
+		authInfo.JWTValidator = &stats
 	}
 
 	if authenticated && claims != nil {
@@ -1540,19 +1793,16 @@ func (h *Handler) handleDebug(w http.ResponseWriter, r *http.Request) {
 			authInfo.ValidationError = "auth is disabled (ENABLE_AUTH=false)"
 		case h.jwtValidator == nil && h.claimsExtractor == nil:
 			authInfo.ValidationError = "JWT validator not configured (KEYCLOAK_URL missing?)"
+		case validationErr != nil:
+			authInfo.ValidationError = validationErr.Error()
 		default:
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
 				authInfo.ValidationError = "no Authorization header present"
 			} else {
-				// Re-run validation to surface the actual error message.
 				parts := strings.Split(authHeader, " ")
 				if len(parts) != 2 || parts[0] != "Bearer" {
 					authInfo.ValidationError = "Authorization header is not in 'Bearer <token>' format"
-				} else if h.jwtValidator != nil {
-					if _, err := h.jwtValidator.ValidateToken(parts[1]); err != nil {
-						authInfo.ValidationError = err.Error()
-					}
 				}
 			}
 		}
