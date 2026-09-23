@@ -55,6 +55,13 @@ type AccessRequest struct {
 	ServiceUID string `json:"serviceUID"`
 	// ServiceName is the human-readable name of the service at request time.
 	ServiceName string `json:"serviceName"`
+	// RequiredGroups lists the current full Keycloak group paths an approval
+	// would grant. It is populated by the API response layer and is not stored
+	// in Redis because service authorization can change while a request is pending.
+	RequiredGroups []string `json:"requiredGroups,omitempty"`
+	// InvalidRequiredGroups lists current service auth.groups entries that are
+	// not full Keycloak paths and must be migrated before access can be approved.
+	InvalidRequiredGroups []string `json:"invalidRequiredGroups,omitempty"`
 	// UserID is the caller's preferred_username (or JWT sub fallback).
 	UserID string `json:"userID"`
 	// UserEmail is included when present in the JWT claims.

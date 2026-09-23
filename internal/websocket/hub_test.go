@@ -406,10 +406,10 @@ func TestHub_BroadcastService_FilteredByPolicy_OnlyEntitledClientReceives(t *tes
 	h.SetAccessPolicy(groupsPolicy{})
 
 	srvAdmin := newServerWithPrincipal(t, h,
-		wshub.Principal{Subject: "alice", Groups: []string{"admin"}, Authenticated: true},
+		wshub.Principal{Subject: "alice", Groups: []string{"/admin"}, Authenticated: true},
 		time.Time{})
 	srvDS := newServerWithPrincipal(t, h,
-		wshub.Principal{Subject: "bob", Groups: []string{"data-science"}, Authenticated: true},
+		wshub.Principal{Subject: "bob", Groups: []string{"/data-science"}, Authenticated: true},
 		time.Time{})
 
 	connAdmin := dialWS(t, srvAdmin)
@@ -433,10 +433,10 @@ func TestHub_BroadcastService_FilteredByPolicy_OnlyEntitledClientReceives(t *tes
 		}
 	}
 
-	// Now the actual case: a private service requiring "admin".
+	// Now the actual case: a private service requiring "/admin".
 	svc := &landingcache.ServiceInfo{
 		Name: "grafana", UID: "g-1",
-		Visibility: "private", RequiredGroups: []string{"admin"},
+		Visibility: "private", RequiredGroups: []string{"/admin"},
 	}
 	h.Publish("added", svc)
 
@@ -476,10 +476,10 @@ func TestHub_BroadcastNotification_AndService_IndependentFanOut(t *testing.T) {
 	h.SetAccessPolicy(groupsPolicy{})
 
 	srvAdmin := newServerWithPrincipal(t, h,
-		wshub.Principal{Subject: "alice", Groups: []string{"admin"}, Authenticated: true},
+		wshub.Principal{Subject: "alice", Groups: []string{"/admin"}, Authenticated: true},
 		time.Time{})
 	srvDS := newServerWithPrincipal(t, h,
-		wshub.Principal{Subject: "bob", Groups: []string{"data-science"}, Authenticated: true},
+		wshub.Principal{Subject: "bob", Groups: []string{"/data-science"}, Authenticated: true},
 		time.Time{})
 
 	connAdmin := dialWS(t, srvAdmin)
@@ -508,7 +508,7 @@ func TestHub_BroadcastNotification_AndService_IndependentFanOut(t *testing.T) {
 	// Service — admin-only private — reaches admin, not data-science.
 	h.Publish("added", &landingcache.ServiceInfo{
 		Name: "grafana", UID: "g-1",
-		Visibility: "private", RequiredGroups: []string{"admin"},
+		Visibility: "private", RequiredGroups: []string{"/admin"},
 	})
 	_ = connAdmin.SetReadDeadline(time.Now().Add(2 * time.Second))
 	if _, _, err := connAdmin.ReadMessage(); err != nil {
@@ -544,7 +544,7 @@ func TestHub_BroadcastService_AnonymousPrincipal_PublicOnly(t *testing.T) {
 	// Private service — must NOT reach anonymous.
 	h.Publish("added", &landingcache.ServiceInfo{
 		Name: "private-svc", UID: "p-2",
-		Visibility: "private", RequiredGroups: []string{"admin"},
+		Visibility: "private", RequiredGroups: []string{"/admin"},
 	})
 	_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 	if _, leak, err := conn.ReadMessage(); err == nil {
@@ -560,7 +560,7 @@ func TestHub_BroadcastService_NilPolicy_AllowsAll(t *testing.T) {
 	// No SetAccessPolicy call.
 
 	srv := newServerWithPrincipal(t, h,
-		wshub.Principal{Subject: "bob", Groups: []string{"data-science"}, Authenticated: true},
+		wshub.Principal{Subject: "bob", Groups: []string{"/data-science"}, Authenticated: true},
 		time.Time{})
 	conn := dialWS(t, srv)
 	defer func() { _ = conn.Close() }()
@@ -568,7 +568,7 @@ func TestHub_BroadcastService_NilPolicy_AllowsAll(t *testing.T) {
 
 	// Private service the principal would normally fail the filter on.
 	svc := &landingcache.ServiceInfo{
-		Name: "secret", Visibility: "private", RequiredGroups: []string{"admin"},
+		Name: "secret", Visibility: "private", RequiredGroups: []string{"/admin"},
 	}
 	h.Publish("added", svc)
 
@@ -643,7 +643,7 @@ func TestHub_ConcurrentConnectsAndPublishes_NoRace(t *testing.T) {
 	h := newTestHub(t)
 	h.SetAccessPolicy(groupsPolicy{})
 	srv := newServerWithPrincipal(t, h,
-		wshub.Principal{Subject: "u", Groups: []string{"admin"}, Authenticated: true},
+		wshub.Principal{Subject: "u", Groups: []string{"/admin"}, Authenticated: true},
 		time.Time{})
 
 	const n = 8
@@ -698,7 +698,7 @@ func TestHub_ConcurrentConnectsAndPublishes_NoRace(t *testing.T) {
 	var published atomic.Int32
 	for range events {
 		h.Publish("modified", &landingcache.ServiceInfo{
-			Name: "svc", Visibility: "private", RequiredGroups: []string{"admin"},
+			Name: "svc", Visibility: "private", RequiredGroups: []string{"/admin"},
 		})
 		published.Add(1)
 		time.Sleep(2 * time.Millisecond)

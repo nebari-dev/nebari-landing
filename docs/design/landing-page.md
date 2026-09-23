@@ -11,7 +11,7 @@ This design has been updated to reflect the new authentication architecture:
 - **User-Initiated Sign-In:** "Sign In" button triggers OIDC flow (not automatic redirect)
 - **Group-Based Visibility:** Services use `visibility: private` with `requiredGroups` for access control
 - **Keycloak Integration:** Leverages upcoming `keycloakConfig` section in AuthConfig for declarative group management
-- **JWT Groups Claim:** Groups appear as flat list `["admin", "users"]` (not `["/admin"]`) for easy filtering
+- **JWT Groups Claim:** Groups appear as full paths such as `["/admin", "/users"]` for collision-free filtering
 
 **Key Architecture Changes:**
 - Landing page is a **public-facing** React SPA with optional authentication
@@ -421,7 +421,7 @@ type Claims struct {
     jwt.RegisteredClaims
     Email  string   `json:"email"`
     Name   string   `json:"name"`
-    Groups []string `json:"groups"`  // ["data-science", "users"]
+    Groups []string `json:"groups"`  // ["/data-science", "/users"]
 }
 
 func NewJWTValidator(keycloakURL, realm string) (*JWTValidator, error) {
@@ -1177,7 +1177,7 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...  # Optional
   "user": {
     "authenticated": true,
     "username": "alice",
-    "groups": ["data-science", "users"]
+    "groups": ["/data-science", "/users"]
   }
 }
 ```
@@ -1252,13 +1252,13 @@ auth:
         protocol: "openid-connect"
         protocolMapper: "oidc-group-membership-mapper"
         config:
-          "full.path": "false"  # Groups as ["admin"] not ["/admin"]
+          "full.path": "true"  # Groups as ["/admin"], not leaf-only ["admin"]
           "claim.name": "groups"
 ```
 
 **Landing Page Usage:**
 - Operator creates Keycloak groups for each service with `requiredGroups`
-- Groups appear in JWT as flat list: `["data-science", "users"]`
+- Groups appear in JWT as full paths: `["/data-science", "/users"]`
 - Backend filters services based on JWT groups claim
 - No additional Keycloak API calls needed at runtime
 
@@ -1275,29 +1275,29 @@ auth:
      landingPage:
        enabled: true
        visibility: "private"
-       requiredGroups: ["data-science"]
+       requiredGroups: ["/data-science"]
 
 2. Operator syncs to Keycloak (future enhancement)
    ─────────────────────────────────────
-   - Creates "data-science" group if not exists
+   - Creates "/data-science" group if not exists
    - Or validates group exists
 
 3. Admin assigns users to groups (via Keycloak UI or keycloakConfig)
    ─────────────────────────────────────
-   User alice@example.com → groups: ["data-science", "users"]
+   User alice@example.com → groups: ["/data-science", "/users"]
 
 4. User authenticates, JWT contains groups claim
    ─────────────────────────────────────
    {
      "sub": "alice@example.com",
-     "groups": ["data-science", "users"],
+     "groups": ["/data-science", "/users"],
      "email": "alice@example.com"
    }
 
 5. Backend filters services by groups
    ─────────────────────────────────────
-   Service: jupyterhub (requiredGroups: ["data-science"])
-   User groups: ["data-science", "users"]
+   Service: jupyterhub (requiredGroups: ["/data-science"])
+   User groups: ["/data-science", "/users"]
    Match: YES → service visible to alice
 ```
 
@@ -1434,7 +1434,7 @@ func (h *Handler) canAccessService(service *cache.ServiceInfo, authenticated boo
 **Keycloak Integration:**
 - Operator provisions Keycloak client via `auth.keycloakConfig`
 - Groups are managed declaratively via `auth.keycloakConfig.groups`
-- JWT `/groups` claim contains user's group memberships (as `["admin", "users"]` not `["/admin"]`)
+- JWT `/groups` claim contains user's group memberships as full paths (for example `["/admin", "/users"]`)
 - Backend validates groups from JWT without additional Keycloak queries
 
 **API Server Permissions:**
@@ -1709,7 +1709,7 @@ spec:
           protocol: "openid-connect"
           protocolMapper: "oidc-group-membership-mapper"
           config:
-            "full.path": "false"
+            "full.path": "true"
             "claim.name": "groups"
   landingPage:
     enabled: true

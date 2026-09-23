@@ -82,7 +82,7 @@ type LandingPage struct {
 	// Default (when unset): "private".
 	Visibility string
 
-	// RequiredGroups lists Keycloak groups required when Visibility is "private".
+	// RequiredGroups lists full Keycloak group paths required when Visibility is "private".
 	RequiredGroups []string
 
 	// ExternalURL overrides the URL derived from Hostname.

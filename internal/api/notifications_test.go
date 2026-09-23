@@ -37,14 +37,7 @@ func newNotifHandler(sc *cache.ServiceCache, store *notifications.Store) *Handle
 	return NewHandler(sc, nil, false, nil, nil, WithNotificationStore(store))
 }
 
-// --- WithAdminGroup / WithNotificationStore / WithKeycloakAdminClient ---
-
-func TestWithAdminGroup_SetsField(t *testing.T) {
-	h := NewHandler(cache.NewServiceCache(), nil, false, nil, nil, WithAdminGroup("superusers"))
-	if h.adminGroup != "superusers" {
-		t.Errorf("expected adminGroup=superusers, got %q", h.adminGroup)
-	}
-}
+// --- WithNotificationStore / WithKeycloakAdminClient ---
 
 func TestWithNotificationStore_SetsField(t *testing.T) {
 	s := newNotifStore(t)
@@ -71,14 +64,26 @@ func TestHasRequiredGroups_EmptyRequired_ReturnsTrue(t *testing.T) {
 }
 
 func TestHasRequiredGroups_UserHasGroup_ReturnsTrue(t *testing.T) {
-	if !hasRequiredGroups([]string{"devs", "admins"}, []string{"admins"}) {
+	if !hasRequiredGroups([]string{"/devs", "/admins"}, []string{"/admins"}) {
 		t.Error("user has required group — expected true")
 	}
 }
 
 func TestHasRequiredGroups_UserMissingGroup_ReturnsFalse(t *testing.T) {
-	if hasRequiredGroups([]string{"devs"}, []string{"admins"}) {
+	if hasRequiredGroups([]string{"/devs"}, []string{"/admins"}) {
 		t.Error("user is missing required group — expected false")
+	}
+}
+
+func TestHasRequiredGroups_LeafTokenGroupRejected(t *testing.T) {
+	if hasRequiredGroups([]string{"research"}, []string{"/division-a/research"}) {
+		t.Error("leaf-only JWT group must not match a full-path required group")
+	}
+}
+
+func TestHasRequiredGroups_LeafRequiredGroupRejected(t *testing.T) {
+	if hasRequiredGroups([]string{"/research"}, []string{"research"}) {
+		t.Error("leaf-only required group must not match a full-path JWT group")
 	}
 }
 
@@ -238,7 +243,13 @@ func TestHandleAdminCreateNotification_PublishesToHub(t *testing.T) {
 		cache.NewServiceCache(), nil, false, hub, nil,
 		WithNotificationStore(store),
 		WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
-			return &auth.Claims{PreferredUsername: "admin-user", Groups: []string{"admin"}}, true
+			return &auth.Claims{
+				PreferredUsername: "admin-user",
+				AuthorizedParty:   "landing-spa",
+				ResourceAccess: auth.RolesMap{
+					"landing-spa": {Roles: []string{"nebari-landing-admin"}},
+				},
+			}, true
 		}),
 	)
 
