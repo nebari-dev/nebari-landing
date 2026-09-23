@@ -50,6 +50,13 @@ func newAuthTestHandler(sc *cache.ServiceCache) *Handler {
 	return NewHandler(sc, nil, true, nil, nil)
 }
 
+func claimsWithIdentity(issuer, subject, username string) *auth.Claims {
+	claims := &auth.Claims{PreferredUsername: username}
+	claims.Issuer = issuer
+	claims.Subject = subject
+	return claims
+}
+
 type entry = struct {
 	uid, name, visibility, category string
 	priority                        int

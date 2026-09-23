@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
+	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 )
 
@@ -103,6 +104,49 @@ func TestHandleRequestAccess_DuplicatePending_Returns409(t *testing.T) {
 	}
 	if rr := post(); rr.Code != http.StatusConflict {
 		t.Errorf("duplicate request: expected 409, got %d", rr.Code)
+	}
+}
+
+func TestHandleRequestAccess_UsesStableSubjectNotUsername(t *testing.T) {
+	sc := buildCache(entry{"uid-pub", "pub", "public", "", 0})
+	store := newARStore(t)
+	issuer := "https://keycloak.example/realms/main"
+	claims := claimsWithIdentity(issuer, "subject-1", "alice")
+	h := NewHandler(sc, nil, true, nil, nil,
+		WithAccessRequestStore(store),
+		WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) { return claims, true }),
+	)
+
+	post := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/services/uid-pub/request_access", nil)
+		rr := httptest.NewRecorder()
+		h.Routes().ServeHTTP(rr, req)
+		return rr
+	}
+
+	rr := post()
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("first request: expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var ar accessrequests.AccessRequest
+	if err := json.NewDecoder(rr.Body).Decode(&ar); err != nil {
+		t.Fatal(err)
+	}
+	if ar.UserID != stableUserID(issuer, "subject-1") {
+		t.Fatalf("expected stable userID, got %q", ar.UserID)
+	}
+	if ar.UserIssuer != issuer || ar.UserSubject != "subject-1" || ar.Username != "alice" {
+		t.Fatalf("expected immutable identity plus display username, got %+v", ar)
+	}
+
+	claims = claimsWithIdentity(issuer, "subject-1", "alice-renamed")
+	if rr := post(); rr.Code != http.StatusConflict {
+		t.Fatalf("renamed subject duplicate: expected 409, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	claims = claimsWithIdentity(issuer, "subject-2", "alice")
+	if rr := post(); rr.Code != http.StatusAccepted {
+		t.Fatalf("reused username with new subject: expected 202, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
