@@ -4,11 +4,10 @@ This document provides step-by-step instructions for creating a new release of n
 
 ## Prerequisites
 
-- [ ] Push access to `nebari-dev/nebari-landing`
-- [ ] Write access to create GitHub releases
+- [ ] Write access to `nebari-dev/nebari-landing` (to run the **Release prep** workflow and publish GitHub releases)
+- [ ] `QUAY_USERNAME` / `QUAY_PASSWORD` secrets configured (image push)
 - [ ] `NEBARI_HELM_REPO_TOKEN` secret configured (for helm-repository sync)
-- [ ] Clean working directory on `main` branch
-- [ ] All desired changes merged to `main`
+- [ ] All desired changes merged to `main` (release-prep always cuts from the tip of `main`; nothing runs from a local checkout)
 
 ## Release Steps
 
@@ -59,7 +58,9 @@ Visit https://github.com/nebari-dev/nebari-landing/releases/new
 
 - **Tag**: Select `v0.2.0` (the tag the workflow created)
 - **Title**: `v0.2.0` or `nebari-landing v0.2.0`
-- **Description**: Summarize changes (see previous releases for format)
+- **Description**: Click **Generate release notes** (previous releases use the
+  generated "What's Changed" list). For a MESO or MACRO bump, add a short note
+  at the top saying what upgraders need to change.
 - Click **Publish release**
 
 ### 4. Monitor Release Workflow
@@ -72,7 +73,8 @@ The GitHub Actions workflow will automatically:
 2. **Build** multi-arch Docker images:
    - `quay.io/nebari/nebari-webapi:0.2.0`
    - `quay.io/nebari/nebari-landing:0.2.0`
-3. **Publish** images to Quay.io with `X.Y.Z` tags (no `v` prefix —
+3. **Publish** images to Quay.io tagged `X.Y.Z`, plus the floating `X.Y`, `X`
+   and `latest` tags and a `sha-<short>` tag (no `v` prefix —
    docker/metadata-action strips it).
 4. **Release** Go binary via GoReleaser (attached to the GitHub release).
 5. **Package** and attach Helm chart to the release.
@@ -81,7 +83,8 @@ The GitHub Actions workflow will automatically:
 Watch the workflow at:
 https://github.com/nebari-dev/nebari-landing/actions/workflows/release.yml
 
-Expected duration: ~15-20 minutes
+Expected duration: ~10 minutes (the webapi image build and GoReleaser are the
+long poles).
 
 ### 5. Verify Release Artifacts
 
@@ -102,8 +105,10 @@ docker pull quay.io/nebari/nebari-landing:0.2.0
 
 **helm-repository PR**:
 - Visit https://github.com/nebari-dev/helm-repository/pulls
-- Find PR titled "feat: add nebari-landing v0.2.0"
-- Review and merge the PR.
+- Find the PR titled "chore(charts): sync nebari-landing v0.2.0 from nebari-dev/nebari-landing".
+- helm-repository squash-merges sync PRs automatically when its validation
+  check comes back fully green. If the PR is still open, read the validation
+  comment on it: a warning or blocking issue needs a human to resolve and merge.
 
 ### 6. Test the Release
 
@@ -123,18 +128,26 @@ helm install nebari-landing \
 
 ### 7. Update Documentation (if needed)
 
-If this release includes breaking changes or new features:
+For a MESO or MACRO release (new options, changed behavior, or anything
+upgraders must act on):
 - [ ] Update README.md
 - [ ] Update docs/api.md
 - [ ] Update examples in dev/
 
 ## Rollback Procedure
 
-If you need to roll back a release:
+Prefer rolling forward: fix on `main` and cut a MICRO release. A published
+release has usually already moved the floating `latest`, `X.Y` and `X` image
+tags and may already be in helm-repository, so deleting it does not fully undo
+it.
+
+If you do need to roll back a release:
 
 1. **Delete the GitHub release** (this does NOT delete the tag)
-2. **Delete the container images** from Quay.io (if necessary)
-3. **Close the helm-repository PR** without merging
+2. **Delete the container images** from Quay.io (if necessary), and re-point
+   the floating `latest`, `X.Y` and `X` tags at the previous release's images
+3. **Close the helm-repository PR** without merging, or, if it was already
+   auto-merged, open a revert PR in helm-repository
 4. **Delete the Git tag**:
    ```bash
    git tag -d v0.2.0
@@ -168,20 +181,24 @@ You can manually create the PR by following the helm-repository contribution gui
 
 ### Images not multi-arch
 
-Ensure both CI jobs complete:
-- `docker-webapi (amd64)`
-- `docker-webapi (arm64)`
-- `docker-frontend (amd64)`
-- `docker-frontend (arm64)`
+Ensure all four build jobs completed:
+- `Build webapi (amd64)`
+- `Build webapi (arm64)`
+- `Build frontend (amd64)`
+- `Build frontend (arm64)`
 
-Then check the manifest jobs ran successfully.
+Then check that `Publish webapi manifest` and `Publish frontend manifest` ran
+successfully.
 
 ## Post-Release
 
 After a successful release:
 
 1. **Announce the release** in relevant channels.
-2. **Update nebari-infrastructure-core** if this release contains changes that affect the Nebari Operator.
+2. **Bump the pin in nebari-infrastructure-core.** NIC deploys the landing
+   page from this repo's git tag via `targetRevision` in
+   `pkg/argocd/templates/apps/nebari-landingpage.yaml`. New clusters keep the
+   old version until that pin is bumped.
 
 ## Release Checklist Summary
 
@@ -190,9 +207,10 @@ After a successful release:
 - [ ] Published GitHub release at the new tag.
 - [ ] Verified images built successfully (`:0.2.0` exists on Quay).
 - [ ] Verified Helm chart `.tgz` attached to release with the right `appVersion`.
-- [ ] Merged helm-repository PR.
+- [ ] helm-repository sync PR merged (automatically or by hand).
 - [ ] Tested chart installation.
 - [ ] Updated documentation (if needed).
+- [ ] Bumped the landing `targetRevision` in nebari-infrastructure-core.
 
 ## How It Works
 
@@ -204,9 +222,9 @@ Three pieces drive the release flow:
 
 Same files in both states; only `Chart.yaml` differs:
 
-| File | On `main` | On `v0.1.0-alpha.6` |
+| File | On `main` | On `v0.2.0` |
 | --- | --- | --- |
-| `Chart.yaml` `appVersion` | `"latest"` | `"0.1.0-alpha.6"` |
+| `Chart.yaml` `appVersion` | `"latest"` | `"0.2.0"` |
 | `values.yaml` image tags | `""` | `""` (unchanged) |
 | `templates/.../deployment.yaml` | template expression | template expression (unchanged) |
 
@@ -217,7 +235,7 @@ Same files in both states; only `Chart.yaml` differs:
 | Scenario | What the consumer sets | Rendered image |
 | --- | --- | --- |
 | `main`, no overrides | (defaults) | `quay.io/nebari/nebari-{webapi,landing}:latest` |
-| Release tag, no overrides | (defaults) | `quay.io/nebari/nebari-{webapi,landing}:0.1.0-alpha.6` |
+| Release tag, no overrides | (defaults) | `quay.io/nebari/nebari-{webapi,landing}:0.2.0` |
 | Explicit override | `--set webapi.image.tag=feat-foo` | `quay.io/nebari/nebari-webapi:feat-foo` |
 
 The first two scenarios share the same code path — both rely on the `AppVersion` fallback. The third bypasses the fallback because `.tag` is non-empty (used for testing PR builds or pinning to a specific main commit; available tags come from `webapi.yml`'s per-PR and per-SHA builds).
