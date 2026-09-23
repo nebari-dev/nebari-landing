@@ -65,6 +65,7 @@ KEYCLOAK_NAMESPACE="${E2E_KEYCLOAK_NAMESPACE:-keycloak}"
 NEBARI_NAMESPACE="${E2E_NEBARI_NAMESPACE:-nebari-system}"
 REALM="${E2E_KEYCLOAK_REALM:-nebari}"
 OIDC_CLIENT_ID="${E2E_OIDC_CLIENT_ID:-nebari-system-nebari-landing}"
+WEBAPI_AUDIENCE="${E2E_KEYCLOAK_AUDIENCE:-nebari-landingpage}"
 TEST_USER="${E2E_TEST_USER:-test-user}"
 TEST_USER_PASS="${E2E_TEST_USER_PASSWORD:-test-user}"
 
@@ -144,6 +145,30 @@ CLIENT_UUID=$(kc get clients -r "$REALM" \
 kc update "clients/${CLIENT_UUID}" -r "$REALM" \
   -s directAccessGrantsEnabled=true >/dev/null
 log "directAccessGrantsEnabled=true"
+
+section "Ensure ${OIDC_CLIENT_ID} access tokens include audience '${WEBAPI_AUDIENCE}'"
+AUDIENCE_MAPPER=$(kc get "clients/${CLIENT_UUID}/protocol-mappers/models" -r "$REALM" \
+  | python3 -c \
+    "import sys, json; print(next((m.get('id','') for m in json.load(sys.stdin) if m.get('name') == 'landing-page-api-audience'), ''))")
+if [[ -z "$AUDIENCE_MAPPER" ]]; then
+  kc create "clients/${CLIENT_UUID}/protocol-mappers/models" -r "$REALM" \
+    -s name=landing-page-api-audience \
+    -s protocol=openid-connect \
+    -s protocolMapper=oidc-audience-mapper \
+    -s "config.\"included.custom.audience\"=${WEBAPI_AUDIENCE}" \
+    -s 'config."id.token.claim"=false' \
+    -s 'config."access.token.claim"=true' >/dev/null
+  log "audience mapper added"
+else
+  kc update "clients/${CLIENT_UUID}/protocol-mappers/models/${AUDIENCE_MAPPER}" -r "$REALM" \
+    -s name=landing-page-api-audience \
+    -s protocol=openid-connect \
+    -s protocolMapper=oidc-audience-mapper \
+    -s "config.\"included.custom.audience\"=${WEBAPI_AUDIENCE}" \
+    -s 'config."id.token.claim"=false' \
+    -s 'config."access.token.claim"=true' >/dev/null
+  log "audience mapper updated ($AUDIENCE_MAPPER)"
+fi
 
 section "Ensure user '${TEST_USER}' exists"
 TEST_USER_ID=$(kc get users -r "$REALM" -q "username=${TEST_USER}" --fields id | first_id)

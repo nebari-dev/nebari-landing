@@ -129,7 +129,7 @@ curl -s -X POST http://localhost:8080/api/v1/admin/notifications \
 
 Get the caller's identity
 
-Echoes the resolved JWT claims for the caller. Returns {"authenticated": false} when no valid token is present.
+Echoes the resolved JWT claims for the caller. Returns {"authenticated": false} when no token is present.
 
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/caller-identity \

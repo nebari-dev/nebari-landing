@@ -50,6 +50,8 @@ type Claims struct {
 	Name              string   `json:"name"`
 	PreferredUsername string   `json:"preferred_username"`
 	Groups            []string `json:"groups"`
+	TokenType         string   `json:"typ"`
+	AuthorizedParty   string   `json:"azp"`
 }
 
 // JWTValidator validates JWT tokens from Keycloak.
@@ -74,11 +76,18 @@ type JWTValidator struct {
 	// but can be overridden via SetIssuerURL when the external Keycloak URL
 	// (used in token `iss`) differs from the internal cluster URL used for
 	// JWK fetching.
-	issuerURL  string
-	realm      string
-	publicKeys map[string]*rsa.PublicKey
-	keysMu     sync.RWMutex
-	lastFetch  time.Time
+	issuerURL string
+	realm     string
+	// expectedAudience is the resource/API audience that must be present in
+	// the token's `aud` claim. It is required for bearer-token validation so a
+	// token minted for another client in the same realm cannot authenticate here.
+	expectedAudience string
+	// expectedAuthorizedParty must match Keycloak's `azp` claim (the OIDC
+	// client that requested the token, typically the frontend SPA).
+	expectedAuthorizedParty string
+	publicKeys              map[string]*rsa.PublicKey
+	keysMu                  sync.RWMutex
+	lastFetch               time.Time
 	// ready flips to true once the first JWKS fetch succeeds. Reads must use
 	// atomic.Bool because the writer runs on the background init goroutine
 	// while readers run on every request-handling goroutine.
@@ -237,6 +246,13 @@ func (v *JWTValidator) SetIssuerURL(url string) {
 	v.issuerURL = strings.TrimSuffix(url, "/")
 }
 
+// SetExpectedTokenBinding configures the required `aud` and Keycloak `azp`
+// claim values. Without both configured, ValidateToken fails closed.
+func (v *JWTValidator) SetExpectedTokenBinding(audience, authorizedParty string) {
+	v.expectedAudience = strings.TrimSpace(audience)
+	v.expectedAuthorizedParty = strings.TrimSpace(authorizedParty)
+}
+
 // clockLeeway is the tolerance applied when validating the "exp" claim.
 // oauth2-proxy forwards the raw access token from its session; by the time
 // the token traverses nginx and reaches the webapi handler, a few seconds may
@@ -245,6 +261,8 @@ func (v *JWTValidator) SetIssuerURL(url string) {
 // provides real expiry protection (Keycloak default access-token lifetime is
 // 5 minutes, so a 30s window does not materially weaken security).
 const clockLeeway = 30 * time.Second
+
+const accessTokenType = "Bearer"
 
 // ValidateToken validates a JWT token and returns the claims.
 // Returns ErrNotReady if the initial JWKS fetch has not yet completed; the
@@ -310,10 +328,48 @@ func (v *JWTValidator) ValidateToken(tokenString string) (*Claims, error) {
 		return nil, fmt.Errorf("invalid issuer: expected %s, got %s", expectedIssuer, claims.Issuer)
 	}
 
+	if err := v.validateTokenBinding(claims); err != nil {
+		return nil, err
+	}
+
 	// Note: expiry is already enforced by jwt.ParseWithClaims above (with clockLeeway).
 	// No redundant manual check needed.
 
 	return claims, nil
+}
+
+func (v *JWTValidator) validateTokenBinding(claims *Claims) error {
+	if claims.TokenType != accessTokenType {
+		return fmt.Errorf("invalid token type: expected %s, got %s", accessTokenType, claims.TokenType)
+	}
+
+	if v.expectedAudience == "" {
+		return fmt.Errorf("jwt validator missing expected audience")
+	}
+	if !audienceContains(claims.Audience, v.expectedAudience) {
+		return fmt.Errorf("invalid audience: expected %s, got %v", v.expectedAudience, claims.Audience)
+	}
+
+	if v.expectedAuthorizedParty == "" {
+		return fmt.Errorf("jwt validator missing expected authorized party")
+	}
+	if claims.AuthorizedParty == "" {
+		return fmt.Errorf("missing authorized party")
+	}
+	if claims.AuthorizedParty != v.expectedAuthorizedParty {
+		return fmt.Errorf("invalid authorized party: expected %s, got %s", v.expectedAuthorizedParty, claims.AuthorizedParty)
+	}
+
+	return nil
+}
+
+func audienceContains(audiences jwt.ClaimStrings, expected string) bool {
+	for _, audience := range audiences {
+		if audience == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func (v *JWTValidator) fetchPublicKeys() error {

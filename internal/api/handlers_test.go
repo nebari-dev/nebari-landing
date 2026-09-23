@@ -411,21 +411,19 @@ func TestHandleCallerIdentity_MethodNotAllowed(t *testing.T) {
 
 // --- Auth header extraction ---
 
-func TestHandleGetServices_InvalidAuthHeader_TreatedAsUnauthenticated(t *testing.T) {
+func TestHandleGetServices_InvalidAuthHeader_ReturnsUnauthorized(t *testing.T) {
 	sc := buildCache(
 		entry{"u1", "pub", "public", "", 0},
 		entry{"u2", "priv", "private", "", 0},
 	)
-	rr := doGet(t, newAuthTestHandler(sc).Routes(), "/api/v1/services",
+	validator, _, _ := newAPIAuthValidator(t)
+	h := NewHandler(sc, validator, true, nil, nil)
+
+	rr := doGet(t, h.Routes(), "/api/v1/services",
 		"Authorization", "NotBearer sometoken",
 	)
-	var resp ServiceResponse
-	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
-	}
-	// only the public service should be returned with a bad auth header
-	if len(resp.Services) != 1 {
-		t.Errorf("expected 1 service (public) with bad auth header, got %d", len(resp.Services))
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for bad auth header, got %d", rr.Code)
 	}
 }
 

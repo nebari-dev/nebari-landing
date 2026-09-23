@@ -79,6 +79,8 @@ func main() {
 		port           int
 		keycloakURL    string
 		keycloakRealm  string
+		keycloakAud    string
+		keycloakAzp    string
 		enableAuth     bool
 		debugMode      bool
 		healthInterval int
@@ -104,6 +106,10 @@ func main() {
 		"Keycloak base URL for JWK fetching, e.g. http://keycloak-internal:8080 (env: KEYCLOAK_URL)")
 	flag.StringVar(&keycloakRealm, "keycloak-realm", envStr("KEYCLOAK_REALM", "main"),
 		"Keycloak realm name (env: KEYCLOAK_REALM)")
+	flag.StringVar(&keycloakAud, "keycloak-audience", os.Getenv("KEYCLOAK_AUDIENCE"),
+		"Expected JWT audience for this API (env: KEYCLOAK_AUDIENCE)")
+	flag.StringVar(&keycloakAzp, "keycloak-authorized-party", os.Getenv("KEYCLOAK_AUTHORIZED_PARTY"),
+		"Expected JWT authorized party/client ID in the azp claim (env: KEYCLOAK_AUTHORIZED_PARTY)")
 	flag.BoolVar(&enableAuth, "enable-auth", envBool("ENABLE_AUTH", false),
 		"Enable JWT authentication and authorization (env: ENABLE_AUTH)")
 	flag.IntVar(&healthInterval, "health-interval", envInt("HEALTH_INTERVAL", 30),
@@ -249,11 +255,20 @@ func main() {
 			setupLog.Error(nil, "keycloak-url is required when auth is enabled")
 			os.Exit(1)
 		}
+		if strings.TrimSpace(keycloakAud) == "" {
+			setupLog.Error(nil, "keycloak-audience is required when auth is enabled")
+			os.Exit(1)
+		}
+		if strings.TrimSpace(keycloakAzp) == "" {
+			setupLog.Error(nil, "keycloak-authorized-party is required when auth is enabled")
+			os.Exit(1)
+		}
 		// NewJWTValidator returns immediately; the initial JWKS fetch runs on
 		// a background goroutine. The HTTP server can therefore bind to its
 		// port and answer liveness probes even if Keycloak is still coming up.
 		// Handlers gating on Authorization return 503 until v.Ready() is true.
 		jwtValidator = auth.NewJWTValidator(keycloakURL, keycloakRealm)
+		jwtValidator.SetExpectedTokenBinding(keycloakAud, keycloakAzp)
 		// KEYCLOAK_ISSUER_URL lets operators keep KEYCLOAK_URL pointing at the
 		// internal cluster address (fast, no TLS) while validating the `iss`
 		// claim against the external public URL that Keycloak embeds in tokens.
@@ -261,7 +276,11 @@ func main() {
 			jwtValidator.SetIssuerURL(issuerURL)
 			setupLog.Info("JWT issuer URL overridden", "issuerURL", issuerURL)
 		}
-		setupLog.Info("JWT validation enabled", "keycloakURL", keycloakURL, "realm", keycloakRealm)
+		setupLog.Info("JWT validation enabled",
+			"keycloakURL", keycloakURL,
+			"realm", keycloakRealm,
+			"audience", strings.TrimSpace(keycloakAud),
+			"authorizedParty", strings.TrimSpace(keycloakAzp))
 	} else {
 		setupLog.Info("JWT validation disabled - all requests will be treated as unauthenticated")
 	}
