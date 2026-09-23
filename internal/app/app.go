@@ -40,6 +40,11 @@ type App struct {
 	// ServicePort is spec.service.port — the port on the Kubernetes Service.
 	ServicePort int
 
+	// HealthCheckCrossNamespaceAllowed is true when the health-check target
+	// Service lives outside Namespace and that target namespace has explicitly
+	// granted this NebariApp namespace permission to reference the Service.
+	HealthCheckCrossNamespaceAllowed bool
+
 	// LandingPage holds the resolved landing-page configuration, or nil when
 	// the application does not participate in service discovery.
 	LandingPage *LandingPage
@@ -110,9 +115,9 @@ type HealthCheck struct {
 	// Defaults to 5 when not set.
 	TimeoutSeconds int
 
-	// Port overrides the service port for the health probe. Useful when the
-	// target exposes health endpoints on a separate management port (e.g.
-	// Keycloak X exposes /health/ready on port 9000, not the main 8080).
+	// Port mirrors spec.landingPage.healthCheck.port when present. It is
+	// accepted only when it matches spec.service.port; otherwise the health check
+	// is disabled so app authors cannot widen probes to arbitrary ports.
 	// When 0, spec.service.port is used.
 	Port int
 }

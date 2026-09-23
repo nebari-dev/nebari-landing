@@ -2,12 +2,85 @@ package cache
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
+
+const (
+	defaultHealthCheckIntervalSeconds = 30
+	minHealthCheckIntervalSeconds     = 10
+	maxHealthCheckIntervalSeconds     = 300
+
+	defaultHealthCheckTimeoutSeconds = 5
+	minHealthCheckTimeoutSeconds     = 1
+	maxHealthCheckTimeoutSeconds     = 30
+
+	maxHealthCheckPathLength = 2048
+)
+
+var protectedHealthCheckNamespaces = map[string]struct{}{
+	"argocd":               {},
+	"cert-manager":         {},
+	"database":             {},
+	"databases":            {},
+	"db":                   {},
+	"envoy-gateway-system": {},
+	"kube-node-lease":      {},
+	"kube-public":          {},
+	"kube-system":          {},
+	"keycloak":             {},
+	"mariadb":              {},
+	"metallb-system":       {},
+	"mongo":                {},
+	"mongodb":              {},
+	"mysql":                {},
+	"postgres":             {},
+	"postgresql":           {},
+	"redis":                {},
+	"vault":                {},
+}
+
+var protectedHealthCheckServiceTokens = map[string]struct{}{
+	"coredns":    {},
+	"dns":        {},
+	"etcd":       {},
+	"keycloak":   {},
+	"kube":       {},
+	"kubernetes": {},
+	"mariadb":    {},
+	"metadata":   {},
+	"mongo":      {},
+	"mongodb":    {},
+	"mysql":      {},
+	"postgres":   {},
+	"postgresql": {},
+	"redis":      {},
+	"vault":      {},
+}
+
+var protectedHealthCheckPorts = map[int]struct{}{
+	2181:  {},
+	2379:  {},
+	2380:  {},
+	3306:  {},
+	5432:  {},
+	6379:  {},
+	6443:  {},
+	9200:  {},
+	9300:  {},
+	10250: {},
+	10255: {},
+	11211: {},
+	27017: {},
+	27018: {},
+	27019: {},
+}
 
 // ServiceInfo represents a service that appears on the landing page
 type ServiceInfo struct {
@@ -90,6 +163,15 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 	if lp.Visibility != "" {
 		visibility = lp.Visibility
 	}
+	healthCheckConfig := buildHealthCheckConfig(a)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	health := c.preserveHealthStatus(a.UID)
+	if c.shouldResetHealthStatus(a.UID, healthCheckConfig) {
+		health = &HealthStatus{Status: "unknown"}
+	}
 
 	service := &ServiceInfo{
 		UID:               a.UID,
@@ -105,12 +187,10 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 		Priority:          priority,
 		Visibility:        visibility,
 		RequiredGroups:    lp.RequiredGroups,
-		Health:            c.preserveHealthStatus(a.UID),
-		HealthCheckConfig: buildHealthCheckConfig(a),
+		Health:            health,
+		HealthCheckConfig: healthCheckConfig,
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.services[a.UID] = service
 }
 
@@ -191,6 +271,36 @@ func (c *ServiceCache) UpdateHealth(uid string, status *HealthStatus) {
 	}
 }
 
+// WithCurrentHealthCheck runs fn only while uid still has cfg as its active
+// health-check configuration. The read lock is held for fn so writers that
+// remove or replace cfg cannot interleave between the freshness check and the
+// protected operation.
+func (c *ServiceCache) WithCurrentHealthCheck(uid string, cfg *HealthCheckConfig, fn func(prevStatus string)) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	service := c.services[uid]
+	if service == nil || service.HealthCheckConfig == nil || cfg == nil || *service.HealthCheckConfig != *cfg {
+		return false
+	}
+	prevStatus := ""
+	if service.Health != nil {
+		prevStatus = service.Health.Status
+	}
+	fn(prevStatus)
+	return true
+}
+
+// HealthCheckConfigCurrent reports whether uid still has cfg as its active
+// health-check configuration.
+func (c *ServiceCache) HealthCheckConfigCurrent(uid string, cfg *HealthCheckConfig) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	service := c.services[uid]
+	return service != nil && service.HealthCheckConfig != nil && cfg != nil && *service.HealthCheckConfig == *cfg
+}
+
 func (c *ServiceCache) preserveHealthStatus(uid string) *HealthStatus {
 	if existing := c.services[uid]; existing != nil && existing.Health != nil {
 		return existing.Health
@@ -198,6 +308,11 @@ func (c *ServiceCache) preserveHealthStatus(uid string) *HealthStatus {
 	return &HealthStatus{
 		Status: "unknown",
 	}
+}
+
+func (c *ServiceCache) shouldResetHealthStatus(uid string, cfg *HealthCheckConfig) bool {
+	existing := c.services[uid]
+	return existing != nil && existing.HealthCheckConfig != nil && cfg == nil
 }
 
 func buildURL(a *sdapp.App) string {
@@ -219,18 +334,27 @@ func buildHealthCheckConfig(a *sdapp.App) *HealthCheckConfig {
 		return nil
 	}
 	hc := a.LandingPage.HealthCheck
-	path := hc.Path
-	if path == "" {
-		path = "/"
+	path, ok := normalizeHealthCheckPath(hc.Path)
+	if !ok {
+		return nil
 	}
-	interval := hc.IntervalSeconds
-	if interval <= 0 {
-		interval = 30
+
+	interval := clampHealthCheckSeconds(
+		hc.IntervalSeconds,
+		defaultHealthCheckIntervalSeconds,
+		minHealthCheckIntervalSeconds,
+		maxHealthCheckIntervalSeconds,
+	)
+	timeout := clampHealthCheckSeconds(
+		hc.TimeoutSeconds,
+		defaultHealthCheckTimeoutSeconds,
+		minHealthCheckTimeoutSeconds,
+		maxHealthCheckTimeoutSeconds,
+	)
+	if timeout > interval {
+		timeout = interval
 	}
-	timeout := hc.TimeoutSeconds
-	if timeout <= 0 {
-		timeout = 5
-	}
+
 	// Probe the Kubernetes service directly using in-cluster DNS so the health
 	// check bypasses the ingress/gateway and always uses HTTP regardless of
 	// whether TLS is configured for external access.
@@ -238,26 +362,99 @@ func buildHealthCheckConfig(a *sdapp.App) *HealthCheckConfig {
 	if serviceName == "" {
 		serviceName = a.Name
 	}
+	if len(validation.IsDNS1035Label(serviceName)) != 0 {
+		return nil
+	}
 	servicePort := a.ServicePort
 	if servicePort == 0 {
 		servicePort = 80
 	}
-	// Allow healthCheck.port to override the service port for services that
-	// expose health endpoints on a separate management port (e.g. Keycloak X
-	// management port 9000 vs main HTTP port 8080).
-	if hc.Port > 0 {
-		servicePort = hc.Port
+	// healthCheck.port is not allowed to widen the target beyond the declared
+	// backend Service port; otherwise a NebariApp author could probe arbitrary
+	// ports on an otherwise legitimate Service.
+	if hc.Port > 0 && hc.Port != servicePort {
+		return nil
 	}
-	// Use ServiceNamespace (spec.service.namespace) so cross-namespace services
-	// (e.g. Keycloak in 'keycloak', ArgoCD in 'argocd') are probed via the
-	// correct in-cluster DNS name rather than the NebariApp's own namespace.
+	if servicePort < 1 || servicePort > 65535 {
+		return nil
+	}
+	// Use ServiceNamespace (spec.service.namespace) only after enforcing the
+	// cross-namespace consent decision made by the watcher.
 	serviceNamespace := a.ServiceNamespace
 	if serviceNamespace == "" {
 		serviceNamespace = a.Namespace
+	}
+	if len(validation.IsDNS1123Label(serviceNamespace)) != 0 {
+		return nil
+	}
+	if serviceNamespace != a.Namespace && !a.HealthCheckCrossNamespaceAllowed {
+		return nil
+	}
+	if HealthCheckTargetProtected(serviceNamespace, serviceName, servicePort) {
+		return nil
 	}
 	return &HealthCheckConfig{
 		ProbeURL:        fmt.Sprintf("http://%s.%s:%d%s", serviceName, serviceNamespace, servicePort, path),
 		IntervalSeconds: interval,
 		TimeoutSeconds:  timeout,
 	}
+}
+
+func normalizeHealthCheckPath(path string) (string, bool) {
+	if path == "" {
+		return "/", true
+	}
+	if len(path) > maxHealthCheckPathLength {
+		return "", false
+	}
+	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+		return "", false
+	}
+	for _, r := range path {
+		if r < 0x20 || r == 0x7f {
+			return "", false
+		}
+	}
+	parsed, err := url.ParseRequestURI(path)
+	if err != nil {
+		return "", false
+	}
+	if parsed.Scheme != "" || parsed.Host != "" || !strings.HasPrefix(parsed.Path, "/") {
+		return "", false
+	}
+	return path, true
+}
+
+func clampHealthCheckSeconds(value, defaultValue, minValue, maxValue int) int {
+	if value <= 0 {
+		return defaultValue
+	}
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
+}
+
+// HealthCheckTargetProtected reports whether a health probe target is in a
+// namespace/service/port class that must not be reachable from NebariApp-owned
+// health checks.
+func HealthCheckTargetProtected(namespace, serviceName string, port int) bool {
+	if _, ok := protectedHealthCheckNamespaces[namespace]; ok {
+		return true
+	}
+	if strings.HasSuffix(namespace, "-system") {
+		return true
+	}
+	if _, ok := protectedHealthCheckPorts[port]; ok {
+		return true
+	}
+	for _, token := range strings.Split(serviceName, "-") {
+		if _, ok := protectedHealthCheckServiceTokens[token]; ok {
+			return true
+		}
+	}
+	return false
 }

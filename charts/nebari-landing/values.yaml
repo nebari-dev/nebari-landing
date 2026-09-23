@@ -162,6 +162,69 @@ webapi:
 
   healthInterval: 30
 
+  # Isolated health probe runner. The webapi delegates NebariApp-driven HTTP
+  # probes to this pod so probe egress can be constrained separately from the
+  # webapi's required Redis, Keycloak, and Kubernetes API traffic.
+  healthProber:
+    enabled: true
+    replicaCount: 1
+    port: 8081
+    service:
+      port: 8081
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+    networkPolicy:
+      enabled: true
+      egress:
+        dns:
+          enabled: true
+          namespaceSelector:
+            kubernetes.io/metadata.name: kube-system
+          podSelector:
+            k8s-app: kube-dns
+        # Health checks are app-side constrained to the declared backend and
+        # require Gateway API ReferenceGrant consent for cross-namespace targets.
+        # This runner policy is the only default health-target egress path; it
+        # must exclude metadata, control-plane, database, and identity classes.
+        sameNamespaceHealthChecks:
+          enabled: true
+          namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: NotIn
+                values:
+                  - kube-system
+                  - kube-public
+                  - kube-node-lease
+                  - keycloak
+                  - argocd
+                  - cert-manager
+                  - envoy-gateway-system
+                  - metallb-system
+                  - database
+                  - databases
+                  - db
+                  - redis
+                  - postgres
+                  - postgresql
+                  - mysql
+                  - mariadb
+                  - mongodb
+                  - mongo
+                  - vault
+          podSelector: {}
+          ports:
+            - 80
+            - 8080
+        # Extra raw NetworkPolicy egress rules for approved consented
+        # cross-namespace health targets or non-standard service ports.
+        additionalRules: []
+
   # Automatic platform notifications — require Redis (notifications.enabled implies redis.enabled).
   notifications:
     # Post a welcome/feedback notification every time the webapi starts.
@@ -194,6 +257,57 @@ webapi:
   service:
     type: ClusterIP
     port: 8080
+
+  # Egress NetworkPolicy for the webapi pod. Enabled by default so the webapi
+  # starts from default-deny egress plus the approved dependencies below.
+  # NebariApp-driven health probes do not use this egress path; they are
+  # delegated to webapi.healthProber so probe targets can be constrained with a
+  # separate NetworkPolicy.
+  # Kubernetes NetworkPolicy cannot portably infer the API server CIDR. Live
+  # Helm installs discover it with lookup(); GitOps/offline renderers must set
+  # kubernetesAPI.cidrs explicitly.
+  networkPolicy:
+    enabled: true
+    egress:
+      # Required for resolving in-cluster Service DNS names.
+      dns:
+        enabled: true
+        namespaceSelector:
+          kubernetes.io/metadata.name: kube-system
+        podSelector:
+          k8s-app: kube-dns
+
+      # Required when redis.enabled=true.
+      redis:
+        enabled: true
+
+      # Required when Keycloak JWT/JWKS/admin calls stay in-cluster. Keep this
+      # selector narrow; the defaults match the keycloakx release used by NIC.
+      keycloak:
+        enabled: true
+        namespaceSelector:
+          kubernetes.io/metadata.name: keycloak
+        podSelector:
+          app.kubernetes.io/name: keycloakx
+          app.kubernetes.io/instance: keycloak
+        ports:
+          - 8080
+          - 8443
+
+      # Required for watching NebariApps. Standard NetworkPolicy cannot select
+      # the kubernetes.default Service directly, so live Helm installs discover
+      # its ClusterIP with lookup(). GitOps/offline renderers should set cidrs
+      # explicitly to the approved API-server Service IP/CIDR.
+      kubernetesAPI:
+        port: 443
+        lookup:
+          enabled: true
+          namespace: default
+          serviceName: kubernetes
+        cidrs: []
+
+      # Extra raw NetworkPolicy egress rules for approved webapi dependencies.
+      additionalRules: []
 
 # ---------------------------------------------------------------------------
 # NebariApp CRs  (recommended on a full Nebari / nebari-operator deployment)
