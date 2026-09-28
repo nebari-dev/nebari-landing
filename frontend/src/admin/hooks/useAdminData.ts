@@ -19,20 +19,49 @@ export const adminKeys = {
   services: () => [...adminKeys.all, "services"] as const,
 };
 
+/**
+ * Keycloak has no change feed, so admin queries refresh on their own: they
+ * refetch when the window regains focus (e.g. coming back from the Keycloak
+ * console after creating a user) and poll while an admin page is open.
+ * Data is served from cache meanwhile, so navigation never blocks.
+ */
+const adminQueryOptions = {
+  staleTime: 15 * 1000,
+  refetchOnWindowFocus: true,
+  refetchOnReconnect: true,
+  refetchInterval: 60 * 1000,
+} as const;
+
 export function useAdminUsers() {
-  return useQuery({ queryKey: adminKeys.users(), queryFn: usersApi.listUsers });
+  return useQuery({
+    ...adminQueryOptions,
+    queryKey: adminKeys.users(),
+    queryFn: usersApi.listUsers,
+  });
 }
 
 export function useAdminGroups() {
-  return useQuery({ queryKey: adminKeys.groups(), queryFn: groupsApi.listGroups });
+  return useQuery({
+    ...adminQueryOptions,
+    queryKey: adminKeys.groups(),
+    queryFn: groupsApi.listGroups,
+  });
 }
 
 export function useAdminRoles() {
-  return useQuery({ queryKey: adminKeys.roles(), queryFn: rolesApi.listRoles });
+  return useQuery({
+    ...adminQueryOptions,
+    queryKey: adminKeys.roles(),
+    queryFn: rolesApi.listRoles,
+  });
 }
 
 export function useAdminServices() {
-  return useQuery({ queryKey: adminKeys.services(), queryFn: listAdminServices });
+  return useQuery({
+    ...adminQueryOptions,
+    queryKey: adminKeys.services(),
+    queryFn: listAdminServices,
+  });
 }
 
 /** Loads every admin entity at once; detail pages need all four to explain access. */
