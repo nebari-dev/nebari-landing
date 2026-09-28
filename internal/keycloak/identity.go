@@ -442,9 +442,14 @@ func (c *Client) ListRoles(ctx context.Context) ([]IdentityRole, error) {
 
 func toIdentityRole(r *gocloak.Role) IdentityRole {
 	name := gocloak.PString(r.Name)
+	desc := gocloak.PString(r.Description)
+	// Built-in roles carry i18n placeholders like "${role_offline-access}".
+	if strings.HasPrefix(desc, "${") {
+		desc = ""
+	}
 	return IdentityRole{
 		Name:        name,
-		Description: gocloak.PString(r.Description),
+		Description: desc,
 		Composite:   gocloak.PBool(r.Composite),
 		BuiltIn:     isBuiltInRole(name),
 	}
