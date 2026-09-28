@@ -65,7 +65,30 @@ directly on the upgrade. The `/ws` endpoint accepts either mechanism.
 |--------|------|---------|
 | `GET` | [`/admin/access-requests`](#get-adminaccess-requests) | List access requests (admin) |
 | `PUT` | [`/admin/access-requests/{id}/{action}`](#put-adminaccess-requestsidaction) | Approve or deny an access request (admin) |
+| `GET` | [`/admin/groups`](#get-admingroups) | List groups (admin) |
+| `POST` | [`/admin/groups`](#post-admingroups) | Create a top-level group (admin) |
+| `GET` | [`/admin/groups/{id}`](#get-admingroupsid) | Get a group (admin) |
+| `PATCH` | [`/admin/groups/{id}`](#patch-admingroupsid) | Update a group's description (admin) |
+| `DELETE` | [`/admin/groups/{id}`](#delete-admingroupsid) | Delete a group (admin) |
+| `PUT` | [`/admin/groups/{id}/members/{userId}`](#put-admingroupsidmembersuserId) | Add or remove a group member (admin) |
+| `DELETE` | [`/admin/groups/{id}/members/{userId}`](#delete-admingroupsidmembersuserId) | Add or remove a group member (admin) |
+| `PUT` | [`/admin/groups/{id}/roles/{role}`](#put-admingroupsidrolesrole) | Map or unmap a realm role on a group (admin) |
+| `DELETE` | [`/admin/groups/{id}/roles/{role}`](#delete-admingroupsidrolesrole) | Map or unmap a realm role on a group (admin) |
 | `POST` | [`/admin/notifications`](#post-adminnotifications) | Create a notification (admin) |
+| `GET` | [`/admin/roles`](#get-adminroles) | List realm roles (admin) |
+| `POST` | [`/admin/roles`](#post-adminroles) | Create a realm role (admin) |
+| `PATCH` | [`/admin/roles/{name}`](#patch-adminrolesname) | Update a realm role's description (admin) |
+| `DELETE` | [`/admin/roles/{name}`](#delete-adminrolesname) | Delete a realm role (admin) |
+| `GET` | [`/admin/services`](#get-adminservices) | List service access gates (admin) |
+| `GET` | [`/admin/services/{id}`](#get-adminservicesid) | Get a service access gate (admin) |
+| `GET` | [`/admin/users`](#get-adminusers) | List users (admin) |
+| `POST` | [`/admin/users/bulk`](#post-adminusersbulk) | Apply one change to many users (admin) |
+| `GET` | [`/admin/users/{id}`](#get-adminusersid) | Get a user (admin) |
+| `PATCH` | [`/admin/users/{id}`](#patch-adminusersid) | Enable or disable a user (admin) |
+| `PUT` | [`/admin/users/{id}/groups/{groupId}`](#put-adminusersidgroupsgroupId) | Add or remove a user's group membership (admin) |
+| `DELETE` | [`/admin/users/{id}/groups/{groupId}`](#delete-adminusersidgroupsgroupId) | Add or remove a user's group membership (admin) |
+| `PUT` | [`/admin/users/{id}/roles/{role}`](#put-adminusersidrolesrole) | Assign or unassign a direct realm role (admin) |
+| `DELETE` | [`/admin/users/{id}/roles/{role}`](#delete-adminusersidrolesrole) | Assign or unassign a direct realm role (admin) |
 | `GET` | [`/caller-identity`](#get-caller-identity) | Get the caller's identity |
 | `GET` | [`/categories`](#get-categories) | List service categories |
 | `GET` | [`/health`](#get-health) | Liveness probe |
@@ -110,6 +133,115 @@ curl -s -X PUT http://localhost:8080/api/v1/admin/access-requests/{id}/{action} 
 
 ---
 
+### <a name="get-admingroups"></a>`GET /admin/groups`
+
+List groups (admin)
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/groups \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="post-admingroups"></a>`POST /admin/groups`
+
+Create a top-level group (admin)
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/admin/groups \
+  -H 'Authorization: Bearer $TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+---
+
+### <a name="get-admingroupsid"></a>`GET /admin/groups/{id}`
+
+Get a group (admin)
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/groups/{id} \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="patch-admingroupsid"></a>`PATCH /admin/groups/{id}`
+
+Update a group's description (admin)
+
+```sh
+curl -s -X PATCH http://localhost:8080/api/v1/admin/groups/{id} \
+  -H 'Authorization: Bearer $TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+---
+
+### <a name="delete-admingroupsid"></a>`DELETE /admin/groups/{id}`
+
+Delete a group (admin)
+
+Refused with 409 while any landing-page service lists the group in its NebariApp requiredGroups; remove it from the CR first.
+
+```sh
+curl -s -X DELETE http://localhost:8080/api/v1/admin/groups/{id} \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="put-admingroupsidmembersuserId"></a>`PUT /admin/groups/{id}/members/{userId}`
+
+Add or remove a group member (admin)
+
+```sh
+curl -s -X PUT http://localhost:8080/api/v1/admin/groups/{id}/members/{userId} \
+  -H 'Authorization: Bearer $TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+---
+
+### <a name="delete-admingroupsidmembersuserId"></a>`DELETE /admin/groups/{id}/members/{userId}`
+
+Add or remove a group member (admin)
+
+```sh
+curl -s -X DELETE http://localhost:8080/api/v1/admin/groups/{id}/members/{userId} \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="put-admingroupsidrolesrole"></a>`PUT /admin/groups/{id}/roles/{role}`
+
+Map or unmap a realm role on a group (admin)
+
+```sh
+curl -s -X PUT http://localhost:8080/api/v1/admin/groups/{id}/roles/{role} \
+  -H 'Authorization: Bearer $TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+---
+
+### <a name="delete-admingroupsidrolesrole"></a>`DELETE /admin/groups/{id}/roles/{role}`
+
+Map or unmap a realm role on a group (admin)
+
+```sh
+curl -s -X DELETE http://localhost:8080/api/v1/admin/groups/{id}/roles/{role} \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
 ### <a name="post-adminnotifications"></a>`POST /admin/notifications`
 
 Create a notification (admin)
@@ -121,6 +253,182 @@ curl -s -X POST http://localhost:8080/api/v1/admin/notifications \
   -H 'Authorization: Bearer $TOKEN' \
   -H 'Content-Type: application/json' \
   -d '{}'
+```
+
+---
+
+### <a name="get-adminroles"></a>`GET /admin/roles`
+
+List realm roles (admin)
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/roles \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="post-adminroles"></a>`POST /admin/roles`
+
+Create a realm role (admin)
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/admin/roles \
+  -H 'Authorization: Bearer $TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+---
+
+### <a name="patch-adminrolesname"></a>`PATCH /admin/roles/{name}`
+
+Update a realm role's description (admin)
+
+```sh
+curl -s -X PATCH http://localhost:8080/api/v1/admin/roles/{name} \
+  -H 'Authorization: Bearer $TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+---
+
+### <a name="delete-adminrolesname"></a>`DELETE /admin/roles/{name}`
+
+Delete a realm role (admin)
+
+```sh
+curl -s -X DELETE http://localhost:8080/api/v1/admin/roles/{name} \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="get-adminservices"></a>`GET /admin/services`
+
+List service access gates (admin)
+
+Every landing-page service with the visibility and requiredGroups declared in its NebariApp. Read-only: the CR is the source of truth. Does not require a Keycloak admin client.
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/services \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="get-adminservicesid"></a>`GET /admin/services/{id}`
+
+Get a service access gate (admin)
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/services/{id} \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="get-adminusers"></a>`GET /admin/users`
+
+List users (admin)
+
+Returns every realm user with direct group ids and realm roles. Optional filters: q (name/username/email substring), group (group id), role (realm role), enabled (true|false). Admin-only.
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/users \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="post-adminusersbulk"></a>`POST /admin/users/bulk`
+
+Apply one change to many users (admin)
+
+Actions: addToGroup / removeFromGroup (need groupId), assignRole / unassignRole (need role), enable, disable. Users that fail are skipped and counted out of `updated`.
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/admin/users/bulk \
+  -H 'Authorization: Bearer $TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+---
+
+### <a name="get-adminusersid"></a>`GET /admin/users/{id}`
+
+Get a user (admin)
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/users/{id} \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="patch-adminusersid"></a>`PATCH /admin/users/{id}`
+
+Enable or disable a user (admin)
+
+```sh
+curl -s -X PATCH http://localhost:8080/api/v1/admin/users/{id} \
+  -H 'Authorization: Bearer $TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+---
+
+### <a name="put-adminusersidgroupsgroupId"></a>`PUT /admin/users/{id}/groups/{groupId}`
+
+Add or remove a user's group membership (admin)
+
+PUT adds the user to the group; DELETE removes them. Both are idempotent.
+
+```sh
+curl -s -X PUT http://localhost:8080/api/v1/admin/users/{id}/groups/{groupId} \
+  -H 'Authorization: Bearer $TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+---
+
+### <a name="delete-adminusersidgroupsgroupId"></a>`DELETE /admin/users/{id}/groups/{groupId}`
+
+Add or remove a user's group membership (admin)
+
+PUT adds the user to the group; DELETE removes them. Both are idempotent.
+
+```sh
+curl -s -X DELETE http://localhost:8080/api/v1/admin/users/{id}/groups/{groupId} \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="put-adminusersidrolesrole"></a>`PUT /admin/users/{id}/roles/{role}`
+
+Assign or unassign a direct realm role (admin)
+
+```sh
+curl -s -X PUT http://localhost:8080/api/v1/admin/users/{id}/roles/{role} \
+  -H 'Authorization: Bearer $TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+---
+
+### <a name="delete-adminusersidrolesrole"></a>`DELETE /admin/users/{id}/roles/{role}`
+
+Assign or unassign a direct realm role (admin)
+
+```sh
+curl -s -X DELETE http://localhost:8080/api/v1/admin/users/{id}/roles/{role} \
+  -H 'Authorization: Bearer $TOKEN'
 ```
 
 ---

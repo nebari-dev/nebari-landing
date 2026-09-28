@@ -20,6 +20,81 @@ export const generatedHandlers = [
       userID: "",
     }),
   ),
+  http.get("/api/v1/admin/groups", () => HttpResponse.json([])),
+  http.post("/api/v1/admin/groups", () =>
+    HttpResponse.json(
+      {
+        createdAt: "",
+        description: "",
+        id: "",
+        name: "",
+        path: "",
+        roles: [],
+      },
+      { status: 201 },
+    ),
+  ),
+  http.delete("/api/v1/admin/groups/:id", () => new HttpResponse(null, { status: 204 })),
+  http.get("/api/v1/admin/groups/:id", () =>
+    HttpResponse.json({
+      createdAt: "",
+      description: "",
+      id: "",
+      name: "",
+      path: "",
+      roles: [],
+    }),
+  ),
+  http.patch("/api/v1/admin/groups/:id", () =>
+    HttpResponse.json({
+      createdAt: "",
+      description: "",
+      id: "",
+      name: "",
+      path: "",
+      roles: [],
+    }),
+  ),
+  http.delete("/api/v1/admin/groups/:id/members/:userId", () =>
+    HttpResponse.json({
+      createdAt: "",
+      description: "",
+      id: "",
+      name: "",
+      path: "",
+      roles: [],
+    }),
+  ),
+  http.put("/api/v1/admin/groups/:id/members/:userId", () =>
+    HttpResponse.json({
+      createdAt: "",
+      description: "",
+      id: "",
+      name: "",
+      path: "",
+      roles: [],
+    }),
+  ),
+  http.delete("/api/v1/admin/groups/:id/roles/:role", () =>
+    HttpResponse.json({
+      createdAt: "",
+      description: "",
+      id: "",
+      name: "",
+      path: "",
+      roles: [],
+    }),
+  ),
+  http.put("/api/v1/admin/groups/:id/roles/:role", () =>
+    HttpResponse.json({
+      createdAt: "",
+      description: "",
+      id: "",
+      name: "",
+      path: "",
+      roles: [],
+    }),
+  ),
   http.post("/api/v1/admin/notifications", () =>
     HttpResponse.json(
       {
@@ -34,6 +109,135 @@ export const generatedHandlers = [
       },
       { status: 201 },
     ),
+  ),
+  http.get("/api/v1/admin/roles", () => HttpResponse.json([])),
+  http.post("/api/v1/admin/roles", () =>
+    HttpResponse.json(
+      {
+        builtIn: false,
+        composite: false,
+        description: "",
+        name: "",
+      },
+      { status: 201 },
+    ),
+  ),
+  http.delete("/api/v1/admin/roles/:name", () => new HttpResponse(null, { status: 204 })),
+  http.patch("/api/v1/admin/roles/:name", () =>
+    HttpResponse.json({
+      builtIn: false,
+      composite: false,
+      description: "",
+      name: "",
+    }),
+  ),
+  http.get("/api/v1/admin/services", () => HttpResponse.json([])),
+  http.get("/api/v1/admin/services/:id", () =>
+    HttpResponse.json({
+      category: "",
+      displayName: "",
+      id: "",
+      name: "",
+      namespace: "",
+      requiredGroups: [],
+      url: "",
+      visibility: "",
+    }),
+  ),
+  http.get("/api/v1/admin/users", () =>
+    HttpResponse.json({
+      total: 0,
+      users: [],
+    }),
+  ),
+  http.get("/api/v1/admin/users/:id", () =>
+    HttpResponse.json({
+      createdAt: "",
+      email: "",
+      enabled: false,
+      firstName: "",
+      groups: [],
+      id: "",
+      lastName: "",
+      lastSignInAt: "",
+      roles: [],
+      username: "",
+    }),
+  ),
+  http.patch("/api/v1/admin/users/:id", () =>
+    HttpResponse.json({
+      createdAt: "",
+      email: "",
+      enabled: false,
+      firstName: "",
+      groups: [],
+      id: "",
+      lastName: "",
+      lastSignInAt: "",
+      roles: [],
+      username: "",
+    }),
+  ),
+  http.delete("/api/v1/admin/users/:id/groups/:groupId", () =>
+    HttpResponse.json({
+      createdAt: "",
+      email: "",
+      enabled: false,
+      firstName: "",
+      groups: [],
+      id: "",
+      lastName: "",
+      lastSignInAt: "",
+      roles: [],
+      username: "",
+    }),
+  ),
+  http.put("/api/v1/admin/users/:id/groups/:groupId", () =>
+    HttpResponse.json({
+      createdAt: "",
+      email: "",
+      enabled: false,
+      firstName: "",
+      groups: [],
+      id: "",
+      lastName: "",
+      lastSignInAt: "",
+      roles: [],
+      username: "",
+    }),
+  ),
+  http.delete("/api/v1/admin/users/:id/roles/:role", () =>
+    HttpResponse.json({
+      createdAt: "",
+      email: "",
+      enabled: false,
+      firstName: "",
+      groups: [],
+      id: "",
+      lastName: "",
+      lastSignInAt: "",
+      roles: [],
+      username: "",
+    }),
+  ),
+  http.put("/api/v1/admin/users/:id/roles/:role", () =>
+    HttpResponse.json({
+      createdAt: "",
+      email: "",
+      enabled: false,
+      firstName: "",
+      groups: [],
+      id: "",
+      lastName: "",
+      lastSignInAt: "",
+      roles: [],
+      username: "",
+    }),
+  ),
+  http.post("/api/v1/admin/users/bulk", () =>
+    HttpResponse.json({
+      updated: 0,
+    }),
   ),
   http.get("/api/v1/caller-identity", () =>
     HttpResponse.json({

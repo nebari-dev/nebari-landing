@@ -34,6 +34,9 @@ type Handler struct {
 	// keycloakClient is used for admin operations (e.g. adding users to groups on approval).
 	// When nil, Keycloak group membership is not updated automatically.
 	keycloakClient *webkeycloak.Client
+	// identity backs the /api/v1/admin/{users,groups,roles} endpoints. Set from
+	// keycloakClient by default; nil means those endpoints answer 501.
+	identity IdentityAdmin
 	// adminGroup is the Keycloak group name whose members may access admin-only endpoints.
 	// Defaults to "admin" when not set.
 	adminGroup string
@@ -89,7 +92,12 @@ func WithNotificationStore(s *notifications.Store) HandlerOption {
 // service's required Keycloak groups. When nil (default), the status is
 // updated in the store but no Keycloak group change is made.
 func WithKeycloakAdminClient(c *webkeycloak.Client) HandlerOption {
-	return func(h *Handler) { h.keycloakClient = c }
+	return func(h *Handler) {
+		h.keycloakClient = c
+		if c != nil {
+			h.identity = c
+		}
+	}
 }
 
 // WithAllowedOrigins sets the list of Origins the CORS middleware will accept.
@@ -205,6 +213,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/v1/admin/access-requests", h.handleAdminListAccessRequests)
 	mux.HandleFunc("/api/v1/admin/access-requests/", h.handleAdminAccessRequestSub)
 	mux.HandleFunc("/api/v1/admin/notifications", h.handleAdminCreateNotification)
+	// Identity management (users / groups / roles / service gates).
+	h.registerIdentityRoutes(mux)
 
 	// Static content is served by the dedicated frontend pod; the webapi never
 	// handles bare "/" requests. Return 404 for any unmatched root path so API
