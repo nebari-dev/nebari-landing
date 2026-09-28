@@ -31,6 +31,7 @@ import {
 } from "../hooks/useAdminData";
 import { effectiveRoles, servicesForUser } from "../lib/access";
 import { displayName, formatDateTime, pluralize } from "../lib/format";
+import { keycloakConsoleUrl } from "../lib/keycloakConsole";
 
 export function UserDetailPage() {
   const { id = "" } = useParams();
@@ -120,7 +121,7 @@ export function UserDetailPage() {
               variant="outline"
               render={
                 <a
-                  href={`https://auth.example.com/admin/nebari/console/#/nebari/users/${user.id}/settings`}
+                  href={keycloakConsoleUrl(`/users/${encodeURIComponent(user.id)}/settings`)}
                   target="_blank"
                   rel="noreferrer"
                 />

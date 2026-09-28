@@ -16,6 +16,7 @@ import { PageHeader } from "../components/PageHeader";
 import { PickerDialog } from "../components/PickerDialog";
 import { useAdminWorld, useBulkUpdateUsers } from "../hooks/useAdminData";
 import { displayName, formatDate, pluralize } from "../lib/format";
+import { keycloakConsoleUrl } from "../lib/keycloakConsole";
 
 type Row = AdminUser & Record<string, unknown> & { search: string; groupNames: string[] };
 
@@ -126,11 +127,7 @@ export function UsersPage() {
           <Button
             variant="outline"
             render={
-              <a
-                href="https://auth.example.com/admin/nebari/console/#/nebari/users/add-user"
-                target="_blank"
-                rel="noreferrer"
-              />
+              <a href={keycloakConsoleUrl("/users/add-user")} target="_blank" rel="noreferrer" />
             }
           >
             Create user in Keycloak
