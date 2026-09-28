@@ -76,20 +76,16 @@ describe("Header", () => {
 describe("Header admin entry point", () => {
   const user = { name: "Alice Alvarez", email: "alice@example.com" };
 
-  it("hides the admin link and menu item for non-admins", async () => {
+  it("hides the Administration menu item for non-admins", async () => {
     render(<Header user={user} />);
-    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
-
     await userEvent.setup().click(screen.getByRole("button", { name: /account menu/i }));
     await screen.findByRole("menuitem", { name: /sign out/i });
     expect(screen.queryByRole("menuitem", { name: /administration/i })).not.toBeInTheDocument();
   });
 
-  it("shows the admin link and marks it current inside the admin area", async () => {
-    render(<Header user={user} isAdmin adminActive />, { initialEntries: ["/admin/users"] });
-    const link = screen.getByRole("link", { name: "Admin" });
-    expect(link).toHaveAttribute("href", "/admin");
-    expect(link).toHaveAttribute("aria-current", "page");
+  it("offers Administration in the profile menu for admins", async () => {
+    render(<Header user={user} isAdmin />);
+    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
 
     await userEvent.setup().click(screen.getByRole("button", { name: /account menu/i }));
     expect(await screen.findByRole("menuitem", { name: /administration/i })).toHaveAttribute(

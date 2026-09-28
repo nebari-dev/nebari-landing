@@ -16,13 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import {
-  MenuBarActions,
-  MenuBarBrand,
-  MenuBarNav,
-  NavigationMenu,
-  NavLink,
-} from "./ui/navigation-menu";
+import { MenuBarActions, MenuBarBrand, NavigationMenu } from "./ui/navigation-menu";
 
 type User = {
   name?: string;
@@ -40,10 +34,8 @@ export type HeaderProps = {
   onSignOut?: () => void;
   logoSrc?: string;
   logoSrcDark?: string;
-  /** Show the admin entry points. Only true for members of the admin group. */
+  /** Show the Administration item in the profile menu. Only true for admins. */
   isAdmin?: boolean;
-  /** Whether the admin area is the current page. */
-  adminActive?: boolean;
   /** Route of the admin area; a router `Link` is rendered for it. */
   adminHref?: string;
 };
@@ -60,7 +52,6 @@ export function Header(props: HeaderProps): ReactNode {
     logoSrc: logoSrcProp,
     logoSrcDark: logoSrcDarkProp,
     isAdmin = false,
-    adminActive = false,
     adminHref = "/admin",
   } = props;
 
@@ -77,19 +68,6 @@ export function Header(props: HeaderProps): ReactNode {
       <MenuBarBrand href={homeHref} aria-label="Go to homepage">
         <img src={logoSrc} alt="Nebari" className="h-8 w-auto" />
       </MenuBarBrand>
-
-      {isAdmin ? (
-        <MenuBarNav aria-label="Primary" className="hidden sm:flex">
-          <NavLink
-            active={adminActive}
-            icon={<ShieldCheck aria-hidden="true" />}
-            render={<Link to={adminHref} />}
-            className="text-header-foreground hover:bg-header-action-hover"
-          >
-            Admin
-          </NavLink>
-        </MenuBarNav>
-      ) : null}
 
       <MenuBarActions className="gap-2">
         {user ? (

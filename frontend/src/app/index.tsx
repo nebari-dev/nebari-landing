@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes, useLocation } from "react-router";
+import { Route, Routes } from "react-router";
 import { signIn, signOut } from "@/auth/keycloak";
 import { useUser } from "@/auth/user";
 import { Toaster } from "@/components/ui/toast";
@@ -20,10 +20,7 @@ export default function App() {
   const { user } = useUser();
   const { isAdmin } = useCallerIdentity(user);
   const { services, onTogglePin } = useLaunchpadData(user);
-  const location = useLocation();
-
   const config = getAppConfig();
-  const inAdmin = location.pathname.startsWith("/admin");
 
   return (
     <Toaster>
@@ -39,7 +36,6 @@ export default function App() {
           logoSrc={config?.logoUrl || undefined}
           logoSrcDark={config?.logoUrlDark || undefined}
           isAdmin={isAdmin}
-          adminActive={inAdmin}
         />
 
         <Routes>

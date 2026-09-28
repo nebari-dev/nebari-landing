@@ -70,9 +70,8 @@ written once on each side and can be unit-tested.
   The SPA mirrors that through `GET /api/v1/caller-identity`, which returns the
   caller's groups and is the server-trusted source. A new `useCallerIdentity()`
   hook exposes `isAdmin`.
-- Admins get an **Admin** link in the header nav slot (`MenuBarNav`) and an
-  "Administration" item in the profile menu. Non-admins see exactly what they
-  see today.
+- Admins get an **Administration** item in the profile menu. The header nav
+  stays untouched, so non-admins see exactly what they see today.
 - `/admin/*` renders a "Not authorized" state for non-admins and a sign-in
   prompt for anonymous users; the routes never 404 for them, so deep links stay
   shareable.

@@ -16,12 +16,12 @@ const NON_ADMIN_IDENTITY = {
 };
 
 test.describe("entry point", () => {
-  test("admins see the Admin link and land on the users list", async ({ page }) => {
+  test("admins reach the users list from the profile menu", async ({ page }) => {
     await page.goto("/");
-    const header = page.locator("header");
-    await expect(header.getByRole("link", { name: "Admin" })).toBeVisible();
+    await expect(page.locator("header").getByRole("link", { name: "Admin" })).toHaveCount(0);
 
-    await header.getByRole("link", { name: "Admin" }).click();
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await page.getByRole("menuitem", { name: "Administration" }).click();
     await expect(page).toHaveURL(/\/admin\/users$/);
     await expect(page.getByRole("heading", { level: 1, name: "Administration" })).toBeVisible();
     await expect(
@@ -29,12 +29,6 @@ test.describe("entry point", () => {
         name: "Users",
       }),
     ).toHaveAttribute("aria-current", "page");
-  });
-
-  test("the profile menu offers Administration to admins", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: "Account menu" }).click();
-    await expect(page.getByRole("menuitem", { name: "Administration" })).toBeVisible();
   });
 
   test("non-admins get no link and a polite dead end", async ({ page }) => {
@@ -47,7 +41,10 @@ test.describe("entry point", () => {
     );
 
     await page.goto("/");
-    await expect(page.locator("header").getByRole("link", { name: "Admin" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await expect(page.getByRole("menuitem", { name: "Sign out" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Administration" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
 
     await page.goto("/admin/users");
     await expect(page.getByRole("status")).toContainText("don't have access");
