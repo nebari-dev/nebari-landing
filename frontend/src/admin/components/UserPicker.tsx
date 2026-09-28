@@ -9,6 +9,7 @@ import {
   ComboboxItem,
   ComboboxList,
   ComboboxValue,
+  useComboboxFilter,
 } from "@/components/ui/combobox";
 import { Label } from "@/components/ui/label";
 import type { AdminUser } from "../api/types";
@@ -31,6 +32,7 @@ export function UserPicker({
   placeholder = "Search by name, username or email…",
 }: UserPickerProps) {
   const id = useId();
+  const { contains } = useComboboxFilter({ multiple: true, value });
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor={id}>{label}</Label>
@@ -39,7 +41,10 @@ export function UserPicker({
         items={users}
         value={value}
         onValueChange={(next) => onChange(next as AdminUser[])}
-        itemToStringLabel={(u: AdminUser) => `${displayName(u)} ${u.username} ${u.email}`}
+        itemToStringLabel={(u: AdminUser) => displayName(u)}
+        filter={(u: AdminUser, query: string) =>
+          [displayName(u), u.username, u.email].some((f) => contains(f, query))
+        }
         isItemEqualToValue={(a: AdminUser, b: AdminUser) => a.id === b.id}
       >
         <ComboboxChips>

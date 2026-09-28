@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { Field, FieldLabel } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -65,8 +65,8 @@ export function PickerDialog({
         {options.length === 0 ? (
           <EmptyState title={emptyTitle} />
         ) : (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={id}>{fieldLabel}</Label>
+          <Field>
+            <FieldLabel htmlFor={id}>{fieldLabel}</FieldLabel>
             <Select value={value} onValueChange={(v) => setValue(v as string | null)}>
               <SelectTrigger id={id} className="w-full">
                 <SelectValue placeholder="Select…">
@@ -86,7 +86,7 @@ export function PickerDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </Field>
         )}
 
         <DialogFooter>

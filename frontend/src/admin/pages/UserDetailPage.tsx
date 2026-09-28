@@ -123,7 +123,7 @@ export function UserDetailPage() {
                 <a
                   href={keycloakConsoleUrl(`/users/${encodeURIComponent(user.id)}/settings`)}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                 />
               }
             >
@@ -280,9 +280,9 @@ export function UserDetailPage() {
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div>
-                <h4 className="mb-2 text-sm font-medium">
+                <h3 className="mb-2 text-sm font-medium">
                   Direct ({pluralize(roleInfo.direct.length, "role")})
-                </h4>
+                </h3>
                 {roleInfo.direct.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No direct roles.</p>
                 ) : (
@@ -305,7 +305,7 @@ export function UserDetailPage() {
                 )}
               </div>
               <div>
-                <h4 className="mb-2 text-sm font-medium">Inherited from groups</h4>
+                <h3 className="mb-2 text-sm font-medium">Inherited from groups</h3>
                 {roleInfo.inherited.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No inherited roles.</p>
                 ) : (

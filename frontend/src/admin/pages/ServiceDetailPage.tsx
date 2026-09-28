@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CodeBlock, CodeBlockBody, CodeBlockHeader } from "@/components/ui/code-block";
 import {
   Dialog,
   DialogClose,
@@ -111,7 +112,7 @@ export function ServiceDetailPage() {
             {service.docsUrl ? (
               <Button
                 variant="outline"
-                render={<a href={service.docsUrl} target="_blank" rel="noreferrer" />}
+                render={<a href={service.docsUrl} target="_blank" rel="noopener noreferrer" />}
               >
                 <BookOpen aria-hidden="true" />
                 Docs
@@ -120,7 +121,7 @@ export function ServiceDetailPage() {
             {service.settingsUrl ? (
               <Button
                 variant="outline"
-                render={<a href={service.settingsUrl} target="_blank" rel="noreferrer" />}
+                render={<a href={service.settingsUrl} target="_blank" rel="noopener noreferrer" />}
               >
                 <Settings aria-hidden="true" />
                 Pack settings
@@ -211,13 +212,16 @@ export function ServiceDetailPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs text-foreground">
-              {yaml}
-            </pre>
+            <CodeBlock code={yaml} className="w-full" showCopyButton={false}>
+              <CodeBlockHeader>
+                <span>nebariapp.yaml</span>
+              </CodeBlockHeader>
+              <CodeBlockBody />
+            </CodeBlock>
             <a
               href={service.url}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
             >
               Open service

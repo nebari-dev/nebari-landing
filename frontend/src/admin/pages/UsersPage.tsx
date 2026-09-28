@@ -79,6 +79,7 @@ export function UsersPage() {
           <BadgeOverflow
             items={row.original.groups}
             render={(gid) => <GroupBadge key={gid} id={gid} name={groupName.get(gid) ?? gid} />}
+            getLabel={(gid) => groupName.get(gid) ?? gid}
           />
         ),
       },
@@ -93,6 +94,7 @@ export function UsersPage() {
             <BadgeOverflow
               items={row.original.roles}
               render={(r) => <RoleBadge key={r} name={r} />}
+              getLabel={(r) => r}
             />
           ),
       },
@@ -127,7 +129,11 @@ export function UsersPage() {
           <Button
             variant="outline"
             render={
-              <a href={keycloakConsoleUrl("/users/add-user")} target="_blank" rel="noreferrer" />
+              <a
+                href={keycloakConsoleUrl("/users/add-user")}
+                target="_blank"
+                rel="noopener noreferrer"
+              />
             }
           >
             Create user in Keycloak
@@ -153,7 +159,7 @@ export function UsersPage() {
         error={error ? error.message : undefined}
         onRetry={() => void refetch()}
         emptyTitle="No users yet"
-        emptyDescription="Users appear here once they sign in through Keycloak or are created in the Keycloak console."
+        emptyDescription="Users appear here once they sign in through Keycloak or are created there."
         filteredEmptyTitle="No users match"
         filteredEmptyDescription="Try a different search, or clear the group, role and status filters."
         toolbarActions={
@@ -245,7 +251,7 @@ function BulkActions({ selected }: { selected: AdminUser[] }) {
   const anyDisabled = selected.some((u) => !u.enabled);
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 motion-safe:animate-fade-in">
       <Button size="sm" variant="outline" onClick={() => setDialog("addToGroup")}>
         <UserPlus aria-hidden="true" />
         Add to group…

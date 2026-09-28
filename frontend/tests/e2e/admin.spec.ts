@@ -155,6 +155,11 @@ test.describe("accessibility", () => {
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1, name: "Administration" })).toBeVisible();
       await expect(page.getByRole("heading", { level: 2 })).toBeVisible();
+      // Let the page's entrance fade finish; axe blends translucent text with
+      // the background and would report contrast failures mid-animation.
+      await page.evaluate(() =>
+        Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))),
+      );
 
       const results = await makeAxeBuilder().analyze();
       await testInfo.attach(`axe-${path.replaceAll("/", "_")}`, {

@@ -73,6 +73,7 @@ export function GroupsPage() {
             <BadgeOverflow
               items={row.original.roles}
               render={(r) => <RoleBadge key={r} name={r} />}
+              getLabel={(r) => r}
             />
           ),
       },

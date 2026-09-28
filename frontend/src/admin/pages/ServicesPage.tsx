@@ -58,6 +58,7 @@ export function ServicesPage() {
               render={(name) => (
                 <GroupBadge key={name} id={groupId.get(name) ?? null} name={name} />
               )}
+              getLabel={(name) => name}
             />
           ),
       },

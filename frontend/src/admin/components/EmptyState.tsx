@@ -12,8 +12,10 @@ type EmptyStateProps = {
 };
 
 /**
- * Shared zero-state block for lists, search results and detail panels. An
- * error variant promotes the region to an alert.
+ * Shared zero-state block for detail panels and dialogs. Mirrors the
+ * DataTable's built-in state block (same icon treatment, type scale and
+ * spacing) so "nothing here" reads the same everywhere in the admin area.
+ * An error variant promotes the region to an alert.
  */
 export function EmptyState({
   title,
@@ -27,24 +29,24 @@ export function EmptyState({
     <div
       role={variant === "error" ? "alert" : "status"}
       className={cn(
-        "flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-6 py-10 text-center",
+        "flex flex-col items-center justify-center gap-2 px-6 py-10 text-center",
         className,
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
-          "flex size-10 items-center justify-center rounded-full bg-muted [&_svg]:size-5",
-          variant === "error" ? "text-destructive-foreground" : "text-muted-foreground-strong",
+          "mb-1 [&_svg]:size-6",
+          variant === "error" ? "text-destructive-foreground" : "text-muted-foreground",
         )}
       >
         {icon ?? (variant === "error" ? <CircleAlert /> : <Inbox />)}
       </span>
       <p className="text-sm font-medium text-foreground">{title}</p>
       {description ? (
-        <p className="max-w-prose text-sm text-muted-foreground">{description}</p>
+        <div className="max-w-sm text-sm leading-5 text-muted-foreground">{description}</div>
       ) : null}
-      {action ? <div className="pt-2">{action}</div> : null}
+      {action ? <div className="mt-1">{action}</div> : null}
     </div>
   );
 }

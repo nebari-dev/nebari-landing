@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router";
+import { Link, Navigate, Route, Routes } from "react-router";
 import { signIn } from "@/auth/keycloak";
 import type { User } from "@/auth/user";
 import { Button } from "@/components/ui/button";
@@ -75,7 +75,7 @@ export default function AdminApp({ user }: AdminAppProps) {
           title="You don't have access to administration"
           description="Only members of the admin group can manage users, groups and roles. Ask a platform administrator if you believe you should have access."
           action={
-            <Button variant="outline" render={<a href="/" />}>
+            <Button variant="outline" render={<Link to="/" />}>
               Back to the Launchpad
             </Button>
           }
