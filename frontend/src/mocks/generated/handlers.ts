@@ -150,6 +150,7 @@ export const generatedHandlers = [
       users: [],
     }),
   ),
+  http.delete("/api/v1/admin/users/:id", () => new HttpResponse(null, { status: 204 })),
   http.get("/api/v1/admin/users/:id", () =>
     HttpResponse.json({
       createdAt: "",

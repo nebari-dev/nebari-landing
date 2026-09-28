@@ -85,6 +85,7 @@ directly on the upgrade. The `/ws` endpoint accepts either mechanism.
 | `POST` | [`/admin/users/bulk`](#post-adminusersbulk) | Apply one change to many users (admin) |
 | `GET` | [`/admin/users/{id}`](#get-adminusersid) | Get a user (admin) |
 | `PATCH` | [`/admin/users/{id}`](#patch-adminusersid) | Enable or disable a user (admin) |
+| `DELETE` | [`/admin/users/{id}`](#delete-adminusersid) | Delete a user (admin) |
 | `PUT` | [`/admin/users/{id}/groups/{groupId}`](#put-adminusersidgroupsgroupId) | Add or remove a user's group membership (admin) |
 | `DELETE` | [`/admin/users/{id}/groups/{groupId}`](#delete-adminusersidgroupsgroupId) | Add or remove a user's group membership (admin) |
 | `PUT` | [`/admin/users/{id}/roles/{role}`](#put-adminusersidrolesrole) | Assign or unassign a direct realm role (admin) |
@@ -377,6 +378,19 @@ curl -s -X PATCH http://localhost:8080/api/v1/admin/users/{id} \
   -H 'Authorization: Bearer $TOKEN' \
   -H 'Content-Type: application/json' \
   -d '{}'
+```
+
+---
+
+### <a name="delete-adminusersid"></a>`DELETE /admin/users/{id}`
+
+Delete a user (admin)
+
+Permanently deletes the realm user together with their group memberships, role mappings and sessions. Admins cannot delete their own account.
+
+```sh
+curl -s -X DELETE http://localhost:8080/api/v1/admin/users/{id} \
+  -H 'Authorization: Bearer $TOKEN'
 ```
 
 ---

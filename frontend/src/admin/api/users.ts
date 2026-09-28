@@ -26,6 +26,12 @@ export async function setUserEnabled(id: string, enabled: boolean): Promise<Admi
   );
 }
 
+export async function deleteUser(id: string): Promise<void> {
+  const resp = await apiFetch(`/admin/users/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (resp.status === 204) return;
+  await expectJson(resp);
+}
+
 export async function addUserToGroup(id: string, groupId: string): Promise<AdminUser> {
   return expectJson(
     await apiFetch(`/admin/users/${encodeURIComponent(id)}/groups/${encodeURIComponent(groupId)}`, {

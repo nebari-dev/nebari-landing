@@ -22,6 +22,7 @@ type IdentityAdmin interface {
 	ListUsers(ctx context.Context) ([]keycloak.IdentityUser, error)
 	GetUser(ctx context.Context, id string) (*keycloak.IdentityUser, error)
 	SetUserEnabled(ctx context.Context, id string, enabled bool) error
+	DeleteUser(ctx context.Context, id string) error
 	AddUserToGroupByID(ctx context.Context, userID, groupID string) error
 	RemoveUserFromGroup(ctx context.Context, userID, groupID string) error
 	AssignRealmRole(ctx context.Context, userID, roleName string) error
@@ -162,6 +163,7 @@ func (h *Handler) registerIdentityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/admin/users/bulk", h.handleAdminBulkUsers)
 	mux.HandleFunc("GET /api/v1/admin/users/{id}", h.handleAdminGetUser)
 	mux.HandleFunc("PATCH /api/v1/admin/users/{id}", h.handleAdminPatchUser)
+	mux.HandleFunc("DELETE /api/v1/admin/users/{id}", h.handleAdminDeleteUser)
 	mux.HandleFunc("PUT /api/v1/admin/users/{id}/groups/{groupId}", h.handleAdminUserGroup)
 	mux.HandleFunc("DELETE /api/v1/admin/users/{id}/groups/{groupId}", h.handleAdminUserGroup)
 	mux.HandleFunc("PUT /api/v1/admin/users/{id}/roles/{role}", h.handleAdminUserRole)
@@ -312,6 +314,40 @@ func (h *Handler) handleAdminPatchUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.respondUser(w, r, id)
+}
+
+// handleAdminDeleteUser serves DELETE /api/v1/admin/users/{id}.
+//
+//	@Summary		Delete a user (admin)
+//	@Description	Permanently deletes the realm user together with their group memberships, role mappings and sessions. Admins cannot delete their own account.
+//	@Tags			admin
+//	@Produce		json
+//	@Param			id	path	string	true	"Keycloak user id"
+//	@Success		204
+//	@Failure		403	{object}	AdminError	"Cannot delete your own account"
+//	@Failure		404	{object}	AdminError
+//	@Security		BearerAuth
+//	@Router			/admin/users/{id} [delete]
+func (h *Handler) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
+	claims, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if h.identity == nil {
+		writeAdminError(w, http.StatusNotImplemented,
+			"Keycloak admin client not configured (set webapi.keycloak.adminSecretName)")
+		return
+	}
+	id := r.PathValue("id")
+	if claims.Subject != "" && claims.Subject == id {
+		writeAdminError(w, http.StatusForbidden, "you cannot delete your own account")
+		return
+	}
+	if err := h.identity.DeleteUser(r.Context(), id); err != nil {
+		writeKeycloakError(w, err, "user")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleAdminUserGroup serves PUT/DELETE /api/v1/admin/users/{id}/groups/{groupId}.

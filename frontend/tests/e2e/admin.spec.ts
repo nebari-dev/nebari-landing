@@ -110,6 +110,19 @@ test.describe("users", () => {
   });
 });
 
+test("deletes a user after confirmation", async ({ page }) => {
+  await page.goto("/admin/users/usr-elias");
+  await page.getByRole("button", { name: "Delete user" }).click();
+  const dialog = page.getByRole("dialog", { name: /Delete Elias Eriksen/ });
+  await expect(dialog).toContainText("cannot be undone");
+  await dialog.getByRole("button", { name: "Delete user" }).click();
+
+  await expect(page).toHaveURL(/\/admin\/users$/);
+  await expect(page.getByText("User deleted")).toBeVisible();
+  await page.getByRole("searchbox", { name: "Search users" }).fill("elias@");
+  await expect(page.getByRole("status").filter({ hasText: "No users match" })).toBeVisible();
+});
+
 test.describe("groups", () => {
   test("creates a group and blocks deleting a referenced one", async ({ page }) => {
     await page.goto("/admin/groups");

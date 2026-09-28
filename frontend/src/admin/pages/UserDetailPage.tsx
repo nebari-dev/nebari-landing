@@ -1,6 +1,6 @@
-import { ExternalLink, Plus, X } from "lucide-react";
+import { ExternalLink, Plus, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { getInitials } from "@/auth/user";
 import { Avatar, AvatarFallback } from "@/components/Avatar";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { GroupBadge, RoleBadge, StatusBadge, VisibilityBadge } from "../components/EntityBadges";
 import { PageHeader } from "../components/PageHeader";
@@ -32,6 +33,7 @@ import {
   useAddUserToGroup,
   useAdminWorld,
   useAssignUserRole,
+  useDeleteUser,
   useRemoveUserFromGroup,
   useSetUserEnabled,
   useUnassignUserRole,
@@ -45,13 +47,15 @@ export function UserDetailPage() {
   const { users, groups, roles, services, isLoading } = useAdminWorld();
   const user = users.find((u) => u.id === id);
 
+  const navigate = useNavigate();
   const setEnabled = useSetUserEnabled();
+  const deleteUser = useDeleteUser();
   const addToGroup = useAddUserToGroup();
   const removeFromGroup = useRemoveUserFromGroup();
   const assignRole = useAssignUserRole();
   const unassignRole = useUnassignUserRole();
 
-  const [dialog, setDialog] = useState<"group" | "role" | null>(null);
+  const [dialog, setDialog] = useState<"group" | "role" | "delete" | null>(null);
 
   const access = useMemo(
     () => (user ? servicesForUser(user, groups, services) : []),
@@ -136,6 +140,10 @@ export function UserDetailPage() {
             >
               Open in Keycloak
               <ExternalLink aria-hidden="true" />
+            </Button>
+            <Button variant="outline" onClick={() => setDialog("delete")}>
+              <Trash2 aria-hidden="true" />
+              Delete user
             </Button>
           </>
         }
@@ -328,6 +336,16 @@ export function UserDetailPage() {
         </TabsPanel>
       </Tabs>
 
+      <ConfirmDialog
+        open={dialog === "delete"}
+        onOpenChange={(o) => !o && setDialog(null)}
+        title={`Delete ${displayName(user)}?`}
+        description={`Permanently removes ${user.username} from Keycloak along with their ${pluralize(memberGroups.length, "group membership")}, role mappings and sessions. This cannot be undone.`}
+        confirmLabel="Delete user"
+        destructive
+        pending={deleteUser.isPending}
+        onConfirm={() => deleteUser.mutate(user.id, { onSuccess: () => navigate("/admin/users") })}
+      />
       <PickerDialog
         open={dialog === "group"}
         onOpenChange={(o) => !o && setDialog(null)}

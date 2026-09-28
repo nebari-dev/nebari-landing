@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Nerzal/gocloak/v13"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/nebari-dev/nebari-landing/internal/app"
 	"github.com/nebari-dev/nebari-landing/internal/auth"
@@ -67,6 +68,14 @@ func (f *fakeIdentity) GetUser(_ context.Context, id string) (*webkeycloak.Ident
 	}
 	cp := *u
 	return &cp, nil
+}
+
+func (f *fakeIdentity) DeleteUser(_ context.Context, id string) error {
+	if _, ok := f.users[id]; !ok {
+		return notFound()
+	}
+	delete(f.users, id)
+	return nil
 }
 
 func (f *fakeIdentity) SetUserEnabled(_ context.Context, id string, enabled bool) error {
@@ -366,6 +375,31 @@ func TestAdminIdentity_UserMutations(t *testing.T) {
 	}
 	if rec := do(t, h, http.MethodPut, "/api/v1/admin/users/u-eve/groups/g-missing", nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing group: want 404, got %d", rec.Code)
+	}
+}
+
+func TestAdminIdentity_DeleteUser(t *testing.T) {
+	fake := newFakeIdentity()
+	self := func(_ *http.Request) (*auth.Claims, bool) {
+		return &auth.Claims{
+			RegisteredClaims:  jwt.RegisteredClaims{Subject: "u-alice"},
+			PreferredUsername: "alice",
+			Groups:            []string{"admin"},
+		}, true
+	}
+	h := newIdentityHandler(t, fake, self)
+
+	if rec := do(t, h, http.MethodDelete, "/api/v1/admin/users/u-alice", nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("self delete: want 403, got %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(t, h, http.MethodDelete, "/api/v1/admin/users/u-bob", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: want 204, got %d %s", rec.Code, rec.Body.String())
+	}
+	if _, ok := fake.users["u-bob"]; ok {
+		t.Fatal("bob should be gone")
+	}
+	if rec := do(t, h, http.MethodDelete, "/api/v1/admin/users/u-bob", nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("delete twice: want 404, got %d", rec.Code)
 	}
 }
 

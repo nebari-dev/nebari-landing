@@ -503,3 +503,17 @@ func (c *Client) DeleteRole(ctx context.Context, name string) error {
 	}
 	return nil
 }
+
+// DeleteUser permanently removes a realm user; Keycloak drops all of their
+// group memberships, role mappings and sessions.
+func (c *Client) DeleteUser(ctx context.Context, id string) error {
+	s, err := c.session(ctx)
+	if err != nil {
+		return err
+	}
+	if err := s.kc.DeleteUser(ctx, s.token, s.realm, id); err != nil {
+		return fmt.Errorf("deleting user %q: %w", id, err)
+	}
+	log.Info("Deleted Keycloak user", "realm", s.realm, "id", id)
+	return nil
+}

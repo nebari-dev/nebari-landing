@@ -110,6 +110,10 @@ export function useSetUserEnabled() {
   );
 }
 
+export function useDeleteUser() {
+  return useAdminMutation((id: string) => usersApi.deleteUser(id), { success: "User deleted" });
+}
+
 export function useAddUserToGroup() {
   return useAdminMutation(
     ({ id, groupId }: { id: string; groupId: string }) => usersApi.addUserToGroup(id, groupId),

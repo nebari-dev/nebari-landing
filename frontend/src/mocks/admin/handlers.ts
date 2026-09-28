@@ -93,6 +93,14 @@ export const adminHandlers = [
     return json(200, user);
   }),
 
+  http.delete(`${BASE}/users/:id`, ({ params }) => {
+    const user = findUser(params.id);
+    if (!user) return problem(404, "user not found");
+    if (user.username === "dev") return problem(403, "you cannot delete your own account");
+    store.admin.users = store.admin.users.filter((u) => u.id !== user.id);
+    return new HttpResponse(null, { status: 204 });
+  }),
+
   http.put(`${BASE}/users/:id/groups/:groupId`, ({ params }) => {
     const user = findUser(params.id);
     const group = findGroup(params.groupId);
