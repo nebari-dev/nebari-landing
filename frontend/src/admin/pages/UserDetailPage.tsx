@@ -4,6 +4,14 @@ import { Link, useParams } from "react-router";
 import { getInitials } from "@/auth/user";
 import { Avatar, AvatarFallback } from "@/components/Avatar";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -213,18 +221,21 @@ export function UserDetailPage() {
         </TabsPanel>
 
         <TabsPanel value="groups" className="pt-6">
-          <div className="flex flex-col gap-4">
-            <PanelHeader
-              title="Group membership"
-              description="Groups are the unit of access. Membership changes apply on the user's next token refresh."
-              action={
+          <Card>
+            <CardHeader>
+              <CardTitle>Group membership</CardTitle>
+              <CardDescription>
+                Groups are the unit of access. Membership changes apply on the user's next token
+                refresh.
+              </CardDescription>
+              <CardAction>
                 <Button size="sm" onClick={() => setDialog("group")}>
                   <Plus aria-hidden="true" />
                   Add to group
                 </Button>
-              }
-            />
-            <div>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
               {memberGroups.length === 0 ? (
                 <EmptyState title="Not in any group" />
               ) : (
@@ -252,23 +263,26 @@ export function UserDetailPage() {
                   ))}
                 </ul>
               )}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </TabsPanel>
 
         <TabsPanel value="roles" className="pt-6">
-          <div className="flex flex-col gap-4">
-            <PanelHeader
-              title="Realm roles"
-              description="Direct roles are mapped to the user; inherited roles come from groups and are removed by leaving the group."
-              action={
+          <Card>
+            <CardHeader>
+              <CardTitle>Realm roles</CardTitle>
+              <CardDescription>
+                Direct roles are mapped to the user; inherited roles come from groups and are
+                removed by leaving the group.
+              </CardDescription>
+              <CardAction>
                 <Button size="sm" onClick={() => setDialog("role")}>
                   <Plus aria-hidden="true" />
                   Assign role
                 </Button>
-              }
-            />
-            <div className="flex flex-col gap-4">
+              </CardAction>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
               <div>
                 <h4 className="mb-2 text-sm font-medium">
                   Direct ({pluralize(roleInfo.direct.length, "role")})
@@ -309,8 +323,8 @@ export function UserDetailPage() {
                   </ul>
                 )}
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </TabsPanel>
       </Tabs>
 
