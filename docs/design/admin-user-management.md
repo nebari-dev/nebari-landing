@@ -16,12 +16,13 @@ around:
 
 1. **Nebari core owns identity, packs own their internals.** Users, groups and
    realm roles live in Keycloak. The only access rule Nebari core owns is the
-   routing gate on each `NebariApp` (`landingPage.visibility` +
-   `landingPage.requiredGroups`). Pack-internal permission mappings (Superset
+   routing gate on each `NebariApp` (`spec.auth.enabled` + `spec.auth.groups`,
+   which the webapi exposes as `visibility` + `requiredGroups`). Pack-internal
+   permission mappings (Superset
    roles, JupyterHub profiles, the DS-pack `allow-group-directory-creation-role`)
    are **out of scope** for a unified UI.
-2. **Don't create a competing configuration path.** `requiredGroups` is declared
-   in the CR and reconciled by GitOps. The UI therefore treats *service → groups*
+2. **Don't create a competing configuration path.** `spec.auth.groups` is
+   declared in the CR and reconciled by GitOps. The UI therefore treats *service → groups*
    as **read-only** and explains where it comes from. Access is granted or
    revoked by changing **group membership** (Keycloak), never by editing the CR
    from the UI.

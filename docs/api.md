@@ -185,7 +185,7 @@ curl -s -X PATCH http://localhost:8080/api/v1/admin/groups/{id} \
 
 Delete a group (admin)
 
-Refused with 409 while any landing-page service lists the group in its NebariApp requiredGroups; remove it from the CR first.
+Refused with 409 while any landing-page service lists the group under spec.auth.groups in its NebariApp; remove it from the CR first.
 
 ```sh
 curl -s -X DELETE http://localhost:8080/api/v1/admin/groups/{id} \
@@ -309,7 +309,7 @@ curl -s -X DELETE http://localhost:8080/api/v1/admin/roles/{name} \
 
 List service access gates (admin)
 
-Every landing-page service with the visibility and requiredGroups declared in its NebariApp. Read-only: the CR is the source of truth. Does not require a Keycloak admin client.
+Every landing-page service with the gate derived from its NebariApp spec.auth (visibility + requiredGroups). Read-only: the CR is the source of truth. Does not require a Keycloak admin client.
 
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/admin/services \

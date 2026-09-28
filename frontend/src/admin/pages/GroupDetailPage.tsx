@@ -233,7 +233,7 @@ export function GroupDetailPage() {
               {unlocked.length === 0 ? (
                 <EmptyState
                   title="No service references this group"
-                  description={`Add "${group.name}" to a NebariApp's landingPage.requiredGroups to gate that service on it.`}
+                  description={`List "${group.name}" under spec.auth.groups on a NebariApp to gate that service on it.`}
                 />
               ) : (
                 <ul className="divide-y divide-border">

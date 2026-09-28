@@ -66,12 +66,14 @@ export function ServiceDetailPage() {
     .map((name) => groups.find((g) => g.name === name))
     .filter((g): g is AdminGroup => g !== undefined);
 
+  // The gate is spec.auth on the NebariApp: auth disabled → public, enabled
+  // with no groups → any signed-in user, enabled with groups → those groups.
   const yaml = [
     "spec:",
-    "  landingPage:",
-    `    visibility: ${service.visibility}`,
+    "  auth:",
+    `    enabled: ${service.visibility === "public" ? "false" : "true"}`,
     ...(service.requiredGroups.length > 0
-      ? ["    requiredGroups:", ...service.requiredGroups.map((g) => `      - ${g}`)]
+      ? ["    groups:", ...service.requiredGroups.map((g) => `      - ${g}`)]
       : []),
   ].join("\n");
 
@@ -194,7 +196,7 @@ export function ServiceDetailPage() {
                     ? "Open to everyone"
                     : "Open to all signed-in users"
                 }
-                description="To restrict it, add requiredGroups to the NebariApp."
+                description="To restrict it, enable spec.auth on the NebariApp and list the allowed groups under spec.auth.groups."
               />
             )}
           </CardContent>

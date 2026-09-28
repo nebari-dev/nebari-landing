@@ -860,7 +860,7 @@ const docTemplate = `{
         },
         "/admin/groups/{id}": {
             "delete": {
-                "description": "Refused with 409 while any landing-page service lists the group in its NebariApp requiredGroups; remove it from the CR first.",
+                "description": "Refused with 409 while any landing-page service lists the group under spec.auth.groups in its NebariApp; remove it from the CR first.",
                 "parameters": [
                     {
                         "description": "Keycloak group id",
@@ -1554,7 +1554,7 @@ const docTemplate = `{
         },
         "/admin/services": {
             "get": {
-                "description": "Every landing-page service with the visibility and requiredGroups declared in its NebariApp. Read-only: the CR is the source of truth. Does not require a Keycloak admin client.",
+                "description": "Every landing-page service with the gate derived from its NebariApp spec.auth (visibility + requiredGroups). Read-only: the CR is the source of truth. Does not require a Keycloak admin client.",
                 "responses": {
                     "200": {
                         "content": {

@@ -559,7 +559,7 @@ func (h *Handler) handleAdminPatchGroup(w http.ResponseWriter, r *http.Request) 
 // handleAdminDeleteGroup serves DELETE /api/v1/admin/groups/{id}.
 //
 //	@Summary		Delete a group (admin)
-//	@Description	Refused with 409 while any landing-page service lists the group in its NebariApp requiredGroups; remove it from the CR first.
+//	@Description	Refused with 409 while any landing-page service lists the group under spec.auth.groups in its NebariApp; remove it from the CR first.
 //	@Tags			admin
 //	@Produce		json
 //	@Param			id	path	string	true	"Keycloak group id"
@@ -838,7 +838,7 @@ func toAdminService(s *cache.ServiceInfo) AdminService {
 // handleAdminListServices serves GET /api/v1/admin/services.
 //
 //	@Summary		List service access gates (admin)
-//	@Description	Every landing-page service with the visibility and requiredGroups declared in its NebariApp. Read-only: the CR is the source of truth. Does not require a Keycloak admin client.
+//	@Description	Every landing-page service with the gate derived from its NebariApp spec.auth (visibility + requiredGroups). Read-only: the CR is the source of truth. Does not require a Keycloak admin client.
 //	@Tags			admin
 //	@Produce		json
 //	@Success		200	{array}		AdminService

@@ -119,7 +119,7 @@ export function GroupsPage() {
         error={error ? error.message : undefined}
         onRetry={() => void refetch()}
         emptyTitle="No groups yet"
-        emptyDescription="Create a group, then reference it from a NebariApp's requiredGroups to gate a service on it."
+        emptyDescription="Create a group, then list it under spec.auth.groups on a NebariApp to gate that service on it."
         emptyAction={
           <Button onClick={() => setCreateOpen(true)}>
             <Plus aria-hidden="true" />

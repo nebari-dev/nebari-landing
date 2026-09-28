@@ -140,7 +140,7 @@ test.describe("services", () => {
 
     await table.getByRole("link", { name: /Superset/ }).click();
     await expect(page.getByRole("heading", { level: 2, name: /Superset/ })).toBeVisible();
-    await expect(page.getByText("requiredGroups:")).toBeVisible();
+    await expect(page.getByText("groups:")).toBeVisible();
     await expect(page.getByRole("link", { name: "Pack settings" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Add to analysts" })).toBeVisible();
   });
