@@ -308,6 +308,7 @@ keycloak: postgresql keycloak-install keycloak-realm
 postgresql-secrets:
 	$(KUBECTL_BIN) create namespace $(NAMESPACE_KC) --dry-run=client -o yaml | $(KUBECTL_BIN) apply -f -
 	$(KUBECTL_BIN) create secret generic keycloak-admin-credentials \
+	  --from-literal=admin-username=admin \
 	  --from-literal=admin-password=$(KEYCLOAK_ADMIN_PASSWORD) \
 	  --namespace $(NAMESPACE_KC) \
 	  --dry-run=client -o yaml | $(KUBECTL_BIN) apply -f -

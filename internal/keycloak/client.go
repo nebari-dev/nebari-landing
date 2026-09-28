@@ -166,13 +166,23 @@ func NewFromEnvWithK8sClient(ctx context.Context, k8sClient client.Client) (*Cli
 }
 
 // authenticate opens a gocloak client and obtains a short-lived admin token.
+// The credentials are expected to be a master-realm administrator; when that
+// login is rejected the client retries against the target realm so a
+// realm-local administrator (a user holding realm-management roles in
+// cfg.Realm) also works.
 func (c *Client) authenticate(ctx context.Context) (*gocloak.GoCloak, *gocloak.JWT, error) {
 	kc := gocloak.NewClient(c.cfg.URL)
 	token, err := kc.LoginAdmin(ctx, c.cfg.AdminUsername, c.cfg.AdminPassword, "master")
-	if err != nil {
-		return nil, nil, fmt.Errorf("keycloak admin login failed: %w", err)
+	if err == nil {
+		return kc, token, nil
 	}
-	return kc, token, nil
+	if c.cfg.Realm != "" && c.cfg.Realm != "master" {
+		if realmToken, realmErr := kc.LoginAdmin(ctx, c.cfg.AdminUsername, c.cfg.AdminPassword, c.cfg.Realm); realmErr == nil {
+			return kc, realmToken, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("keycloak admin login failed for %q in realm master (and %q): %w",
+		c.cfg.AdminUsername, c.cfg.Realm, err)
 }
 
 // AddUserToGroup finds the user by username and the group by name in cfg.Realm,

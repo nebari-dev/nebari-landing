@@ -110,11 +110,13 @@ scale; skeletons while loading; toasts for mutation results.
 **Theming** — everything uses semantic tokens from `@nebari/theme`, so light and
 dark come for free; the e2e theme spec covers the new pages.
 
-## Proposed API (mocked now, webapi later)
+## API
 
-All under `/api/v1/admin/`, admin-gated by the existing `isAdmin` check.
-Backed by the gocloak admin client that already exists for access-request
-approval.
+All under `/api/v1/admin/`, admin-gated by the existing `isAdmin` check and
+implemented in `internal/api/admin_identity.go` on top of the gocloak admin
+client (`internal/keycloak/identity.go`). The endpoints answer 501 when no
+Keycloak admin credentials are configured (`webapi.keycloak.adminSecretName`).
+The MSW layer serves the same contract for the frontend-only dev loop.
 
 | Method | Path | Notes |
 |--------|------|-------|
@@ -131,13 +133,15 @@ approval.
 | GET / PATCH / DELETE | `roles/{name}` | |
 | GET | `services` | read-only; `{ id, name, displayName, category, namespace, visibility, requiredGroups, docsUrl?, settingsUrl? }` sourced from the watcher cache |
 
-Types live in `frontend/src/api/admin/types.ts`; the MSW handlers and seed data
-live in `frontend/src/mocks/admin/`.
+Frontend types live in `frontend/src/admin/api/types.ts`; the MSW handlers and
+seed data live in `frontend/src/mocks/admin/`. Group descriptions are stored as
+the Keycloak group attribute `description`; `lastSignInAt` is always null
+until we read the Keycloak events store.
 
 ## Out of scope for the prototype
 
-- Any Go / chart change (the `docsUrl` / `settingsUrl` CRD fields are proposed,
-  not implemented).
+- The `docsUrl` / `settingsUrl` CRD fields (proposed, not implemented; the
+  mock seed carries them so the UI shows the affordance).
 - Client roles, composite-role editing, user creation and password flows
   (link to Keycloak).
 - Pack-internal permission mappings.
@@ -145,11 +149,18 @@ live in `frontend/src/mocks/admin/`.
 
 ## Prototype status
 
-Everything above is built on the branch and runs against the MSW seed.
+Everything above is built on the branch: the frontend against the MSW seed,
+and the webapi endpoints against Keycloak.
 
-**Try it:** follow [`docs/dev-quickstart.md`](../dev-quickstart.md) (docker
-compose Keycloak + `VITE_USE_MOCKS=1`), sign in as `admin` / `password`, and
-open `/admin`. Sign in as `dev` to see the non-admin experience.
+**Try it with mocks:** follow [`docs/dev-quickstart.md`](../dev-quickstart.md)
+(docker compose Keycloak + `VITE_USE_MOCKS=1`), sign in as `admin` /
+`password`, and open `/admin`. Sign in as `dev` to see the non-admin
+experience.
+
+**Try it for real:** `make -f dev/Makefile setup` (minikube + Keycloak +
+operator + the chart), then open `http://localhost:8080/` and sign in as the
+realm admin (see `dev/QUICKSTART.md`). The users, groups and roles shown are
+the live `nebari` realm; the service gates come from the sample NebariApps.
 
 **Screenshots** (captured by `tests/e2e/screenshots.spec.ts`, so they regenerate
 with the rest):
@@ -186,8 +197,9 @@ with the rest):
   `index.css`; harmless, but a large diff to be aware of on the first
   component install in any app.
 
-**Not built** (see "Out of scope"): any webapi endpoint, the `docsUrl` /
-`settingsUrl` CRD fields, role editing beyond description, user creation.
+**Not built** (see "Out of scope"): the `docsUrl` / `settingsUrl` CRD fields,
+role editing beyond description, user creation, last sign-in from the
+Keycloak events store.
 
 ## Open questions for review
 

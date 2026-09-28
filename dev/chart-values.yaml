@@ -8,8 +8,11 @@
 # The Makefile 'install' target uses this file automatically.
 #
 # Pre-requisites (already created by other make targets):
-#   Secret nebari-realm-admin-credentials  (make postgresql-secrets)
-#     keys: username, password
+#   Secret keycloak-admin-credentials  (make postgresql-secrets)
+#     keys: admin-username, admin-password — the *master-realm* admin the
+#     webapi uses for Keycloak admin API calls (user/group management).
+#     nebari-realm-admin-credentials is the realm-local admin *user* and
+#     cannot call the admin API.
 
 # ---------------------------------------------------------------------------
 # Webapi
@@ -31,7 +34,7 @@ webapi:
     realm: "nebari"
     enableAuth: true
     adminGroup: "admin"
-    adminSecretName: "nebari-realm-admin-credentials"
+    adminSecretName: "keycloak-admin-credentials"
     adminSecretNamespace: "keycloak"
 
   # Set debugMode: true to activate GET /api/v1/debug and verbose JWT logging.
