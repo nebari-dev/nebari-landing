@@ -4,6 +4,7 @@
 // the generated layer in ./generated/handlers.ts.
 
 import { HttpResponse, http } from "msw";
+import { adminHandlers } from "./admin/handlers";
 import { generatedHandlers } from "./generated/handlers";
 import { store } from "./store";
 import { wsHandlers } from "./ws";
@@ -111,4 +112,4 @@ const overrides = [
 
 // MSW resolves handlers in order; overrides come first so they win over the
 // generated fallbacks.
-export const handlers = [...overrides, ...generatedHandlers, ...wsHandlers];
+export const handlers = [...overrides, ...adminHandlers, ...generatedHandlers, ...wsHandlers];
