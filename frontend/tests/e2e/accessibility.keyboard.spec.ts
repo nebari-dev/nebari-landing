@@ -15,8 +15,11 @@ test("header controls are reachable by keyboard", async ({ page }) => {
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: /go to homepage/i })).toBeFocused();
 
-  // Notifications are hidden, so the account menu is the next focusable
-  // header control after the logo.
+  // The mocked caller is an admin, so the Admin nav link follows the logo.
+  // Notifications are hidden, so the account menu comes right after it.
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Admin" })).toBeFocused();
+
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: /account menu/i })).toBeFocused();
   expect(notificationRequests).toEqual([]);

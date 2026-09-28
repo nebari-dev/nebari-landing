@@ -7,9 +7,12 @@ test("header accessibility tree stays stable", async ({ page }) => {
   await expect(header).toBeVisible();
 
   // Notifications are intentionally hidden, leaving the account-menu trigger
-  // as the only header action next to the logo.
+  // as the only header action next to the logo. The mocked caller is an
+  // admin, so the primary nav carries the Admin link.
   await expect(header).toMatchAriaSnapshot(`
     - link "Go to homepage"
+    - navigation "Primary":
+      - link "Admin"
     - button "Account menu"
   `);
 });

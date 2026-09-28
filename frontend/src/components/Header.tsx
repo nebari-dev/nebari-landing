@@ -1,6 +1,7 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { ChevronDown, LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { ChevronDown, LogOut, Monitor, Moon, ShieldCheck, Sun } from "lucide-react";
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 import builtInLogoDark from "../assets/nebari-logo_dark.svg";
 import builtInLogoLight from "../assets/nebari-logo_light.svg";
 import { isThemeMode, type ThemeMode } from "../hooks/use-theme-preference";
@@ -15,7 +16,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { MenuBarActions, MenuBarBrand, NavigationMenu } from "./ui/navigation-menu";
+import {
+  MenuBarActions,
+  MenuBarBrand,
+  MenuBarNav,
+  NavigationMenu,
+  NavLink,
+} from "./ui/navigation-menu";
 
 type User = {
   name?: string;
@@ -33,6 +40,12 @@ export type HeaderProps = {
   onSignOut?: () => void;
   logoSrc?: string;
   logoSrcDark?: string;
+  /** Show the admin entry points. Only true for members of the admin group. */
+  isAdmin?: boolean;
+  /** Whether the admin area is the current page. */
+  adminActive?: boolean;
+  /** Route of the admin area; a router `Link` is rendered for it. */
+  adminHref?: string;
 };
 
 export function Header(props: HeaderProps): ReactNode {
@@ -46,6 +59,9 @@ export function Header(props: HeaderProps): ReactNode {
     onSignOut,
     logoSrc: logoSrcProp,
     logoSrcDark: logoSrcDarkProp,
+    isAdmin = false,
+    adminActive = false,
+    adminHref = "/admin",
   } = props;
 
   // Dark mode prefers the dark logo, then the light/general custom logo, then
@@ -61,6 +77,19 @@ export function Header(props: HeaderProps): ReactNode {
       <MenuBarBrand href={homeHref} aria-label="Go to homepage">
         <img src={logoSrc} alt="Nebari" className="h-8 w-auto" />
       </MenuBarBrand>
+
+      {isAdmin ? (
+        <MenuBarNav aria-label="Primary" className="hidden sm:flex">
+          <NavLink
+            active={adminActive}
+            icon={<ShieldCheck aria-hidden="true" />}
+            render={<Link to={adminHref} />}
+            className="text-header-foreground hover:bg-header-action-hover"
+          >
+            Admin
+          </NavLink>
+        </MenuBarNav>
+      ) : null}
 
       <MenuBarActions className="gap-2">
         {user ? (
@@ -115,6 +144,13 @@ export function Header(props: HeaderProps): ReactNode {
                 </div>
 
                 <DropdownMenuSeparator />
+
+                {isAdmin ? (
+                  <DropdownMenuItem className="leading-5" render={<Link to={adminHref} />}>
+                    <ShieldCheck className="size-4 shrink-0" aria-hidden="true" />
+                    Administration
+                  </DropdownMenuItem>
+                ) : null}
 
                 <DropdownMenuItem
                   className="leading-5 text-sign-out-foreground data-[highlighted]:text-sign-out-foreground"

@@ -1,6 +1,7 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
-
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router";
 
 import { initKeycloak } from "../auth/keycloak";
 import { ThemeProvider } from "../hooks/theme-provider";
@@ -62,10 +63,18 @@ if (!rootElement) {
   throw new Error("Root element not found");
 }
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+});
+
 createRoot(rootElement).render(
   <StrictMode>
-    <ThemeProvider storageKey={THEME_MODE_STORAGE_KEY}>
-      <App />
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <ThemeProvider storageKey={THEME_MODE_STORAGE_KEY}>
+          <App />
+        </ThemeProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   </StrictMode>,
 );

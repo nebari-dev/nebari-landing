@@ -63,3 +63,33 @@ test("homepage dark theme", async ({ page }) => {
     path: path.join(screenshotDir, "homepage-dark.png"),
   });
 });
+
+// Admin / user-management prototype (#208). Same light/dark pinning as above.
+const ADMIN_SHOTS: { name: string; path: string; ready: RegExp }[] = [
+  { name: "admin-users", path: "/admin/users", ready: /Users/ },
+  { name: "admin-user-detail", path: "/admin/users/usr-alice", ready: /Alice Alvarez/ },
+  { name: "admin-groups", path: "/admin/groups", ready: /Groups/ },
+  { name: "admin-group-detail", path: "/admin/groups/grp-analysts", ready: /analysts/ },
+  { name: "admin-roles", path: "/admin/roles", ready: /Roles/ },
+  { name: "admin-services", path: "/admin/services", ready: /Service access/ },
+  { name: "admin-service-detail", path: "/admin/services/svc-superset", ready: /Superset/ },
+];
+
+for (const mode of ["light", "dark"] as const) {
+  for (const shot of ADMIN_SHOTS) {
+    test(`${shot.name} ${mode} theme`, async ({ page }) => {
+      await page.addInitScript((m) => {
+        window.localStorage.setItem("launchpad:themeMode", m);
+      }, mode);
+
+      await page.goto(shot.path);
+      await expect(page.getByRole("heading", { level: 2, name: shot.ready })).toBeVisible();
+      await page.waitForTimeout(500);
+
+      await page.screenshot({
+        fullPage: true,
+        path: path.join(screenshotDir, `${shot.name}-${mode}.png`),
+      });
+    });
+  }
+}
