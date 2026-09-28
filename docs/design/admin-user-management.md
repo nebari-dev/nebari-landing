@@ -1,6 +1,6 @@
 # Design: Admin / User Management (prototype)
 
-**Status:** Prototype — **Issue:** [#208](https://github.com/nebari-dev/nebari-landing/issues/208)
+**Status:** Prototype built (mock-backed) — **Issue:** [#208](https://github.com/nebari-dev/nebari-landing/issues/208)
 **Branch:** `proto/admin-user-management` **Created:** 2026-09-28
 
 This document is the plan behind the clickable prototype on the branch above.
@@ -144,16 +144,51 @@ live in `frontend/src/mocks/admin/`.
 - Pack-internal permission mappings.
 - Audit log / history.
 
-## Work plan (one branch, incremental commits)
+## Prototype status
 
-1. `docs:` this plan.
-2. `feat(frontend):` router, `useCallerIdentity`, admin gate, header entry.
-3. `feat(frontend):` admin types, seed data, MSW handlers, API modules, hooks.
-4. `feat(frontend):` users list + detail, bulk actions.
-5. `feat(frontend):` groups list + detail.
-6. `feat(frontend):` roles list + detail.
-7. `feat(frontend):` service access map + detail.
-8. `test(frontend):` unit + e2e coverage, screenshots for the issue.
+Everything above is built on the branch and runs against the MSW seed.
+
+**Try it:** follow [`docs/dev-quickstart.md`](../dev-quickstart.md) (docker
+compose Keycloak + `VITE_USE_MOCKS=1`), sign in as `admin` / `password`, and
+open `/admin`. Sign in as `dev` to see the non-admin experience.
+
+**Screenshots** (captured by `tests/e2e/screenshots.spec.ts`, so they regenerate
+with the rest):
+
+| | |
+|---|---|
+| ![Users list](../static/screenshots/admin-users-light.png) | ![Users list, dark](../static/screenshots/admin-users-dark.png) |
+| ![User detail](../static/screenshots/admin-user-detail-light.png) | ![User detail, dark](../static/screenshots/admin-user-detail-dark.png) |
+| ![Groups](../static/screenshots/admin-groups-light.png) | ![Group detail](../static/screenshots/admin-group-detail-light.png) |
+| ![Roles](../static/screenshots/admin-roles-light.png) | ![Services](../static/screenshots/admin-services-light.png) |
+| ![Service detail](../static/screenshots/admin-service-detail-light.png) | |
+
+**Where the code lives**
+
+| Path | What |
+|---|---|
+| `frontend/src/admin/` | The whole feature: `AdminApp.tsx` (gate + routes), `pages/`, `components/`, `api/`, `hooks/`, `lib/access.ts` |
+| `frontend/src/hooks/useCallerIdentity.ts` | Server-trusted `isAdmin` |
+| `frontend/src/mocks/admin/` | Seed data and MSW handlers for the proposed endpoints |
+| `frontend/tests/e2e/admin.spec.ts` | Flows, non-admin gate, axe on three pages |
+| `frontend/tests/unit/admin/access.test.ts` | The access rule |
+
+**Things learned while building it**
+
+- The Nebari `Button` defaults its render element to `<button type="button">`,
+  and Base UI's render merge lets that win over a `type="submit"` prop. Submit
+  buttons need `render={<button type="submit" />}`.
+- Base UI toasts expose `role="dialog"`, so tests must name dialogs when
+  asserting they closed.
+- MSW handlers written with relative paths only match in Node when
+  `getResponse` is given a `baseUrl`; the Playwright fixture passes the
+  request origin.
+- The `@nebari/theme` install appends the full primitive color ramps to
+  `index.css`; harmless, but a large diff to be aware of on the first
+  component install in any app.
+
+**Not built** (see "Out of scope"): any webapi endpoint, the `docsUrl` /
+`settingsUrl` CRD fields, role editing beyond description, user creation.
 
 ## Open questions for review
 

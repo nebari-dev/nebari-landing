@@ -53,6 +53,11 @@ Open `http://localhost:5173`. You'll be redirected to Keycloak at
 After login you'll land on the launchpad with mocked services, notifications,
 and a live `/ws` connection emitting demo events.
 
+Signing in as `admin` also unlocks the **Admin** area (`/admin`): a mock-backed
+prototype for managing users, groups, roles and service access. Its seed data
+lives in `frontend/src/mocks/admin/fixtures.ts`; see
+[`docs/design/admin-user-management.md`](design/admin-user-management.md).
+
 ## Shutting down
 
 ```sh
