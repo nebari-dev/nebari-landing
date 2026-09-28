@@ -4,7 +4,6 @@ import { Link, useParams } from "react-router";
 import { getInitials } from "@/auth/user";
 import { Avatar, AvatarFallback } from "@/components/Avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -143,16 +142,13 @@ export function UserDetailPage() {
           </TabsTab>
         </TabsList>
 
-        <TabsPanel value="access" className="pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Services this user can reach</CardTitle>
-              <CardDescription>
-                Derived from group membership and each service's gate. To change it, change the
-                user's groups.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+        <TabsPanel value="access" className="pt-6">
+          <div className="flex flex-col gap-4">
+            <PanelHeader
+              title="Services this user can reach"
+              description="Derived from group membership and each service's gate. To change it, change the user's groups."
+            />
+            <div>
               {access.length === 0 ? (
                 <EmptyState
                   title="No services"
@@ -212,26 +208,23 @@ export function UserDetailPage() {
                   </TableBody>
                 </Table>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsPanel>
 
-        <TabsPanel value="groups" className="pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Group membership</CardTitle>
-              <CardDescription>
-                Groups are the unit of access. Membership changes apply on the user's next token
-                refresh.
-              </CardDescription>
-              <div className="pt-2">
+        <TabsPanel value="groups" className="pt-6">
+          <div className="flex flex-col gap-4">
+            <PanelHeader
+              title="Group membership"
+              description="Groups are the unit of access. Membership changes apply on the user's next token refresh."
+              action={
                 <Button size="sm" onClick={() => setDialog("group")}>
                   <Plus aria-hidden="true" />
                   Add to group
                 </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
+              }
+            />
+            <div>
               {memberGroups.length === 0 ? (
                 <EmptyState title="Not in any group" />
               ) : (
@@ -259,30 +252,27 @@ export function UserDetailPage() {
                   ))}
                 </ul>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsPanel>
 
-        <TabsPanel value="roles" className="pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Realm roles</CardTitle>
-              <CardDescription>
-                Direct roles are mapped to the user; inherited roles come from groups and are
-                removed by leaving the group.
-              </CardDescription>
-              <div className="pt-2">
+        <TabsPanel value="roles" className="pt-6">
+          <div className="flex flex-col gap-4">
+            <PanelHeader
+              title="Realm roles"
+              description="Direct roles are mapped to the user; inherited roles come from groups and are removed by leaving the group."
+              action={
                 <Button size="sm" onClick={() => setDialog("role")}>
                   <Plus aria-hidden="true" />
                   Assign role
                 </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
+              }
+            />
+            <div className="flex flex-col gap-4">
               <div>
-                <h3 className="mb-2 text-sm font-medium">
+                <h4 className="mb-2 text-sm font-medium">
                   Direct ({pluralize(roleInfo.direct.length, "role")})
-                </h3>
+                </h4>
                 {roleInfo.direct.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No direct roles.</p>
                 ) : (
@@ -305,7 +295,7 @@ export function UserDetailPage() {
                 )}
               </div>
               <div>
-                <h3 className="mb-2 text-sm font-medium">Inherited from groups</h3>
+                <h4 className="mb-2 text-sm font-medium">Inherited from groups</h4>
                 {roleInfo.inherited.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No inherited roles.</p>
                 ) : (
@@ -319,8 +309,8 @@ export function UserDetailPage() {
                   </ul>
                 )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsPanel>
       </Tabs>
 
@@ -359,5 +349,26 @@ export function UserDetailPage() {
         }
       />
     </section>
+  );
+}
+
+/** Title row for a tab panel: heading, supporting copy, optional action. */
+function PanelHeader({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
   );
 }
