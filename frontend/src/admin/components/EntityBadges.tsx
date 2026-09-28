@@ -4,7 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ServiceVisibility } from "../api/types";
 
-/** Group chip linking to the group's detail page. */
+/**
+ * Group chip linking to the group's detail page. Informational chips stay
+ * neutral so the only colored badge in a dense table is the exceptional
+ * state (Disabled): groups are `outline`, roles are `ghost`, visibility is
+ * `outline`; links underline on hover.
+ */
 export function GroupBadge({ id, name }: { id: string | null; name: string }) {
   if (!id) {
     return (
@@ -19,7 +24,7 @@ export function GroupBadge({ id, name }: { id: string | null; name: string }) {
     );
   }
   return (
-    <Badge variant="secondary" render={<Link to={`/admin/groups/${encodeURIComponent(id)}`} />}>
+    <Badge variant="outline" render={<Link to={`/admin/groups/${encodeURIComponent(id)}`} />}>
       {name}
     </Badge>
   );
@@ -29,8 +34,8 @@ export function GroupBadge({ id, name }: { id: string | null; name: string }) {
 export function RoleBadge({ name, inherited = false }: { name: string; inherited?: boolean }) {
   return (
     <Badge
-      variant="outline"
-      className={inherited ? "border-dashed text-muted-foreground" : undefined}
+      variant="ghost"
+      className={inherited ? "text-muted-foreground" : undefined}
       render={<Link to={`/admin/roles/${encodeURIComponent(name)}`} />}
     >
       {name}
@@ -45,7 +50,7 @@ export function VisibilityBadge({ visibility }: { visibility: ServiceVisibility 
       Public
     </Badge>
   ) : (
-    <Badge variant="secondary">
+    <Badge variant="outline">
       <Lock aria-hidden="true" />
       Private
     </Badge>
