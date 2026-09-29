@@ -13,6 +13,7 @@ type HealthPanelProps = {
   data?: AdminHealthSeriesResponse;
   loading: boolean;
   error?: Error | null;
+  hours?: number;
 };
 
 /**
@@ -20,7 +21,7 @@ type HealthPanelProps = {
  * latency sparkline on a shared 24h window and a shared latency scale, so the
  * rows compare at a glance. One series per panel, no legend needed.
  */
-export function HealthPanel({ data, loading, error }: HealthPanelProps) {
+export function HealthPanel({ data, loading, error, hours = 24 }: HealthPanelProps) {
   const services = data?.services ?? [];
   const latencyMax = Math.max(
     1,
@@ -35,8 +36,9 @@ export function HealthPanel({ data, loading, error }: HealthPanelProps) {
       <CardHeader>
         <CardTitle>Service health and response time</CardTitle>
         <CardDescription>
-          Last 24 hours in {data?.buckets ?? 48} periods{window ? ` (${window})` : ""}. Uptime strip
-          on top, median probe latency below, on a shared scale of 0–{latencyMax} ms.
+          Last {hours === 1 ? "hour" : `${hours} hours`} in {data?.buckets ?? 48} periods
+          {window ? ` (${window})` : ""}. Uptime strip on top, median probe latency below, on a
+          shared scale of 0–{latencyMax} ms.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -79,7 +81,7 @@ export function HealthPanel({ data, loading, error }: HealthPanelProps) {
                 <Sparkline
                   points={s.buckets.map((b) => ({ x: b.start, y: b.p50LatencyMs }))}
                   max={latencyMax}
-                  label={`${s.displayName} median latency over the last 24 hours`}
+                  label={`${s.displayName} median latency over the last ${hours === 1 ? "hour" : `${hours} hours`}`}
                   formatValue={(y) => `${y} ms`}
                   formatX={(x) => TIME.format(new Date(x))}
                 />

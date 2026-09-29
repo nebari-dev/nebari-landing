@@ -82,8 +82,13 @@ export type ServiceHealthSeries = {
   status: HealthStatusValue | string;
   latencyMs: number | null;
   uptimePercent: number | null;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
+  incidents: HealthIncident[];
   buckets: HealthBucket[];
 };
+
+export type HealthIncident = { from: string; to: string | null; probes: number };
 
 export type AdminHealthSeriesResponse = {
   from: string;

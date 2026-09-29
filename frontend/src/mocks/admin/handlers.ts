@@ -572,12 +572,41 @@ export const adminHandlers = [
           b.p50LatencyMs = b.p50LatencyMs === null ? lat : Math.round((b.p50LatencyMs + lat) / 2);
         });
         const h = mockHealth(s.id);
+        const lats = buckets
+          .map((b) => b.p50LatencyMs)
+          .filter((v): v is number => v !== null)
+          .sort((a, b) => a - b);
+        const incidents: { from: string; to: string | null; probes: number }[] = [];
+        let cur: { from: string; to: string | null; probes: number } | null = null;
+        for (const hh of history) {
+          const t = Date.parse(hh.at);
+          if (t < from || t >= to) continue;
+          if (hh.status === "unhealthy") {
+            if (!cur) {
+              cur = { from: hh.at, to: null, probes: 0 };
+              incidents.push(cur);
+            }
+            cur.probes++;
+          } else if (cur) {
+            cur.to = hh.at;
+            cur = null;
+          }
+        }
+        const inWindow = history.filter((hh) => {
+          const t = Date.parse(hh.at);
+          return t >= from && t < to;
+        });
         return {
           id: s.id,
           displayName: s.displayName,
           status: h?.status ?? "unknown",
           latencyMs: buckets[n - 1].p50LatencyMs,
-          uptimePercent: h?.uptimePercent ?? null,
+          uptimePercent: inWindow.length
+            ? (inWindow.filter((hh) => hh.status === "healthy").length * 100) / inWindow.length
+            : null,
+          p50LatencyMs: lats.length ? lats[Math.floor(lats.length / 2)] : null,
+          p95LatencyMs: lats.length ? lats[Math.floor((lats.length - 1) * 0.95)] : null,
+          incidents,
           buckets,
         };
       });

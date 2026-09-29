@@ -28,6 +28,60 @@ type HealthBucket struct {
 	P50LatencyMS *int `json:"p50LatencyMs"`
 }
 
+// Incident is a contiguous run of unhealthy probes.
+type Incident struct {
+	From time.Time `json:"from"`
+	// To is the first healthy/unknown probe after the run, nil while ongoing.
+	To     *time.Time `json:"to"`
+	Probes int        `json:"probes"`
+}
+
+// Incidents extracts unhealthy runs from samples within [from, to).
+func Incidents(samples []HealthSample, from, to time.Time) []Incident {
+	out := []Incident{}
+	var cur *Incident
+	for i := range samples {
+		s := samples[i]
+		if s.At.Before(from) || !s.At.Before(to) {
+			continue
+		}
+		if s.Status == "unhealthy" {
+			if cur == nil {
+				out = append(out, Incident{From: s.At})
+				cur = &out[len(out)-1]
+			}
+			cur.Probes++
+			continue
+		}
+		if cur != nil {
+			at := s.At
+			cur.To = &at
+			cur = nil
+		}
+	}
+	return out
+}
+
+// LatencyPercentiles returns p50 and p95 of the latencies recorded in
+// [from, to), or nil when none were.
+func LatencyPercentiles(samples []HealthSample, from, to time.Time) (p50, p95 *int) {
+	vals := []int{}
+	for _, s := range samples {
+		if s.LatencyMS == nil || s.At.Before(from) || !s.At.Before(to) {
+			continue
+		}
+		vals = append(vals, *s.LatencyMS)
+	}
+	if len(vals) == 0 {
+		return nil, nil
+	}
+	sort.Ints(vals)
+	a := vals[len(vals)/2]
+	idx := int(float64(len(vals)-1) * 0.95)
+	b := vals[idx]
+	return &a, &b
+}
+
 // BucketHealth slots samples into n equal buckets spanning [from, to). Samples
 // outside the window are ignored. Buckets with no samples have Total 0.
 func BucketHealth(samples []HealthSample, from, to time.Time, n int) []HealthBucket {

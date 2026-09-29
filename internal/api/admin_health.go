@@ -17,9 +17,14 @@ type ServiceHealthSeries struct {
 	DisplayName string `json:"displayName"`
 	Status      string `json:"status"`
 	// LatencyMS is the latest probe round-trip.
-	LatencyMS     *int                 `json:"latencyMs"`
-	UptimePercent *float64             `json:"uptimePercent"`
-	Buckets       []cache.HealthBucket `json:"buckets"`
+	LatencyMS *int `json:"latencyMs"`
+	// UptimePercent is over the requested window.
+	UptimePercent *float64 `json:"uptimePercent"`
+	// P50LatencyMS / P95LatencyMS are over the requested window.
+	P50LatencyMS *int                 `json:"p50LatencyMs"`
+	P95LatencyMS *int                 `json:"p95LatencyMs"`
+	Incidents    []cache.Incident     `json:"incidents"`
+	Buckets      []cache.HealthBucket `json:"buckets"`
 }
 
 // AdminHealthSeriesResponse is the body of GET /api/v1/admin/services/health.
@@ -67,7 +72,15 @@ func (h *Handler) handleAdminHealthSeries(w http.ResponseWriter, r *http.Request
 			series.Status = s.Health.Status
 			series.LatencyMS = s.Health.LatencyMS
 		}
-		series.UptimePercent = cache.SummarizeHealth(samples).UptimePercent
+		inWindow := samples[:0:0]
+		for _, smp := range samples {
+			if !smp.At.Before(from) && smp.At.Before(to) {
+				inWindow = append(inWindow, smp)
+			}
+		}
+		series.UptimePercent = cache.SummarizeHealth(inWindow).UptimePercent
+		series.P50LatencyMS, series.P95LatencyMS = cache.LatencyPercentiles(samples, from, to)
+		series.Incidents = cache.Incidents(samples, from, to)
 		out.Services = append(out.Services, series)
 	}
 	writeJSON(w, http.StatusOK, out)

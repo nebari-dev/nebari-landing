@@ -9,6 +9,7 @@ import { EmptyState } from "./components/EmptyState";
 import { ActivityPage } from "./pages/ActivityPage";
 import { GroupDetailPage } from "./pages/GroupDetailPage";
 import { GroupsPage } from "./pages/GroupsPage";
+import { HealthPage } from "./pages/HealthPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { PackDetailPage } from "./pages/PackDetailPage";
 import { PacksPage } from "./pages/PacksPage";
@@ -96,6 +97,7 @@ export default function AdminApp({ user }: AdminAppProps) {
         <Route path="packs" element={<PacksPage />} />
         <Route path="packs/:name" element={<PackDetailPage />} />
         <Route path="activity" element={<ActivityPage />} />
+        <Route path="health" element={<HealthPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="users/:id" element={<UserDetailPage />} />
         <Route path="groups" element={<GroupsPage />} />

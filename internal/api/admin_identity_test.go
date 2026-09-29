@@ -690,6 +690,15 @@ func TestAdminHealthSeries(t *testing.T) {
 	if total != 6 || unhealthy != 1 || withLatency == 0 || s.LatencyMS == nil || *s.LatencyMS != 150 {
 		t.Fatalf("buckets: total=%d unhealthy=%d withLatency=%d latest=%v", total, unhealthy, withLatency, s.LatencyMS)
 	}
+	if len(s.Incidents) != 1 || s.Incidents[0].Probes != 1 || s.Incidents[0].To == nil {
+		t.Fatalf("incidents: %+v", s.Incidents)
+	}
+	if s.P50LatencyMS == nil || *s.P50LatencyMS != 130 || s.P95LatencyMS == nil || *s.P95LatencyMS != 140 {
+		t.Fatalf("percentiles: %v %v", s.P50LatencyMS, s.P95LatencyMS)
+	}
+	if s.UptimePercent == nil || *s.UptimePercent < 83 || *s.UptimePercent > 84 {
+		t.Fatalf("uptime: %v", s.UptimePercent)
+	}
 	// Clamping.
 	res = decode[AdminHealthSeriesResponse](t, do(t, h, http.MethodGet, "/api/v1/admin/services/health?buckets=9999", nil))
 	if res.Buckets != 288 {

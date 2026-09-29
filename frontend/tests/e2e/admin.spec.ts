@@ -58,7 +58,6 @@ test.describe("overview", () => {
     await expect(page.getByRole("link", { name: /^Users: 60/ })).toBeVisible();
     await expect(page.getByRole("link", { name: /^Packs: 4/ })).toBeVisible();
 
-    await expect(page.getByRole("img", { name: /Grafana median latency/ })).toBeVisible();
 
     const attention = page.getByRole("table", { name: "Needs attention" });
     await expect(attention.getByRole("row", { name: /lgtm-pack/ })).toContainText("Out of sync");
@@ -192,6 +191,26 @@ test.describe("services", () => {
   });
 });
 
+test.describe("health", () => {
+  test("shows platform uptime, per-service series, scorecard and incidents", async ({ page }) => {
+    await page.goto("/admin/health");
+    await expect(page.getByRole("heading", { level: 2, name: "Health" })).toBeVisible();
+    await expect(
+      page.getByRole("img", { name: /Grafana median latency over the last 24 hours/ }),
+    ).toBeVisible();
+    const scorecard = page.getByRole("table", { name: "Service health scorecard" });
+    await expect(scorecard.getByRole("row", { name: /VS Code Server/ })).toContainText("1");
+    const incidents = page.getByRole("table", { name: "Incidents" });
+    await expect(incidents.getByRole("row", { name: /Grafana/ })).toContainText("Resolved");
+    await expect(incidents.getByRole("row", { name: /VS Code Server/ })).toContainText("Unhealthy");
+
+    await page.getByRole("tab", { name: "1h" }).click();
+    await expect(
+      page.getByRole("img", { name: /Grafana median latency over the last hour/ }),
+    ).toBeVisible();
+  });
+});
+
 test.describe("packs", () => {
   test("lists packs with version, sync and services, and opens one", async ({ page }) => {
     await page.goto("/admin/packs");
@@ -222,6 +241,7 @@ test.describe("accessibility", () => {
     "/admin/packs",
     "/admin/packs/lgtm-pack",
     "/admin/activity",
+    "/admin/health",
   ]) {
     test(`${path} has no automatically detectable WCAG A/AA violations`, async ({
       page,

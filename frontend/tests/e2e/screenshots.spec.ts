@@ -77,6 +77,7 @@ const ADMIN_SHOTS: { name: string; path: string; ready: RegExp }[] = [
   { name: "admin-packs", path: "/admin/packs", ready: /Software packs/ },
   { name: "admin-pack-detail", path: "/admin/packs/data-science-pack", ready: /data-science-pack/ },
   { name: "admin-activity", path: "/admin/activity", ready: /Activity/ },
+  { name: "admin-health", path: "/admin/health", ready: /^Health$/ },
 ];
 
 for (const mode of ["light", "dark"] as const) {

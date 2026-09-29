@@ -520,14 +520,29 @@ const docTemplate = `{
                     "id": {
                         "type": "string"
                     },
+                    "incidents": {
+                        "items": {
+                            "$ref": "#/components/schemas/cache.Incident"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
                     "latencyMs": {
                         "description": "LatencyMS is the latest probe round-trip.",
+                        "type": "integer"
+                    },
+                    "p50LatencyMs": {
+                        "description": "P50LatencyMS / P95LatencyMS are over the requested window.",
+                        "type": "integer"
+                    },
+                    "p95LatencyMs": {
                         "type": "integer"
                     },
                     "status": {
                         "type": "string"
                     },
                     "uptimePercent": {
+                        "description": "UptimePercent is over the requested window.",
                         "type": "number"
                     }
                 },
@@ -644,6 +659,21 @@ const docTemplate = `{
                     },
                     "status": {
                         "description": "healthy, unhealthy, unknown",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "cache.Incident": {
+                "properties": {
+                    "from": {
+                        "type": "string"
+                    },
+                    "probes": {
+                        "type": "integer"
+                    },
+                    "to": {
+                        "description": "To is the first healthy/unknown probe after the run, nil while ongoing.",
                         "type": "string"
                     }
                 },
