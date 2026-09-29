@@ -29,26 +29,17 @@ type AttentionRow = {
   action: string;
 };
 
-type ActivityRow = {
-  key: string;
-  at: string;
-  event: string;
-  subject: React.ReactNode;
-  details: React.ReactNode;
-};
-
 /**
- * Admin landing page: a KPI row from /admin/overview, then two full-width
- * tables derived from the entity queries: what needs attention and what
- * changed recently.
+ * Admin landing page: a KPI row from /admin/overview, then a full-width
+ * "needs attention" table derived from the entity queries. The activity
+ * feed lives in its own section.
  */
 export function OverviewPage() {
   const overview = useAdminOverview();
   const packs = usePacks();
-  const { users, groups, services, isLoading: worldLoading } = useAdminWorld();
+  const { users, services, isLoading: worldLoading } = useAdminWorld();
   const o = overview.data;
   const packList = packs.data?.packs ?? [];
-  const groupName = useMemo(() => new Map(groups.map((g) => [g.id, g.name])), [groups]);
 
   const attention = useMemo<AttentionRow[]>(() => {
     const rows: AttentionRow[] = [];
@@ -130,60 +121,6 @@ export function OverviewPage() {
     }
     return rows;
   }, [services, packList, users]);
-
-  const activity = useMemo<ActivityRow[]>(() => {
-    const rows: ActivityRow[] = [];
-    for (const u of users) {
-      if (!u.createdAt) continue;
-      rows.push({
-        key: `user-${u.id}`,
-        at: u.createdAt,
-        event: "Account created",
-        subject: (
-          <Link
-            to={`/admin/users/${encodeURIComponent(u.id)}`}
-            className="font-medium hover:underline"
-          >
-            {displayName(u)}
-          </Link>
-        ),
-        details: (
-          <span className="flex flex-wrap gap-1">
-            {u.groups.slice(0, 3).map((gid) => (
-              <GroupBadge key={gid} id={gid} name={groupName.get(gid) ?? gid} />
-            ))}
-            {u.groups.length === 0 ? (
-              <span className="text-muted-foreground">no groups</span>
-            ) : null}
-          </span>
-        ),
-      });
-    }
-    for (const p of packList) {
-      if (!p.argo?.lastSyncAt) continue;
-      rows.push({
-        key: `sync-${p.name}`,
-        at: p.argo.lastSyncAt,
-        event: `Pack sync ${p.argo.lastSyncPhase?.toLowerCase() || "finished"}`,
-        subject: (
-          <Link
-            to={`/admin/packs/${encodeURIComponent(p.name)}`}
-            className="font-medium hover:underline"
-          >
-            {p.name}
-          </Link>
-        ),
-        details: (
-          <span className="text-muted-foreground">
-            {p.chartName}
-            {p.chartVersion ? ` ${p.chartVersion}` : ""}
-            {p.argo.revision ? ` · ${p.argo.revision.slice(0, 7)}` : ""}
-          </span>
-        ),
-      });
-    }
-    return rows.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 10);
-  }, [users, packList, groupName]);
 
   const loading = overview.isPending;
 
@@ -315,41 +252,6 @@ export function OverviewPage() {
                       <ArrowRight aria-hidden="true" />
                     </Button>
                   </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-
-      <div className="mt-8 flex flex-col gap-3">
-        <div>
-          <h3 className="text-base font-semibold text-foreground">Recent activity</h3>
-          <p className="text-sm text-muted-foreground">
-            Newest accounts and the latest pack syncs.
-          </p>
-        </div>
-        {worldLoading || packs.isPending ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : activity.length === 0 ? (
-          <EmptyState title="No activity yet" />
-        ) : (
-          <Table aria-label="Recent activity">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-48">When</TableHead>
-                <TableHead className="w-48">Event</TableHead>
-                <TableHead>Subject</TableHead>
-                <TableHead>Details</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {activity.map((r) => (
-                <TableRow key={r.key}>
-                  <TableCell className="text-muted-foreground">{formatDateTime(r.at)}</TableCell>
-                  <TableCell>{r.event}</TableCell>
-                  <TableCell>{r.subject}</TableCell>
-                  <TableCell>{r.details}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

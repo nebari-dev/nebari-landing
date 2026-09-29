@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCallerIdentity } from "@/hooks/useCallerIdentity";
 import { AdminLayout } from "./components/AdminLayout";
 import { EmptyState } from "./components/EmptyState";
+import { ActivityPage } from "./pages/ActivityPage";
 import { GroupDetailPage } from "./pages/GroupDetailPage";
 import { GroupsPage } from "./pages/GroupsPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -94,6 +95,7 @@ export default function AdminApp({ user }: AdminAppProps) {
         <Route path="overview" element={<OverviewPage />} />
         <Route path="packs" element={<PacksPage />} />
         <Route path="packs/:name" element={<PackDetailPage />} />
+        <Route path="activity" element={<ActivityPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="users/:id" element={<UserDetailPage />} />
         <Route path="groups" element={<GroupsPage />} />

@@ -62,8 +62,15 @@ test.describe("overview", () => {
     await expect(attention.getByRole("row", { name: /lgtm-pack/ })).toContainText("Out of sync");
     await expect(attention.getByRole("row", { name: /5 disabled accounts/ })).toBeVisible();
 
+  });
+
+  test("activity lists accounts and pack syncs in its own section", async ({ page }) => {
+    await page.goto("/admin/activity");
     const recent = page.getByRole("table", { name: "Recent activity" });
     await expect(recent.getByRole("row", { name: /Tomás Brennan/ })).toContainText("Account created");
+    await page.getByRole("tab", { name: "Pack syncs" }).click();
+    await expect(recent.getByRole("row", { name: /lgtm-pack/ })).toContainText("Pack sync succeeded");
+    await expect(recent.getByRole("row", { name: /Tomás Brennan/ })).toHaveCount(0);
   });
 });
 
@@ -210,6 +217,7 @@ test.describe("accessibility", () => {
     "/admin/services/svc-superset",
     "/admin/packs",
     "/admin/packs/lgtm-pack",
+    "/admin/activity",
   ]) {
     test(`${path} has no automatically detectable WCAG A/AA violations`, async ({
       page,
