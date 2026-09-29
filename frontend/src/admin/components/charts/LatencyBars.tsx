@@ -16,7 +16,7 @@ export function LatencyBars({ items, label }: { items: LatencyBarItem[]; label: 
   return (
     <div role="img" aria-label={label}>
       <ChartContainer config={config} className="aspect-auto w-full" style={{ height }}>
-        <BarChart data={items} layout="vertical" margin={{ top: 0, right: 48, bottom: 0, left: 0 }}>
+        <BarChart data={items} layout="vertical" margin={{ top: 0, right: 72, bottom: 0, left: 0 }}>
           <XAxis type="number" hide domain={[0, "dataMax"]} />
           <YAxis
             type="category"
