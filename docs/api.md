@@ -83,6 +83,7 @@ directly on the upgrade. The `/ws` endpoint accepts either mechanism.
 | `PATCH` | [`/admin/roles/{name}`](#patch-adminrolesname) | Update a realm role's description (admin) |
 | `DELETE` | [`/admin/roles/{name}`](#delete-adminrolesname) | Delete a realm role (admin) |
 | `GET` | [`/admin/services`](#get-adminservices) | List service access gates (admin) |
+| `GET` | [`/admin/services/health`](#get-adminserviceshealth) | Bucketed health and latency for every probed service (admin) |
 | `GET` | [`/admin/services/{id}`](#get-adminservicesid) | Get a service access gate (admin) |
 | `GET` | [`/admin/services/{id}/health`](#get-adminservicesidhealth) | Service health history (admin) |
 | `GET` | [`/admin/users`](#get-adminusers) | List users (admin) |
@@ -355,6 +356,19 @@ Every landing-page service with the gate derived from its NebariApp spec.auth (v
 
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/admin/services \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="get-adminserviceshealth"></a>`GET /admin/services/health`
+
+Bucketed health and latency for every probed service (admin)
+
+Slots each service's retained probe samples into equal time buckets over a shared window (default 24h, 48 buckets) with per-bucket status counts and median latency. Services without a health check are omitted.
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/services/health \
   -H 'Authorization: Bearer $TOKEN'
 ```
 

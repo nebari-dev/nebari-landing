@@ -210,6 +210,7 @@ export const generatedHandlers = [
       displayName: "",
       health: {
         lastCheck: "",
+        latencyMs: 0,
         message: "",
         samples: 0,
         status: "",
@@ -230,6 +231,7 @@ export const generatedHandlers = [
     HttpResponse.json({
       history: [],
       lastCheck: "",
+      latencyMs: 0,
       message: "",
       samples: 0,
       status: "",
@@ -237,6 +239,14 @@ export const generatedHandlers = [
       streakStatus: "",
       uptimePercent: 0,
       windowStart: "",
+    }),
+  ),
+  http.get("/api/v1/admin/services/health", () =>
+    HttpResponse.json({
+      buckets: 0,
+      from: "",
+      services: [],
+      to: "",
     }),
   ),
   http.get("/api/v1/admin/users", () =>

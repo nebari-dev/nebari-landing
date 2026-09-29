@@ -93,6 +93,27 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "api.AdminHealthSeriesResponse": {
+                "properties": {
+                    "buckets": {
+                        "type": "integer"
+                    },
+                    "from": {
+                        "type": "string"
+                    },
+                    "services": {
+                        "items": {
+                            "$ref": "#/components/schemas/api.ServiceHealthSeries"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "to": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "api.AdminOverview": {
                 "properties": {
                     "accessRequests": {
@@ -199,6 +220,9 @@ const docTemplate = `{
                     "lastCheck": {
                         "type": "string"
                     },
+                    "latencyMs": {
+                        "type": "integer"
+                    },
                     "message": {
                         "type": "string"
                     },
@@ -239,6 +263,9 @@ const docTemplate = `{
                     },
                     "lastCheck": {
                         "type": "string"
+                    },
+                    "latencyMs": {
+                        "type": "integer"
                     },
                     "message": {
                         "type": "string"
@@ -478,6 +505,34 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "api.ServiceHealthSeries": {
+                "properties": {
+                    "buckets": {
+                        "items": {
+                            "$ref": "#/components/schemas/cache.HealthBucket"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "displayName": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "latencyMs": {
+                        "description": "LatencyMS is the latest probe round-trip.",
+                        "type": "integer"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "uptimePercent": {
+                        "type": "number"
+                    }
+                },
+                "type": "object"
+            },
             "api.ServiceResponse": {
                 "properties": {
                     "services": {
@@ -537,10 +592,37 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "cache.HealthBucket": {
+                "properties": {
+                    "healthy": {
+                        "type": "integer"
+                    },
+                    "p50LatencyMs": {
+                        "description": "P50LatencyMS is the median probe latency of the bucket, nil when no\nsample in it carried a latency.",
+                        "type": "integer"
+                    },
+                    "start": {
+                        "type": "string"
+                    },
+                    "total": {
+                        "type": "integer"
+                    },
+                    "unhealthy": {
+                        "type": "integer"
+                    },
+                    "unknown": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
             "cache.HealthSample": {
                 "properties": {
                     "at": {
                         "type": "string"
+                    },
+                    "latencyMs": {
+                        "type": "integer"
                     },
                     "status": {
                         "type": "string"
@@ -552,6 +634,10 @@ const docTemplate = `{
                 "properties": {
                     "lastCheck": {
                         "type": "string"
+                    },
+                    "latencyMs": {
+                        "description": "LatencyMS is the probe round-trip in milliseconds; nil when the probe\nnever completed (request build error).",
+                        "type": "integer"
                     },
                     "message": {
                         "type": "string"
@@ -2063,6 +2149,60 @@ const docTemplate = `{
                     }
                 ],
                 "summary": "List service access gates (admin)",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/admin/services/health": {
+            "get": {
+                "description": "Slots each service's retained probe samples into equal time buckets over a shared window (default 24h, 48 buckets) with per-bucket status counts and median latency. Services without a health check are omitted.",
+                "parameters": [
+                    {
+                        "description": "Window length in hours (1–168, default 24)",
+                        "in": "query",
+                        "name": "hours",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Number of buckets (4–288, default 48)",
+                        "in": "query",
+                        "name": "buckets",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.AdminHealthSeriesResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "Forbidden: admin group required"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Bucketed health and latency for every probed service (admin)",
                 "tags": [
                     "admin"
                 ]

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import type { HealthSample } from "../api/types";
+import type { HealthBucket, HealthSample } from "../api/types";
 import { formatDateTime } from "../lib/format";
 
 type HealthStripProps = {
@@ -67,4 +67,57 @@ export function HealthStrip({ samples, buckets = 96, className }: HealthStripPro
 export function formatUptime(pct: number | null | undefined): string {
   if (pct === null || pct === undefined) return "—";
   return `${pct >= 99.95 ? "100" : pct.toFixed(pct >= 99 ? 2 : 1)}%`;
+}
+
+/**
+ * Same strip, from server-side buckets (shared window across services so
+ * small multiples line up). Empty buckets render as gaps.
+ */
+export function HealthBucketStrip({
+  buckets,
+  className,
+}: {
+  buckets: HealthBucket[];
+  className?: string;
+}) {
+  if (buckets.length === 0 || buckets.every((b) => b.total === 0)) {
+    return <p className="text-xs text-muted-foreground">No probes in this window.</p>;
+  }
+  const status = (b: HealthBucket) =>
+    b.total === 0
+      ? "empty"
+      : b.unhealthy > 0
+        ? "unhealthy"
+        : b.healthy === b.total
+          ? "healthy"
+          : "unknown";
+  const counts = { healthy: 0, unhealthy: 0, unknown: 0 };
+  for (const b of buckets) {
+    const s = status(b);
+    if (s !== "empty") counts[s]++;
+  }
+  return (
+    <div
+      role="img"
+      aria-label={`${counts.healthy} healthy, ${counts.unhealthy} unhealthy, ${counts.unknown} unknown periods since ${formatDateTime(buckets[0].start)}`}
+      className={cn("flex h-6 w-full items-stretch gap-px", className)}
+    >
+      {buckets.map((b) => {
+        const s = status(b);
+        return (
+          <span
+            key={b.start}
+            title={`${s === "empty" ? "no probes" : s} · ${formatDateTime(b.start)}${b.p50LatencyMs !== null ? ` · ${b.p50LatencyMs} ms` : ""}`}
+            className={cn(
+              "min-w-px flex-1 rounded-sm",
+              s === "healthy" && "bg-(--status-healthy-dot)",
+              s === "unhealthy" && "bg-(--status-unhealthy-dot)",
+              s === "unknown" && "bg-(--status-default-dot) opacity-50",
+              s === "empty" && "bg-muted",
+            )}
+          />
+        );
+      })}
+    </div>
+  );
 }

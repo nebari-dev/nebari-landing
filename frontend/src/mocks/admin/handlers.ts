@@ -537,6 +537,58 @@ export const adminHandlers = [
     ),
   ),
 
+  http.get(`${BASE}/services/health`, ({ request }) => {
+    const url = new URL(request.url);
+    const hours = Number(url.searchParams.get("hours") ?? 24);
+    const n = Number(url.searchParams.get("buckets") ?? 48);
+    const to = Date.now();
+    const from = to - hours * 60 * 60 * 1000;
+    const width = (to - from) / n;
+    const services = store.admin.services
+      .map((s) => ({ s, history: mockHealthHistory(s.id) }))
+      .filter(({ history }) => history.length > 0)
+      .map(({ s, history }, si) => {
+        const buckets = Array.from({ length: n }, (_, i) => ({
+          start: new Date(from + i * width).toISOString(),
+          total: 0,
+          healthy: 0,
+          unhealthy: 0,
+          unknown: 0,
+          p50LatencyMs: null as number | null,
+        }));
+        history.forEach((h, hi) => {
+          const t = Date.parse(h.at);
+          if (t < from || t >= to) return;
+          const b = buckets[Math.min(n - 1, Math.floor((t - from) / width))];
+          b.total++;
+          if (h.status === "healthy") b.healthy++;
+          else if (h.status === "unhealthy") b.unhealthy++;
+          else b.unknown++;
+          // Synthetic latency: a per-service baseline with a slow daily wave.
+          const base = 60 + si * 35;
+          const lat = Math.round(
+            base + 40 * Math.abs(Math.sin(hi / 23)) + (h.status === "unhealthy" ? 900 : 0),
+          );
+          b.p50LatencyMs = b.p50LatencyMs === null ? lat : Math.round((b.p50LatencyMs + lat) / 2);
+        });
+        const h = mockHealth(s.id);
+        return {
+          id: s.id,
+          displayName: s.displayName,
+          status: h?.status ?? "unknown",
+          latencyMs: buckets[n - 1].p50LatencyMs,
+          uptimePercent: h?.uptimePercent ?? null,
+          buckets,
+        };
+      });
+    return json(200, {
+      from: new Date(from).toISOString(),
+      to: new Date(to).toISOString(),
+      buckets: n,
+      services,
+    });
+  }),
+
   http.get(`${BASE}/services/:id`, ({ params }) => {
     const service = store.admin.services.find((s) => s.id === params.id);
     return service

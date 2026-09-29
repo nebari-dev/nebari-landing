@@ -78,6 +78,7 @@ type AdminServiceHealth struct {
 	Status    string     `json:"status"`
 	LastCheck *time.Time `json:"lastCheck,omitempty"`
 	Message   string     `json:"message,omitempty"`
+	LatencyMS *int       `json:"latencyMs,omitempty"`
 	cache.HealthSummary
 }
 
@@ -210,6 +211,7 @@ func (h *Handler) registerIdentityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/admin/packs/{name}", h.handleAdminGetPack)
 	mux.HandleFunc("GET /api/v1/admin/services/{id}", h.handleAdminGetService)
 	mux.HandleFunc("GET /api/v1/admin/services/{id}/health", h.handleAdminServiceHealth)
+	mux.HandleFunc("GET /api/v1/admin/services/health", h.handleAdminHealthSeries)
 }
 
 // --- users -----------------------------------------------------------------
@@ -875,7 +877,10 @@ func (h *Handler) handleAdminDeleteRole(w http.ResponseWriter, r *http.Request) 
 // --- services --------------------------------------------------------------
 
 func (h *Handler) adminServiceHealth(s *cache.ServiceInfo) *AdminServiceHealth {
-	if s.Health == nil && s.HealthCheckConfig == nil {
+	history := h.cache.HealthHistory(s.UID)
+	// The cache seeds every service with an "unknown" HealthStatus, so the
+	// probe config (or a retained history) is what says a check exists.
+	if s.HealthCheckConfig == nil && len(history) == 0 {
 		return nil
 	}
 	out := &AdminServiceHealth{Status: "unknown"}
@@ -883,8 +888,9 @@ func (h *Handler) adminServiceHealth(s *cache.ServiceInfo) *AdminServiceHealth {
 		out.Status = s.Health.Status
 		out.LastCheck = s.Health.LastCheck
 		out.Message = s.Health.Message
+		out.LatencyMS = s.Health.LatencyMS
 	}
-	out.HealthSummary = cache.SummarizeHealth(h.cache.HealthHistory(s.UID))
+	out.HealthSummary = cache.SummarizeHealth(history)
 	return out
 }
 

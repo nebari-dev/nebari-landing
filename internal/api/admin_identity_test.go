@@ -647,6 +647,56 @@ func TestAdminPacks(t *testing.T) {
 	}
 }
 
+func TestAdminHealthSeries(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&app.App{
+		UID: "svc-a", Name: "a", Namespace: "n", Hostname: "a.example.com",
+		LandingPage: &app.LandingPage{Enabled: true, DisplayName: "A", Visibility: "public",
+			HealthCheck: &app.HealthCheck{Enabled: true, Path: "/"}},
+	})
+	sc.Add(&app.App{
+		UID: "svc-noprobe", Name: "b", Namespace: "n", Hostname: "b.example.com",
+		LandingPage: &app.LandingPage{Enabled: true, DisplayName: "B", Visibility: "public"},
+	})
+	now := time.Now().UTC()
+	for i := 0; i < 6; i++ {
+		at := now.Add(-time.Duration(6-i) * time.Hour)
+		lat := 100 + i*10
+		st := "healthy"
+		if i == 2 {
+			st = "unhealthy"
+		}
+		sc.UpdateHealth("svc-a", &cache.HealthStatus{Status: st, LastCheck: &at, LatencyMS: &lat})
+	}
+	h := NewHandler(sc, nil, true, nil, nil, WithClaimsExtractor(adminClaims)).Routes()
+	rec := do(t, h, http.MethodGet, "/api/v1/admin/services/health?hours=12&buckets=12", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d %s", rec.Code, rec.Body.String())
+	}
+	res := decode[AdminHealthSeriesResponse](t, rec)
+	if len(res.Services) != 1 || res.Buckets != 12 || len(res.Services[0].Buckets) != 12 {
+		t.Fatalf("series: %+v", res)
+	}
+	s := res.Services[0]
+	total, unhealthy := 0, 0
+	var withLatency int
+	for _, b := range s.Buckets {
+		total += b.Total
+		unhealthy += b.Unhealthy
+		if b.P50LatencyMS != nil {
+			withLatency++
+		}
+	}
+	if total != 6 || unhealthy != 1 || withLatency == 0 || s.LatencyMS == nil || *s.LatencyMS != 150 {
+		t.Fatalf("buckets: total=%d unhealthy=%d withLatency=%d latest=%v", total, unhealthy, withLatency, s.LatencyMS)
+	}
+	// Clamping.
+	res = decode[AdminHealthSeriesResponse](t, do(t, h, http.MethodGet, "/api/v1/admin/services/health?buckets=9999", nil))
+	if res.Buckets != 288 {
+		t.Fatalf("clamp: %d", res.Buckets)
+	}
+}
+
 func TestAdminIdentity_ServiceGate(t *testing.T) {
 	h := newIdentityHandler(t, nil, adminClaims)
 	rec := do(t, h, http.MethodGet, "/api/v1/admin/services/svc-grafana", nil)

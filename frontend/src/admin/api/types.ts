@@ -65,11 +65,37 @@ export type AdminService = {
 
 export type HealthStatusValue = "healthy" | "unhealthy" | "unknown";
 
-export type HealthSample = { at: string; status: HealthStatusValue | string };
+export type HealthSample = { at: string; status: HealthStatusValue | string; latencyMs?: number };
+
+export type HealthBucket = {
+  start: string;
+  total: number;
+  healthy: number;
+  unhealthy: number;
+  unknown: number;
+  p50LatencyMs: number | null;
+};
+
+export type ServiceHealthSeries = {
+  id: string;
+  displayName: string;
+  status: HealthStatusValue | string;
+  latencyMs: number | null;
+  uptimePercent: number | null;
+  buckets: HealthBucket[];
+};
+
+export type AdminHealthSeriesResponse = {
+  from: string;
+  to: string;
+  buckets: number;
+  services: ServiceHealthSeries[];
+};
 
 export type AdminServiceHealth = {
   status: HealthStatusValue | string;
   lastCheck?: string;
+  latencyMs?: number;
   message?: string;
   samples: number;
   uptimePercent: number | null;

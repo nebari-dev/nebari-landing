@@ -250,9 +250,10 @@ func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client 
 
 	now := time.Now()
 	resp, err := client.Do(req)
+	latency := int(time.Since(now).Milliseconds())
 	if err != nil {
 		log.Info("Health probe failed", "uid", uid, "url", probeURL, "err", err)
-		h.setStatus(uid, "unhealthy", fmt.Sprintf("probe error: %v", err))
+		h.setStatusLatency(uid, "unhealthy", fmt.Sprintf("probe error: %v", err), &latency)
 		return
 	}
 	defer func() {
@@ -267,6 +268,7 @@ func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client 
 			Status:    "healthy",
 			LastCheck: &now,
 			Message:   fmt.Sprintf("HTTP %d", resp.StatusCode),
+			LatencyMS: &latency,
 		})
 		// Post a "back online" notification when recovering from unhealthy.
 		if prevStatus == "unhealthy" {
@@ -274,7 +276,7 @@ func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client 
 		}
 	} else {
 		log.Info("Health probe unhealthy", "uid", uid, "url", probeURL, "status", resp.StatusCode)
-		h.setStatus(uid, "unhealthy", fmt.Sprintf("HTTP %d", resp.StatusCode))
+		h.setStatusLatency(uid, "unhealthy", fmt.Sprintf("HTTP %d", resp.StatusCode), &latency)
 	}
 
 	h.publishIfChanged(uid)
@@ -282,11 +284,17 @@ func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client 
 
 // setStatus writes a HealthStatus with the given status string and message.
 func (h *HealthChecker) setStatus(uid, status, message string) {
+	h.setStatusLatency(uid, status, message, nil)
+}
+
+// setStatusLatency is setStatus with the probe round-trip attached.
+func (h *HealthChecker) setStatusLatency(uid, status, message string, latencyMS *int) {
 	now := time.Now()
 	h.cache.UpdateHealth(uid, &cache.HealthStatus{
 		Status:    status,
 		LastCheck: &now,
 		Message:   message,
+		LatencyMS: latencyMS,
 	})
 	h.publishIfChanged(uid)
 }

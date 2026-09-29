@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -13,12 +14,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ArgoHealthBadge, SyncBadge } from "../components/ArgoBadges";
+import { BarList } from "../components/charts/BarList";
 import { EmptyState } from "../components/EmptyState";
 import { StatusBadge as AccountStatusBadge } from "../components/EntityBadges";
+import { HealthPanel } from "../components/HealthPanel";
 import { PageHeader } from "../components/PageHeader";
 import { StatTile } from "../components/StatTile";
 import { VersionBadge } from "../components/VersionBadge";
-import { useAdminOverview, useAdminWorld, usePacks } from "../hooks/useAdminData";
+import { useAdminOverview, useAdminWorld, useHealthSeries, usePacks } from "../hooks/useAdminData";
+import { effectiveUserCount } from "../lib/access";
 import { displayName, formatDateTime, pluralize } from "../lib/format";
 
 type AttentionRow = {
@@ -38,7 +42,8 @@ type AttentionRow = {
 export function OverviewPage() {
   const overview = useAdminOverview();
   const packs = usePacks();
-  const { users, services, isLoading: worldLoading } = useAdminWorld();
+  const { users, groups, services, isLoading: worldLoading } = useAdminWorld();
+  const health = useHealthSeries(24, 48);
   const o = overview.data;
   const packList = packs.data?.packs ?? [];
 
@@ -127,6 +132,24 @@ export function OverviewPage() {
 
   const loading = overview.isPending;
 
+  const reach = useMemo(
+    () =>
+      services
+        .filter((s) => s.visibility !== "public" && s.requiredGroups.length > 0)
+        .map((s) => {
+          const n = effectiveUserCount(s, groups, users);
+          return {
+            key: s.id,
+            label: s.displayName,
+            value: n === "everyone" ? users.length : n,
+            to: `/admin/services/${encodeURIComponent(s.id)}`,
+            note: `via ${s.requiredGroups.join(", ")}`,
+          };
+        })
+        .sort((a, b) => b.value - a.value),
+    [services, groups, users],
+  );
+
   return (
     <section aria-labelledby="overview-title">
       <PageHeader
@@ -208,6 +231,36 @@ export function OverviewPage() {
           />
         </div>
       )}
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[2fr_1fr]">
+        <HealthPanel data={health.data} loading={health.isPending} error={health.error} />
+        <Card>
+          <CardHeader>
+            <CardTitle>Who can reach gated services</CardTitle>
+            <CardDescription>
+              Enabled accounts that pass each service's group gate. Public and open services are
+              left out.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {worldLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : reach.length === 0 ? (
+              <EmptyState
+                title="No gated services"
+                description="No NebariApp lists groups under spec.auth."
+              />
+            ) : (
+              <BarList
+                items={reach}
+                label="Users with access per gated service"
+                formatValue={(v) => `${v}`}
+                max={users.filter((u) => u.enabled).length}
+              />
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="mt-8 flex flex-col gap-3">
         <div>

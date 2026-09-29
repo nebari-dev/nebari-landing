@@ -9,7 +9,7 @@ import * as groupsApi from "../api/groups";
 import { getAdminOverview } from "../api/overview";
 import { listPacks } from "../api/packs";
 import * as rolesApi from "../api/roles";
-import { getServiceHealth, listAdminServices } from "../api/services";
+import { getHealthSeries, getServiceHealth, listAdminServices } from "../api/services";
 import type { BulkUsersRequest } from "../api/types";
 import * as usersApi from "../api/users";
 
@@ -22,6 +22,8 @@ export const adminKeys = {
   overview: () => [...adminKeys.all, "overview"] as const,
   packs: () => [...adminKeys.all, "packs"] as const,
   serviceHealth: (id: string) => [...adminKeys.all, "services", id, "health"] as const,
+  healthSeries: (hours: number, buckets: number) =>
+    [...adminKeys.all, "services", "health-series", hours, buckets] as const,
 };
 
 /**
@@ -85,6 +87,15 @@ export function usePacks() {
     refetchInterval: 30 * 1000,
     queryKey: adminKeys.packs(),
     queryFn: listPacks,
+  });
+}
+
+export function useHealthSeries(hours = 24, buckets = 48) {
+  return useQuery({
+    ...adminQueryOptions,
+    refetchInterval: 60 * 1000,
+    queryKey: adminKeys.healthSeries(hours, buckets),
+    queryFn: () => getHealthSeries(hours, buckets),
   });
 }
 

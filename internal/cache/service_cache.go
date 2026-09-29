@@ -59,6 +59,9 @@ type HealthStatus struct {
 	Status    string     `json:"status"` // healthy, unhealthy, unknown
 	LastCheck *time.Time `json:"lastCheck,omitempty"`
 	Message   string     `json:"message,omitempty"`
+	// LatencyMS is the probe round-trip in milliseconds; nil when the probe
+	// never completed (request build error).
+	LatencyMS *int `json:"latencyMs,omitempty"`
 }
 
 // ServiceCache maintains an in-memory cache of services
@@ -202,7 +205,7 @@ func (c *ServiceCache) UpdateHealth(uid string, status *HealthStatus) {
 			if status.LastCheck != nil {
 				at = status.LastCheck.UTC()
 			}
-			c.history.record(uid, HealthSample{At: at, Status: status.Status})
+			c.history.record(uid, HealthSample{At: at, Status: status.Status, LatencyMS: status.LatencyMS})
 		}
 	}
 }

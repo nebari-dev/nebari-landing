@@ -4,14 +4,73 @@
 package cache
 
 import (
+	"sort"
 	"sync"
 	"time"
 )
 
 // HealthSample is one probe outcome kept in the rolling history.
 type HealthSample struct {
-	At     time.Time `json:"at"`
-	Status string    `json:"status"`
+	At        time.Time `json:"at"`
+	Status    string    `json:"status"`
+	LatencyMS *int      `json:"latencyMs,omitempty"`
+}
+
+// HealthBucket aggregates the samples that fall into one time slot.
+type HealthBucket struct {
+	Start     time.Time `json:"start"`
+	Total     int       `json:"total"`
+	Healthy   int       `json:"healthy"`
+	Unhealthy int       `json:"unhealthy"`
+	Unknown   int       `json:"unknown"`
+	// P50LatencyMS is the median probe latency of the bucket, nil when no
+	// sample in it carried a latency.
+	P50LatencyMS *int `json:"p50LatencyMs"`
+}
+
+// BucketHealth slots samples into n equal buckets spanning [from, to). Samples
+// outside the window are ignored. Buckets with no samples have Total 0.
+func BucketHealth(samples []HealthSample, from, to time.Time, n int) []HealthBucket {
+	if n <= 0 || !to.After(from) {
+		return nil
+	}
+	width := to.Sub(from) / time.Duration(n)
+	out := make([]HealthBucket, n)
+	lat := make([][]int, n)
+	for i := range out {
+		out[i].Start = from.Add(time.Duration(i) * width)
+	}
+	for _, s := range samples {
+		if s.At.Before(from) || !s.At.Before(to) {
+			continue
+		}
+		i := int(s.At.Sub(from) / width)
+		if i >= n {
+			i = n - 1
+		}
+		b := &out[i]
+		b.Total++
+		switch s.Status {
+		case "healthy":
+			b.Healthy++
+		case "unhealthy":
+			b.Unhealthy++
+		default:
+			b.Unknown++
+		}
+		if s.LatencyMS != nil {
+			lat[i] = append(lat[i], *s.LatencyMS)
+		}
+	}
+	for i := range out {
+		if len(lat[i]) == 0 {
+			continue
+		}
+		sort.Ints(lat[i])
+		v := lat[i][len(lat[i])/2]
+		out[i].P50LatencyMS = &v
+	}
+	return out
 }
 
 // HealthHistoryLimit is how many samples are retained per service. At the
