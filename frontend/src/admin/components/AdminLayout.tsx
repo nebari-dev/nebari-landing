@@ -18,8 +18,8 @@ const SECTIONS: { to: string; label: string; icon: ReactNode }[] = [
   { to: "/admin/groups", label: "Groups", icon: <UsersRound aria-hidden="true" /> },
   { to: "/admin/roles", label: "Roles", icon: <KeyRound aria-hidden="true" /> },
   { to: "/admin/services", label: "Services", icon: <LayoutGrid aria-hidden="true" /> },
-  { to: "/admin/health", label: "Health", icon: <Activity aria-hidden="true" /> },
   { to: "/admin/packs", label: "Packs", icon: <Package aria-hidden="true" /> },
+  { to: "/admin/health", label: "Health", icon: <Activity aria-hidden="true" /> },
   { to: "/admin/activity", label: "Activity", icon: <History aria-hidden="true" /> },
 ];
 
