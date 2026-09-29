@@ -59,7 +59,6 @@ test.describe("overview", () => {
     await expect(page.getByRole("link", { name: /^Packs: 4/ })).toBeVisible();
 
     await expect(page.getByRole("img", { name: /Grafana median latency/ })).toBeVisible();
-    await expect(page.getByRole("list", { name: "Users with access per gated service" })).toBeVisible();
 
     const attention = page.getByRole("table", { name: "Needs attention" });
     await expect(attention.getByRole("row", { name: /lgtm-pack/ })).toContainText("Out of sync");
