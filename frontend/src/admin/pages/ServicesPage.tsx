@@ -1,21 +1,29 @@
 import { Info } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router";
+import { StatusBadge } from "@/components/StatusBadge";
 import { DataTable, type DataTableColumnDef } from "@/components/ui/data-table";
 import type { AdminService } from "../api/types";
 import { BadgeOverflow, GroupBadge, VisibilityBadge } from "../components/EntityBadges";
+import { formatUptime } from "../components/HealthStrip";
 import { PageHeader } from "../components/PageHeader";
 import { useAdminWorld } from "../hooks/useAdminData";
 import { effectiveUserCount } from "../lib/access";
 
-type Row = AdminService & Record<string, unknown> & { reach: number | "everyone" };
+type Row = AdminService &
+  Record<string, unknown> & { reach: number | "everyone"; uptime: number | null };
 
 export function ServicesPage() {
   const { users, groups, services, isLoading, error, refetch } = useAdminWorld();
   const groupId = useMemo(() => new Map(groups.map((g) => [g.name, g.id])), [groups]);
 
   const rows = useMemo<Row[]>(
-    () => services.map((s) => ({ ...s, reach: effectiveUserCount(s, groups, users) })),
+    () =>
+      services.map((s) => ({
+        ...s,
+        reach: effectiveUserCount(s, groups, users),
+        uptime: s.health?.uptimePercent ?? null,
+      })),
     [services, groups, users],
   );
 
@@ -60,6 +68,23 @@ export function ServicesPage() {
               )}
               getLabel={(name) => name}
             />
+          ),
+      },
+      {
+        id: "uptime",
+        accessorKey: "uptime",
+        header: "Health",
+        cell: ({ row }) =>
+          row.original.health ? (
+            <div className="flex flex-col items-start gap-1">
+              <StatusBadge status={row.original.health.status} />
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {formatUptime(row.original.health.uptimePercent)} uptime
+                {row.original.health.samples > 0 ? ` · ${row.original.health.samples} probes` : ""}
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">No health check</span>
           ),
       },
       {

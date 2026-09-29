@@ -147,6 +147,9 @@ const docTemplate = `{
                     "displayName": {
                         "type": "string"
                     },
+                    "health": {
+                        "$ref": "#/components/schemas/api.AdminServiceHealth"
+                    },
                     "id": {
                         "type": "string"
                     },
@@ -167,6 +170,81 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "visibility": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "api.AdminServiceHealth": {
+                "description": "Health is the latest probe outcome plus a summary of the retained\nhistory; nil when the service has no health check.",
+                "properties": {
+                    "lastCheck": {
+                        "type": "string"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "samples": {
+                        "description": "Samples is how many probes the window holds.",
+                        "type": "integer"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "streakSince": {
+                        "type": "string"
+                    },
+                    "streakStatus": {
+                        "description": "StreakStatus / StreakSince describe the run of identical outcomes that\nends with the latest sample.",
+                        "type": "string"
+                    },
+                    "uptimePercent": {
+                        "description": "UptimePercent is the share of samples that were healthy, or nil when\nthere are no samples.",
+                        "type": "number"
+                    },
+                    "windowStart": {
+                        "description": "WindowStart is the oldest sample's time, when any exist.",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "api.AdminServiceHealthHistory": {
+                "properties": {
+                    "history": {
+                        "description": "History lists the retained probe samples, oldest first.",
+                        "items": {
+                            "$ref": "#/components/schemas/cache.HealthSample"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "lastCheck": {
+                        "type": "string"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "samples": {
+                        "description": "Samples is how many probes the window holds.",
+                        "type": "integer"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "streakSince": {
+                        "type": "string"
+                    },
+                    "streakStatus": {
+                        "description": "StreakStatus / StreakSince describe the run of identical outcomes that\nends with the latest sample.",
+                        "type": "string"
+                    },
+                    "uptimePercent": {
+                        "description": "UptimePercent is the share of samples that were healthy, or nil when\nthere are no samples.",
+                        "type": "number"
+                    },
+                    "windowStart": {
+                        "description": "WindowStart is the oldest sample's time, when any exist.",
                         "type": "string"
                     }
                 },
@@ -436,6 +514,17 @@ const docTemplate = `{
             "api.WSTicketResponse": {
                 "properties": {
                     "ticket": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "cache.HealthSample": {
+                "properties": {
+                    "at": {
+                        "type": "string"
+                    },
+                    "status": {
                         "type": "string"
                     }
                 },
@@ -1760,6 +1849,53 @@ const docTemplate = `{
                     }
                 ],
                 "summary": "Get a service access gate (admin)",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/admin/services/{id}/health": {
+            "get": {
+                "description": "Latest probe outcome, uptime over the retained window, the current streak, and every retained sample (about 24h at the default probe interval; in-memory, reset on webapi restart).",
+                "parameters": [
+                    {
+                        "description": "Service UID",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.AdminServiceHealthHistory"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.AdminError"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Service health history (admin)",
                 "tags": [
                     "admin"
                 ]

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Nerzal/gocloak/v13"
 	"github.com/golang-jwt/jwt/v5"
@@ -549,6 +550,56 @@ func TestAdminOverview(t *testing.T) {
 	}
 	if rec := do(t, newIdentityHandler(t, nil, userClaims), http.MethodGet, "/api/v1/admin/overview", nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("non-admin: want 403, got %d", rec.Code)
+	}
+}
+
+func TestAdminServiceHealthHistory(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&app.App{
+		UID: "svc-grafana", Name: "grafana", Namespace: "monitoring", Hostname: "grafana.example.com",
+		LandingPage: &app.LandingPage{Enabled: true, DisplayName: "Grafana", Visibility: "public",
+			HealthCheck: &app.HealthCheck{Enabled: true, Path: "/"}},
+	})
+	base := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	for i, st := range []string{"healthy", "healthy", "unhealthy", "healthy", "healthy"} {
+		at := base.Add(time.Duration(i) * time.Minute)
+		sc.UpdateHealth("svc-grafana", &cache.HealthStatus{Status: st, LastCheck: &at})
+	}
+	h := NewHandler(sc, nil, true, nil, nil, WithClaimsExtractor(adminClaims)).Routes()
+
+	rec := do(t, h, http.MethodGet, "/api/v1/admin/services/svc-grafana/health", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d %s", rec.Code, rec.Body.String())
+	}
+	got := decode[AdminServiceHealthHistory](t, rec)
+	if got.Status != "healthy" || len(got.History) != 5 || got.Samples != 5 {
+		t.Fatalf("history: %+v", got)
+	}
+	if got.UptimePercent == nil || *got.UptimePercent != 80 {
+		t.Fatalf("uptime: %v", got.UptimePercent)
+	}
+	if got.StreakStatus != "healthy" || got.StreakSince == nil || !got.StreakSince.Equal(base.Add(3*time.Minute)) {
+		t.Fatalf("streak: %s since %v", got.StreakStatus, got.StreakSince)
+	}
+
+	list := decode[[]AdminService](t, do(t, h, http.MethodGet, "/api/v1/admin/services", nil))
+	if len(list) != 1 || list[0].Health == nil || list[0].Health.Samples != 5 {
+		t.Fatalf("list health: %+v", list)
+	}
+	if rec := do(t, h, http.MethodGet, "/api/v1/admin/services/nope/health", nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing: want 404, got %d", rec.Code)
+	}
+
+	// History is capped and dropped with the service.
+	for i := 0; i < cache.HealthHistoryLimit+10; i++ {
+		sc.UpdateHealth("svc-grafana", &cache.HealthStatus{Status: "healthy"})
+	}
+	if n := len(sc.HealthHistory("svc-grafana")); n != cache.HealthHistoryLimit {
+		t.Fatalf("cap: got %d", n)
+	}
+	sc.Remove("svc-grafana")
+	if n := len(sc.HealthHistory("svc-grafana")); n != 0 {
+		t.Fatalf("after remove: got %d", n)
 	}
 }
 

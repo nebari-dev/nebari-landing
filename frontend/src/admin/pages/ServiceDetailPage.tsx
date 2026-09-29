@@ -1,6 +1,7 @@
-import { BookOpen, ExternalLink, Plus, Settings } from "lucide-react";
+import { Activity, BookOpen, ExternalLink, Plus, Settings } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CodeBlock, CodeBlockBody, CodeBlockHeader } from "@/components/ui/code-block";
@@ -16,19 +17,25 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AdminGroup, AdminUser } from "../api/types";
 import { EmptyState } from "../components/EmptyState";
-import { GroupBadge, StatusBadge, VisibilityBadge } from "../components/EntityBadges";
+import {
+  StatusBadge as AccountStatusBadge,
+  GroupBadge,
+  VisibilityBadge,
+} from "../components/EntityBadges";
+import { formatUptime, HealthStrip } from "../components/HealthStrip";
 import { PageHeader } from "../components/PageHeader";
 import { PickerDialog } from "../components/PickerDialog";
 import { UserPicker } from "../components/UserPicker";
-import { useAdminWorld, useBulkUpdateUsers } from "../hooks/useAdminData";
+import { useAdminWorld, useBulkUpdateUsers, useServiceHealth } from "../hooks/useAdminData";
 import { effectiveUserCount, principalsForService } from "../lib/access";
-import { displayName, pluralize } from "../lib/format";
+import { displayName, formatDateTime, pluralize } from "../lib/format";
 
 export function ServiceDetailPage() {
   const { id = "" } = useParams();
   const { users, groups, services, isLoading } = useAdminWorld();
   const service = services.find((s) => s.id === id);
   const bulk = useBulkUpdateUsers();
+  const health = useServiceHealth(id);
 
   const [grantOpen, setGrantOpen] = useState(false);
   const [grantGroup, setGrantGroup] = useState<AdminGroup | null>(null);
@@ -132,6 +139,46 @@ export function ServiceDetailPage() {
         }
       />
 
+      {service.health ? (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity aria-hidden="true" className="size-4" />
+              Health
+              <StatusBadge status={health.data?.status ?? service.health.status} />
+            </CardTitle>
+            <CardDescription>
+              {(() => {
+                const hd = health.data ?? service.health;
+                const parts = [
+                  `${formatUptime(hd.uptimePercent)} uptime over ${pluralize(hd.samples, "probe")}`,
+                ];
+                if (hd.streakStatus && hd.streakSince) {
+                  parts.push(`${hd.streakStatus} since ${formatDateTime(hd.streakSince)}`);
+                }
+                if (hd.lastCheck) parts.push(`last checked ${formatDateTime(hd.lastCheck)}`);
+                return parts.join(" · ");
+              })()}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {health.isPending ? (
+              <Skeleton className="h-8" shape="block" />
+            ) : (
+              <HealthStrip samples={health.data?.history ?? []} />
+            )}
+            {(health.data ?? service.health).message ? (
+              <p className="text-xs text-muted-foreground">
+                {(health.data ?? service.health).message}
+              </p>
+            ) : null}
+            <p className="text-xs text-muted-foreground">
+              History is kept in the webapi's memory for about a day and resets when it restarts.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <Card>
           <CardHeader>
@@ -183,7 +230,7 @@ export function ServiceDetailPage() {
                           >
                             {displayName(u)}
                           </Link>
-                          {!u.enabled ? <StatusBadge enabled={false} /> : null}
+                          {!u.enabled ? <AccountStatusBadge enabled={false} /> : null}
                         </li>
                       ))}
                     </ul>

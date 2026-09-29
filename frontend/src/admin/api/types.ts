@@ -59,7 +59,26 @@ export type AdminService = {
   /** Optional pack-registered links (proposed CRD fields). */
   docsUrl?: string;
   settingsUrl?: string;
+  /** Latest probe plus a summary of the retained history; absent without a health check. */
+  health?: AdminServiceHealth;
 };
+
+export type HealthStatusValue = "healthy" | "unhealthy" | "unknown";
+
+export type HealthSample = { at: string; status: HealthStatusValue | string };
+
+export type AdminServiceHealth = {
+  status: HealthStatusValue | string;
+  lastCheck?: string;
+  message?: string;
+  samples: number;
+  uptimePercent: number | null;
+  streakStatus?: string;
+  streakSince?: string;
+  windowStart?: string;
+};
+
+export type AdminServiceHealthHistory = AdminServiceHealth & { history: HealthSample[] };
 
 export type AccessRequestStatus = "pending" | "approved" | "denied";
 

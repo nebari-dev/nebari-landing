@@ -61,12 +61,14 @@ type HealthStatus struct {
 type ServiceCache struct {
 	mu       sync.RWMutex
 	services map[string]*ServiceInfo // keyed by UID
+	history  *healthHistory
 }
 
 // NewServiceCache creates a new service cache
 func NewServiceCache() *ServiceCache {
 	return &ServiceCache{
 		services: make(map[string]*ServiceInfo),
+		history:  newHealthHistory(),
 	}
 }
 
@@ -119,6 +121,7 @@ func (c *ServiceCache) Remove(uid string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.services, uid)
+	c.history.drop(uid)
 }
 
 // Get retrieves a service by UID
@@ -188,6 +191,13 @@ func (c *ServiceCache) UpdateHealth(uid string, status *HealthStatus) {
 
 	if service, exists := c.services[uid]; exists {
 		service.Health = status
+		if status != nil && status.Status != "" {
+			at := time.Now().UTC()
+			if status.LastCheck != nil {
+				at = status.LastCheck.UTC()
+			}
+			c.history.record(uid, HealthSample{At: at, Status: status.Status})
+		}
 	}
 }
 

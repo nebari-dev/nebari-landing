@@ -9,7 +9,7 @@ import { listAccessRequests, resolveAccessRequest } from "../api/accessRequests"
 import * as groupsApi from "../api/groups";
 import { getAdminOverview } from "../api/overview";
 import * as rolesApi from "../api/roles";
-import { listAdminServices } from "../api/services";
+import { getServiceHealth, listAdminServices } from "../api/services";
 import type { AccessRequestStatus, BulkUsersRequest } from "../api/types";
 import * as usersApi from "../api/users";
 
@@ -20,6 +20,7 @@ export const adminKeys = {
   roles: () => [...adminKeys.all, "roles"] as const,
   services: () => [...adminKeys.all, "services"] as const,
   overview: () => [...adminKeys.all, "overview"] as const,
+  serviceHealth: (id: string) => [...adminKeys.all, "services", id, "health"] as const,
   accessRequests: (status?: AccessRequestStatus) =>
     [...adminKeys.all, "access-requests", status ?? "all"] as const,
 };
@@ -66,6 +67,16 @@ export function useAdminServices() {
     ...adminQueryOptions,
     queryKey: adminKeys.services(),
     queryFn: listAdminServices,
+  });
+}
+
+export function useServiceHealth(id: string) {
+  return useQuery({
+    ...adminQueryOptions,
+    refetchInterval: 30 * 1000,
+    queryKey: adminKeys.serviceHealth(id),
+    queryFn: () => getServiceHealth(id),
+    enabled: id !== "",
   });
 }
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 	"github.com/nebari-dev/nebari-landing/internal/keycloak"
@@ -67,6 +68,24 @@ type AdminService struct {
 	URL            string   `json:"url"`
 	Visibility     string   `json:"visibility"`
 	RequiredGroups []string `json:"requiredGroups"`
+	// Health is the latest probe outcome plus a summary of the retained
+	// history; nil when the service has no health check.
+	Health *AdminServiceHealth `json:"health,omitempty"`
+}
+
+// AdminServiceHealth combines the latest probe with the rolling-window summary.
+type AdminServiceHealth struct {
+	Status    string     `json:"status"`
+	LastCheck *time.Time `json:"lastCheck,omitempty"`
+	Message   string     `json:"message,omitempty"`
+	cache.HealthSummary
+}
+
+// AdminServiceHealthHistory is the body of GET /api/v1/admin/services/{id}/health.
+type AdminServiceHealthHistory struct {
+	AdminServiceHealth
+	// History lists the retained probe samples, oldest first.
+	History []cache.HealthSample `json:"history"`
 }
 
 // AdminUserPatch is the body of PATCH /api/v1/admin/users/{id}.
@@ -188,6 +207,7 @@ func (h *Handler) registerIdentityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/admin/services", h.handleAdminListServices)
 	mux.HandleFunc("GET /api/v1/admin/overview", h.handleAdminOverview)
 	mux.HandleFunc("GET /api/v1/admin/services/{id}", h.handleAdminGetService)
+	mux.HandleFunc("GET /api/v1/admin/services/{id}/health", h.handleAdminServiceHealth)
 }
 
 // --- users -----------------------------------------------------------------
@@ -852,6 +872,20 @@ func (h *Handler) handleAdminDeleteRole(w http.ResponseWriter, r *http.Request) 
 
 // --- services --------------------------------------------------------------
 
+func (h *Handler) adminServiceHealth(s *cache.ServiceInfo) *AdminServiceHealth {
+	if s.Health == nil && s.HealthCheckConfig == nil {
+		return nil
+	}
+	out := &AdminServiceHealth{Status: "unknown"}
+	if s.Health != nil {
+		out.Status = s.Health.Status
+		out.LastCheck = s.Health.LastCheck
+		out.Message = s.Health.Message
+	}
+	out.HealthSummary = cache.SummarizeHealth(h.cache.HealthHistory(s.UID))
+	return out
+}
+
 func toAdminService(s *cache.ServiceInfo) AdminService {
 	vis := s.Visibility
 	if vis == "" {
@@ -890,9 +924,42 @@ func (h *Handler) handleAdminListServices(w http.ResponseWriter, r *http.Request
 	all := h.cache.GetAll()
 	out := make([]AdminService, 0, len(all))
 	for _, s := range all {
-		out = append(out, toAdminService(s))
+		svc := toAdminService(s)
+		svc.Health = h.adminServiceHealth(s)
+		out = append(out, svc)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// handleAdminServiceHealth serves GET /api/v1/admin/services/{id}/health.
+//
+//	@Summary		Service health history (admin)
+//	@Description	Latest probe outcome, uptime over the retained window, the current streak, and every retained sample (about 24h at the default probe interval; in-memory, reset on webapi restart).
+//	@Tags			admin
+//	@Produce		json
+//	@Param			id	path		string	true	"Service UID"
+//	@Success		200	{object}	AdminServiceHealthHistory
+//	@Failure		404	{object}	AdminError
+//	@Security		BearerAuth
+//	@Router			/admin/services/{id}/health [get]
+func (h *Handler) handleAdminServiceHealth(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requireAdmin(w, r); !ok {
+		return
+	}
+	s := h.cache.Get(r.PathValue("id"))
+	if s == nil {
+		writeAdminError(w, http.StatusNotFound, "service not found")
+		return
+	}
+	health := h.adminServiceHealth(s)
+	if health == nil {
+		health = &AdminServiceHealth{Status: "unknown"}
+	}
+	history := h.cache.HealthHistory(s.UID)
+	if history == nil {
+		history = []cache.HealthSample{}
+	}
+	writeJSON(w, http.StatusOK, AdminServiceHealthHistory{AdminServiceHealth: *health, History: history})
 }
 
 // handleAdminGetService serves GET /api/v1/admin/services/{id}.
@@ -914,5 +981,7 @@ func (h *Handler) handleAdminGetService(w http.ResponseWriter, r *http.Request) 
 		writeAdminError(w, http.StatusNotFound, "service not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, toAdminService(s))
+	svc := toAdminService(s)
+	svc.Health = h.adminServiceHealth(s)
+	writeJSON(w, http.StatusOK, svc)
 }

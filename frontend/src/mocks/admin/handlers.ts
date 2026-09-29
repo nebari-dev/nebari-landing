@@ -51,6 +51,45 @@ function servicesReferencingGroup(name: string) {
   return store.admin.services.filter((s) => s.requiredGroups.includes(name));
 }
 
+// Deterministic synthetic probe history: 288 samples at 5-minute spacing
+// (24h). MLflow never probes; Grafana has one outage a few hours ago.
+function mockHealthHistory(id: string) {
+  if (id === "svc-mlflow") return [];
+  const now = Date.now();
+  const out: { at: string; status: string }[] = [];
+  for (let i = 287; i >= 0; i--) {
+    const at = new Date(now - i * 5 * 60 * 1000).toISOString();
+    let status = "healthy";
+    if (id === "svc-grafana" && i >= 40 && i < 46) status = "unhealthy";
+    if (id === "svc-status" && i % 97 === 0) status = "unknown";
+    if (id === "svc-vscode" && i < 3) status = "unhealthy";
+    out.push({ at, status });
+  }
+  return out;
+}
+
+function mockHealth(id: string) {
+  const history = mockHealthHistory(id);
+  // Services without a health check carry no `health` at all.
+  if (history.length === 0) return undefined;
+  const last = history[history.length - 1];
+  let since = last.at;
+  for (let i = history.length - 1; i >= 0 && history[i].status === last.status; i--) {
+    since = history[i].at;
+  }
+  const healthy = history.filter((h) => h.status === "healthy").length;
+  return {
+    status: last.status,
+    lastCheck: last.at,
+    message: last.status === "unhealthy" ? "HTTP 503 from /healthz" : "",
+    samples: history.length,
+    uptimePercent: (healthy * 100) / history.length,
+    streakStatus: last.status,
+    streakSince: since,
+    windowStart: history[0].at,
+  };
+}
+
 export const adminHandlers = [
   // --- users -------------------------------------------------------------
   http.get(`${BASE}/users`, ({ request }) => {
@@ -335,10 +374,27 @@ export const adminHandlers = [
   }),
 
   // --- services (read-only) ---------------------------------------------
-  http.get(`${BASE}/services`, () => json(200, store.admin.services)),
+  http.get(`${BASE}/services`, () =>
+    json(
+      200,
+      store.admin.services.map((s) => ({ ...s, health: mockHealth(s.id) })),
+    ),
+  ),
 
   http.get(`${BASE}/services/:id`, ({ params }) => {
     const service = store.admin.services.find((s) => s.id === params.id);
-    return service ? json(200, service) : problem(404, "service not found");
+    return service
+      ? json(200, { ...service, health: mockHealth(service.id) })
+      : problem(404, "service not found");
+  }),
+
+  http.get(`${BASE}/services/:id/health`, ({ params }) => {
+    const service = store.admin.services.find((s) => s.id === params.id);
+    if (!service) return problem(404, "service not found");
+    const history = mockHealthHistory(service.id);
+    return json(200, {
+      ...(mockHealth(service.id) ?? { status: "unknown", samples: 0, uptimePercent: null }),
+      history,
+    });
   }),
 ];

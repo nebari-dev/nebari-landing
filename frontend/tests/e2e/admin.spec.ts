@@ -178,6 +178,15 @@ test.describe("services", () => {
       "Any signed-in user",
     );
 
+    await expect(table.getByRole("row", { name: /Grafana/ })).toContainText(/9[0-9]\.[0-9]% uptime/);
+    await expect(table.getByRole("row", { name: /MLflow/ })).toContainText("No health check");
+
+    await table.getByRole("link", { name: /Grafana/ }).click();
+    await expect(page.getByRole("heading", { level: 2, name: /Grafana/ })).toBeVisible();
+    await expect(page.getByRole("img", { name: /Health over \d+ periods/ })).toBeVisible();
+    await expect(page.getByText(/uptime over 288 probes/)).toBeVisible();
+
+    await page.goto("/admin/services");
     await table.getByRole("link", { name: /Superset/ }).click();
     await expect(page.getByRole("heading", { level: 2, name: /Superset/ })).toBeVisible();
     await expect(page.getByText("groups:")).toBeVisible();

@@ -26,8 +26,7 @@ export function AdminLayout() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Administration</h1>
           <p className="text-sm text-muted-foreground">
-            Manage who can reach which services. Identity lives in Keycloak; service gates live in
-            each NebariApp.
+            Identity lives in Keycloak; service gates live in each NebariApp.
           </p>
         </div>
         <nav aria-label="Admin sections" className="flex flex-wrap items-center gap-1">

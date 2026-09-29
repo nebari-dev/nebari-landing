@@ -82,6 +82,7 @@ directly on the upgrade. The `/ws` endpoint accepts either mechanism.
 | `DELETE` | [`/admin/roles/{name}`](#delete-adminrolesname) | Delete a realm role (admin) |
 | `GET` | [`/admin/services`](#get-adminservices) | List service access gates (admin) |
 | `GET` | [`/admin/services/{id}`](#get-adminservicesid) | Get a service access gate (admin) |
+| `GET` | [`/admin/services/{id}/health`](#get-adminservicesidhealth) | Service health history (admin) |
 | `GET` | [`/admin/users`](#get-adminusers) | List users (admin) |
 | `POST` | [`/admin/users/bulk`](#post-adminusersbulk) | Apply one change to many users (admin) |
 | `GET` | [`/admin/users/{id}`](#get-adminusersid) | Get a user (admin) |
@@ -339,6 +340,19 @@ Get a service access gate (admin)
 
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/admin/services/{id} \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="get-adminservicesidhealth"></a>`GET /admin/services/{id}/health`
+
+Service health history (admin)
+
+Latest probe outcome, uptime over the retained window, the current streak, and every retained sample (about 24h at the default probe interval; in-memory, reset on webapi restart).
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/services/{id}/health \
   -H 'Authorization: Bearer $TOKEN'
 ```
 
