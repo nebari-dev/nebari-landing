@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -82,14 +83,22 @@ type Pack struct {
 	Services      []PackService `json:"services"`
 }
 
-// Lister reads ArgoCD Applications with a controller-runtime client.
+// Lister reads ArgoCD Applications with a controller-runtime client. Results
+// are cached briefly and refreshed by one caller at a time: Applications are
+// large objects and several admin views ask for them at once.
 type Lister struct {
 	kube client.Client
+	ttl  time.Duration
+
+	mu        sync.Mutex
+	fetchedAt time.Time
+	apps      []ArgoApp
+	err       error
 }
 
 // NewLister returns a Lister over the given client. A nil client yields a
 // lister that always reports ArgoCD as unavailable.
-func NewLister(kube client.Client) *Lister { return &Lister{kube: kube} }
+func NewLister(kube client.Client) *Lister { return &Lister{kube: kube, ttl: 20 * time.Second} }
 
 var applicationListGVK = schema.GroupVersionKind{
 	Group: "argoproj.io", Version: "v1alpha1", Kind: "ApplicationList",
@@ -102,6 +111,18 @@ func (l *Lister) ListArgoApps(ctx context.Context) ([]ArgoApp, error) {
 	if l == nil || l.kube == nil {
 		return nil, errNoClient
 	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if time.Since(l.fetchedAt) < l.ttl {
+		return l.apps, l.err
+	}
+	apps, err := l.fetch(ctx)
+	l.fetchedAt = time.Now()
+	l.apps, l.err = apps, err
+	return apps, err
+}
+
+func (l *Lister) fetch(ctx context.Context) ([]ArgoApp, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(applicationListGVK)
 	if err := l.kube.List(ctx, list); err != nil {

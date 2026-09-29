@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/nebari-dev/nebari-landing/internal/cache"
@@ -140,5 +141,40 @@ entries:
 	Annotate(ctx, src, packs)
 	if packs[0].LatestVersion != "0.2.1" || packs[0].VersionStatus != VersionBehind || packs[1].VersionStatus != "" {
 		t.Fatalf("annotate: %+v", packs)
+	}
+}
+
+func TestParseIndex(t *testing.T) {
+	src := `apiVersion: v1
+entries:
+  nebari-lgtm-pack:
+  - apiVersion: v2
+    appVersion: "1.0.0"
+    created: "2026-09-01T00:00:00Z"
+    name: nebari-lgtm-pack
+    version: 0.2.0
+    urls:
+    - https://example.com/nebari-lgtm-pack-0.2.0.tgz
+  - name: nebari-lgtm-pack
+    version: "0.1.0"
+  keycloakx:
+    - name: keycloakx
+      version: 7.1.6
+      dependencies:
+        - name: postgresql
+          version: 12.0.0
+generated: "2026-09-01T00:00:00Z"
+`
+	idx, err := parseIndex(strings.NewReader(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := idx.Entries["nebari-lgtm-pack"]; len(got) != 2 || got[0] != "0.2.0" || got[1] != "0.1.0" {
+		t.Fatalf("lgtm: %v", got)
+	}
+	// Dependency versions nested under an entry are attributed to the chart
+	// key; the newest real version still wins in Latest via semver max.
+	if got := idx.Entries["keycloakx"]; len(got) == 0 || got[0] != "7.1.6" {
+		t.Fatalf("keycloakx: %v", got)
 	}
 }

@@ -178,13 +178,15 @@ webapi:
   # Right-sized for the Go REST/WebSocket API on an idle base install.
   # Override upward for sustained high request volume, large service lists,
   # heavy WebSocket fan-out, or unusually bursty access-request traffic.
+  # The admin area lists Keycloak users and ArgoCD Applications on demand;
+  # those responses are decoded in memory, so the limit leaves headroom.
   resources:
     requests:
       cpu: 25m
-      memory: 64Mi
+      memory: 96Mi
     limits:
       cpu: 200m
-      memory: 128Mi
+      memory: 256Mi
 
   serviceAccount:
     create: true

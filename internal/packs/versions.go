@@ -4,6 +4,7 @@
 package packs
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -23,12 +23,65 @@ const (
 	VersionUnknown = "unknown"
 )
 
-// helmIndex is the subset of a Helm repository index.yaml we read.
+// helmIndex is the subset of a Helm repository index.yaml we keep: chart
+// name → published versions. It is filled by a streaming line scanner rather
+// than a YAML parser, because a large repository index (tens of thousands of
+// entries) as a YAML node tree costs far more memory than the webapi has.
 type helmIndex struct {
-	Entries map[string][]struct {
-		Version    string `json:"version" yaml:"version"`
-		AppVersion string `json:"appVersion" yaml:"appVersion"`
-	} `yaml:"entries"`
+	Entries map[string][]string
+}
+
+// maxIndexBytes bounds how much of an index we are willing to stream.
+const maxIndexBytes = 32 << 20
+
+// parseIndex scans a Helm index.yaml. `helm repo index` always emits:
+//
+//	entries:
+//	  <chart>:
+//	  - ...
+//	    version: 1.2.3
+//
+// so a chart key is a line indented by exactly two spaces ending in ":" under
+// "entries:", and each version is a "version:" scalar at deeper indentation.
+func parseIndex(r io.Reader) (*helmIndex, error) {
+	idx := &helmIndex{Entries: map[string][]string{}}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	inEntries := false
+	chart := ""
+	for sc.Scan() {
+		line := sc.Text()
+		if len(line) == 0 || line[0] == '#' {
+			continue
+		}
+		if line[0] != ' ' {
+			inEntries = strings.HasPrefix(line, "entries:")
+			chart = ""
+			continue
+		}
+		if !inEntries {
+			continue
+		}
+		if strings.HasPrefix(line, "  ") && line[2] != ' ' && line[2] != '-' && strings.HasSuffix(strings.TrimRight(line, " "), ":") {
+			chart = strings.TrimSuffix(strings.TrimSpace(line), ":")
+			chart = strings.Trim(chart, "\"'")
+			continue
+		}
+		if chart == "" {
+			continue
+		}
+		t := strings.TrimLeft(line, " -")
+		if strings.HasPrefix(t, "version:") {
+			v := strings.Trim(strings.TrimSpace(strings.TrimPrefix(t, "version:")), "\"'")
+			if v != "" {
+				idx.Entries[chart] = append(idx.Entries[chart], v)
+			}
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return idx, nil
 }
 
 type indexEntry struct {
@@ -45,8 +98,9 @@ type VersionSource struct {
 	ttl    time.Duration
 	errTTL time.Duration
 
-	mu    sync.Mutex
-	cache map[string]*indexEntry
+	mu     sync.Mutex
+	cache  map[string]*indexEntry
+	flight map[string]*sync.Mutex
 }
 
 // NewVersionSource returns a source with a short request timeout and a
@@ -57,6 +111,7 @@ func NewVersionSource() *VersionSource {
 		ttl:    10 * time.Minute,
 		errTTL: 2 * time.Minute,
 		cache:  map[string]*indexEntry{},
+		flight: map[string]*sync.Mutex{},
 	}
 }
 
@@ -79,7 +134,7 @@ func (v *VersionSource) Latest(ctx context.Context, repoURL, chart, installed st
 	allowPre := curErr == nil && cur.Prerelease() != ""
 	var best *semver.Version
 	for _, e := range entries {
-		sv, err := semver.NewVersion(strings.TrimPrefix(e.Version, "v"))
+		sv, err := semver.NewVersion(strings.TrimPrefix(e, "v"))
 		if err != nil {
 			continue
 		}
@@ -115,18 +170,42 @@ func CompareVersions(installed, latest string) string {
 	return VersionCurrent
 }
 
+func (v *VersionSource) cached(key string) (*helmIndex, error, bool) {
+	e, ok := v.cache[key]
+	if !ok {
+		return nil, nil, false
+	}
+	ttl := v.ttl
+	if e.err != nil {
+		ttl = v.errTTL
+	}
+	if time.Since(e.fetchedAt) < ttl {
+		return e.index, e.err, true
+	}
+	return nil, nil, false
+}
+
 func (v *VersionSource) index(ctx context.Context, repoURL string) (*helmIndex, error) {
 	key := strings.TrimRight(repoURL, "/")
 	v.mu.Lock()
-	if e, ok := v.cache[key]; ok {
-		ttl := v.ttl
-		if e.err != nil {
-			ttl = v.errTTL
-		}
-		if time.Since(e.fetchedAt) < ttl {
-			v.mu.Unlock()
-			return e.index, e.err
-		}
+	if idx, err, ok := v.cached(key); ok {
+		v.mu.Unlock()
+		return idx, err
+	}
+	fl, ok := v.flight[key]
+	if !ok {
+		fl = &sync.Mutex{}
+		v.flight[key] = fl
+	}
+	v.mu.Unlock()
+
+	// One fetch per repository at a time; late arrivals get the fresh cache.
+	fl.Lock()
+	defer fl.Unlock()
+	v.mu.Lock()
+	if idx, err, ok := v.cached(key); ok {
+		v.mu.Unlock()
+		return idx, err
 	}
 	v.mu.Unlock()
 
@@ -150,13 +229,9 @@ func (v *VersionSource) fetch(ctx context.Context, url string) (*helmIndex, erro
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("fetching %s: HTTP %d", url, resp.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	idx, err := parseIndex(io.LimitReader(resp.Body, maxIndexBytes))
 	if err != nil {
-		return nil, err
-	}
-	var idx helmIndex
-	if err := yaml.Unmarshal(body, &idx); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", url, err)
 	}
-	return &idx, nil
+	return idx, nil
 }
