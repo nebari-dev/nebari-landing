@@ -63,7 +63,7 @@ test.describe("overview", () => {
     await expect(attention.getByRole("row", { name: /5 disabled accounts/ })).toBeVisible();
 
     const recent = page.getByRole("table", { name: "Recent activity" });
-    await expect(recent.getByRole("row", { name: /Tomás Brennan/ })).toContainText("joined");
+    await expect(recent.getByRole("row", { name: /Tomás Brennan/ })).toContainText("Account created");
   });
 });
 
