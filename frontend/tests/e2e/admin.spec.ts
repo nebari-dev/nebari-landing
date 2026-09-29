@@ -196,6 +196,8 @@ test.describe("packs", () => {
     const table = page.getByRole("table", { name: "Software packs" });
     await expect(table.getByRole("row")).toHaveCount(5);
     await expect(table.getByRole("row", { name: /lgtm-pack/ })).toContainText("Out of sync");
+    await expect(table.getByRole("row", { name: /lgtm-pack/ })).toContainText("Update 0.3.0");
+    await expect(table.getByRole("row", { name: /superset-pack/ })).toContainText("Latest");
     await expect(table.getByRole("row", { name: /mlflow-pack/ })).toContainText("Degraded");
 
     await page.getByRole("tab", { name: /Platform/ }).click();

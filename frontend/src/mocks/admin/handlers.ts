@@ -102,6 +102,7 @@ const PACKS: {
   health: string;
   services: string[];
   images: string[];
+  latest?: string;
 }[] = [
   {
     name: "data-science-pack",
@@ -131,6 +132,7 @@ const PACKS: {
     health: "Healthy",
     services: ["svc-grafana"],
     images: ["grafana/grafana:11.4.0", "grafana/mimir:2.15.0"],
+    latest: "0.3.0",
   },
   {
     name: "mlflow-pack",
@@ -155,6 +157,7 @@ const PACKS: {
     health: "Healthy",
     services: ["svc-superset"],
     images: ["apache/superset:4.1.1"],
+    latest: "0.4.0",
   },
   {
     name: "nebari-landingpage",
@@ -192,6 +195,8 @@ function mockPacks() {
     chartName: p.chart,
     chartVersion: p.version,
     appVersion: p.appVersion,
+    latestVersion: p.latest,
+    versionStatus: p.latest ? (p.latest === p.version ? "current" : "behind") : "unknown",
     argo: {
       name: p.name,
       tier: p.tier,
