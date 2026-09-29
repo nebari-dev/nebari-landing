@@ -18,6 +18,7 @@ import { EmptyState } from "../components/EmptyState";
 import { GroupBadge, VisibilityBadge } from "../components/EntityBadges";
 import { PageHeader } from "../components/PageHeader";
 import { StatTile } from "../components/StatTile";
+import { VersionBadge } from "../components/VersionBadge";
 import { useAdminWorld, usePacks } from "../hooks/useAdminData";
 import { formatDateTime, pluralize } from "../lib/format";
 
@@ -86,7 +87,13 @@ export function PackDetailPage() {
         <StatTile
           label="Chart version"
           value={pack.chartVersion || argo?.targetRevision || "—"}
-          detail={pack.chartName}
+          detail={
+            <span className="flex flex-wrap items-center gap-1">
+              {pack.chartName ? <span>{pack.chartName}</span> : null}
+              <VersionBadge pack={pack} />
+            </span>
+          }
+          tone={pack.versionStatus === "behind" ? "warning" : "default"}
         />
         <StatTile
           label="Last sync"

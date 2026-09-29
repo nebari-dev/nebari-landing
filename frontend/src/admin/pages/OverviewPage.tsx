@@ -17,6 +17,7 @@ import { EmptyState } from "../components/EmptyState";
 import { StatusBadge as AccountStatusBadge } from "../components/EntityBadges";
 import { PageHeader } from "../components/PageHeader";
 import { StatTile } from "../components/StatTile";
+import { VersionBadge } from "../components/VersionBadge";
 import { useAdminOverview, useAdminWorld, usePacks } from "../hooks/useAdminData";
 import { displayName, formatDateTime, pluralize } from "../lib/format";
 
@@ -64,7 +65,8 @@ export function OverviewPage() {
       if (!p.argo) continue;
       const bad = p.argo.healthStatus !== "Healthy" && p.argo.healthStatus !== "Unknown";
       const drift = p.argo.syncStatus === "OutOfSync";
-      if (!bad && !drift) continue;
+      const behind = p.versionStatus === "behind";
+      if (!bad && !drift && !behind) continue;
       rows.push({
         key: `pack-${p.name}`,
         kind: p.tier,
@@ -73,6 +75,7 @@ export function OverviewPage() {
           <span className="flex flex-wrap items-center gap-1">
             {drift ? <SyncBadge status={p.argo.syncStatus} /> : null}
             {bad ? <ArgoHealthBadge status={p.argo.healthStatus} /> : null}
+            {behind ? <VersionBadge pack={p} /> : null}
             <span className="text-muted-foreground">
               {p.chartName}
               {p.chartVersion ? ` ${p.chartVersion}` : ""}
@@ -210,7 +213,8 @@ export function OverviewPage() {
         <div>
           <h3 className="text-base font-semibold text-foreground">Needs attention</h3>
           <p className="text-sm text-muted-foreground">
-            Unhealthy services, drifted or degraded packs, and accounts that can't reach anything.
+            Unhealthy services, drifted, degraded or outdated packs, and accounts that can't reach
+            anything.
           </p>
         </div>
         {worldLoading || packs.isPending ? (
