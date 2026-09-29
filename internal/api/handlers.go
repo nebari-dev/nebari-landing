@@ -14,6 +14,7 @@ import (
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 	webkeycloak "github.com/nebari-dev/nebari-landing/internal/keycloak"
 	"github.com/nebari-dev/nebari-landing/internal/notifications"
+	"github.com/nebari-dev/nebari-landing/internal/packs"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
 	"github.com/nebari-dev/nebari-landing/internal/wsticket"
@@ -40,6 +41,8 @@ type Handler struct {
 	// packLister reads ArgoCD Applications for /api/v1/admin/packs; nil
 	// degrades that view to NebariApp labels.
 	packLister PackLister
+	// packVersions resolves latest published chart versions; nil disables.
+	packVersions *packs.VersionSource
 	// adminGroup is the Keycloak group name whose members may access admin-only endpoints.
 	// Defaults to "admin" when not set.
 	adminGroup string

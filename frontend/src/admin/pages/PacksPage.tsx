@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
 import type { Pack } from "../api/types";
 import { ArgoHealthBadge, SyncBadge } from "../components/ArgoBadges";
 import { PageHeader } from "../components/PageHeader";
+import { VersionBadge } from "../components/VersionBadge";
 import { usePacks } from "../hooks/useAdminData";
 import { formatDateTime, pluralize } from "../lib/format";
 
@@ -62,8 +63,9 @@ export function PacksPage() {
         accessorKey: "version",
         header: "Version",
         cell: ({ row }) => (
-          <div className="flex flex-col">
+          <div className="flex flex-col items-start gap-1">
             <span className="font-mono text-xs">{row.original.version || "—"}</span>
+            <VersionBadge pack={row.original} />
             {row.original.appVersion ? (
               <span className="text-xs text-muted-foreground">app {row.original.appVersion}</span>
             ) : null}
@@ -127,8 +129,9 @@ export function PacksPage() {
           <span className="flex items-start gap-1.5">
             <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
             <span>
-              What is installed, at which version, and whether ArgoCD has it in sync. Packs own
-              their internal permissions; the Launchpad only sees the services they publish.
+              What is installed, at which version, whether a newer chart is published, and whether
+              ArgoCD has it in sync. Packs own their internal permissions; the Launchpad only sees
+              the services they publish.
               {packs.data && !packs.data.argocdAvailable
                 ? " ArgoCD is not readable from the webapi, so sync and health are unavailable."
                 : ""}

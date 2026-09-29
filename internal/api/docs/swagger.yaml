@@ -611,6 +611,11 @@ components:
           type: string
         chartVersion:
           type: string
+        latestVersion:
+          description: |-
+            LatestVersion is the newest version published in the pack's Helm
+            repository; VersionStatus is current | behind | ahead | unknown.
+          type: string
         name:
           type: string
         namespace:
@@ -621,6 +626,8 @@ components:
           type: array
           uniqueItems: false
         tier:
+          type: string
+        versionStatus:
           type: string
       type: object
     packs.PackService:

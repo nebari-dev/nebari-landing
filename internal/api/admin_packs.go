@@ -20,6 +20,12 @@ func WithPackLister(l PackLister) HandlerOption {
 	return func(h *Handler) { h.packLister = l }
 }
 
+// WithPackVersionSource enables latest-version lookups against each pack's
+// Helm repository index (cached; unknown for git and OCI sources).
+func WithPackVersionSource(v *packs.VersionSource) HandlerOption {
+	return func(h *Handler) { h.packVersions = v }
+}
+
 // AdminPacksResponse is the body of GET /api/v1/admin/packs.
 type AdminPacksResponse struct {
 	// ArgoCDAvailable is false when Applications could not be listed; packs
@@ -42,6 +48,7 @@ func (h *Handler) buildPacks(ctx context.Context) AdminPacksResponse {
 		}
 	}
 	out.Packs = packs.Build(apps, h.cache.GetAll())
+	packs.Annotate(ctx, h.packVersions, out.Packs)
 	return out
 }
 

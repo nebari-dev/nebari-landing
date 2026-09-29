@@ -4,6 +4,9 @@
 package packs
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/nebari-dev/nebari-landing/internal/cache"
@@ -78,5 +81,64 @@ func TestBuild_WithoutArgo(t *testing.T) {
 	got := Build(nil, services)
 	if len(got) != 2 || got[0].Name != "jupyterhub" || got[1].Name != "lgtm-pack" || got[1].ChartName != "nebari-lgtm-pack" {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestCompareVersions(t *testing.T) {
+	cases := [][3]string{
+		{"0.2.0", "0.2.0", VersionCurrent},
+		{"0.1.4", "0.2.0", VersionBehind},
+		{"v0.3.0", "0.2.0", VersionAhead},
+		{"", "0.2.0", VersionUnknown},
+		{"main", "0.2.0", VersionUnknown},
+	}
+	for _, c := range cases {
+		if got := CompareVersions(c[0], c[1]); got != c[2] {
+			t.Errorf("%q vs %q: got %q want %q", c[0], c[1], got, c[2])
+		}
+	}
+}
+
+func TestVersionSource_Latest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/index.yaml" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`apiVersion: v1
+entries:
+  nebari-lgtm-pack:
+    - version: 0.3.0-rc.1
+    - version: 0.2.1
+    - version: 0.2.0
+    - version: 0.1.0
+  other:
+    - version: 9.9.9
+`))
+	}))
+	defer srv.Close()
+	src := NewVersionSource()
+	ctx := context.Background()
+
+	if v, ok := src.Latest(ctx, srv.URL, "nebari-lgtm-pack", "0.2.0"); !ok || v != "0.2.1" {
+		t.Fatalf("stable: %q %v", v, ok)
+	}
+	if v, ok := src.Latest(ctx, srv.URL, "nebari-lgtm-pack", "0.3.0-alpha.1"); !ok || v != "0.3.0-rc.1" {
+		t.Fatalf("prerelease installed: %q %v", v, ok)
+	}
+	if _, ok := src.Latest(ctx, srv.URL, "missing", "1.0.0"); ok {
+		t.Fatal("missing chart should be unknown")
+	}
+	if _, ok := src.Latest(ctx, "oci://quay.io/nebari/charts/x", "x", "1.0.0"); ok {
+		t.Fatal("oci should be unknown")
+	}
+	if _, ok := src.Latest(ctx, srv.URL+"/nope", "nebari-lgtm-pack", "0.2.0"); ok {
+		t.Fatal("bad repo should be unknown")
+	}
+
+	packs := []Pack{{Name: "lgtm-pack", ChartVersion: "0.2.0", Argo: &ArgoApp{RepoURL: srv.URL, Chart: "nebari-lgtm-pack"}}, {Name: "git", Argo: &ArgoApp{RepoURL: srv.URL, Path: "."}}}
+	Annotate(ctx, src, packs)
+	if packs[0].LatestVersion != "0.2.1" || packs[0].VersionStatus != VersionBehind || packs[1].VersionStatus != "" {
+		t.Fatalf("annotate: %+v", packs)
 	}
 }

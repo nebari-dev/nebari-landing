@@ -151,6 +151,9 @@ export type Pack = {
   chartVersion?: string;
   appVersion?: string;
   argo?: ArgoApp;
+  /** Newest version published in the pack's Helm repository, when resolvable. */
+  latestVersion?: string;
+  versionStatus: "current" | "behind" | "ahead" | "unknown";
   services: PackService[];
 };
 

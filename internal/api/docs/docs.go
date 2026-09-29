@@ -848,6 +848,10 @@ const docTemplate = `{
                     "chartVersion": {
                         "type": "string"
                     },
+                    "latestVersion": {
+                        "description": "LatestVersion is the newest version published in the pack's Helm\nrepository; VersionStatus is current | behind | ahead | unknown.",
+                        "type": "string"
+                    },
                     "name": {
                         "type": "string"
                     },
@@ -862,6 +866,9 @@ const docTemplate = `{
                         "uniqueItems": false
                     },
                     "tier": {
+                        "type": "string"
+                    },
+                    "versionStatus": {
                         "type": "string"
                     }
                 },

@@ -294,6 +294,7 @@ func main() {
 
 	handlerOpts := []api.HandlerOption{
 		api.WithPackLister(packs.NewLister(k8sClient)),
+		api.WithPackVersionSource(packs.NewVersionSource()),
 		api.WithAccessRequestStore(accessRequestStore),
 		api.WithAdminGroup(adminGroup),
 		api.WithNotificationStore(notificationStore),

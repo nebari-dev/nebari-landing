@@ -68,14 +68,18 @@ type PackService struct {
 
 // Pack is one row of the Software Packs view.
 type Pack struct {
-	Name         string        `json:"name"`
-	Tier         string        `json:"tier"`
-	Namespace    string        `json:"namespace"`
-	ChartName    string        `json:"chartName,omitempty"`
-	ChartVersion string        `json:"chartVersion,omitempty"`
-	AppVersion   string        `json:"appVersion,omitempty"`
-	Argo         *ArgoApp      `json:"argo,omitempty"`
-	Services     []PackService `json:"services"`
+	Name         string   `json:"name"`
+	Tier         string   `json:"tier"`
+	Namespace    string   `json:"namespace"`
+	ChartName    string   `json:"chartName,omitempty"`
+	ChartVersion string   `json:"chartVersion,omitempty"`
+	AppVersion   string   `json:"appVersion,omitempty"`
+	Argo         *ArgoApp `json:"argo,omitempty"`
+	// LatestVersion is the newest version published in the pack's Helm
+	// repository; VersionStatus is current | behind | ahead | unknown.
+	LatestVersion string        `json:"latestVersion,omitempty"`
+	VersionStatus string        `json:"versionStatus"`
+	Services      []PackService `json:"services"`
 }
 
 // Lister reads ArgoCD Applications with a controller-runtime client.
@@ -293,6 +297,7 @@ func Build(apps []ArgoApp, services []*cache.ServiceInfo) []Pack {
 	out := make([]Pack, 0, len(order))
 	for _, n := range order {
 		p := byName[n]
+		p.VersionStatus = VersionUnknown
 		sort.Slice(p.Services, func(i, j int) bool { return p.Services[i].DisplayName < p.Services[j].DisplayName })
 		out = append(out, *p)
 	}
@@ -303,4 +308,22 @@ func Build(apps []ArgoApp, services []*cache.ServiceInfo) []Pack {
 		return out[i].Name < out[j].Name
 	})
 	return out
+}
+
+// Annotate fills LatestVersion / VersionStatus on each pack using src. A nil
+// source leaves every pack unknown.
+func Annotate(ctx context.Context, src *VersionSource, packs []Pack) {
+	if src == nil {
+		return
+	}
+	for i := range packs {
+		p := &packs[i]
+		if p.Argo == nil || p.Argo.Chart == "" {
+			continue
+		}
+		if latest, ok := src.Latest(ctx, p.Argo.RepoURL, p.Argo.Chart, p.ChartVersion); ok {
+			p.LatestVersion = latest
+			p.VersionStatus = CompareVersions(p.ChartVersion, latest)
+		}
+	}
 }
