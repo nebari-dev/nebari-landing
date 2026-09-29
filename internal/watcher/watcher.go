@@ -369,6 +369,8 @@ func toApp(u *unstructured.Unstructured) *sdapp.App {
 		serviceNamespace = u.GetNamespace()
 	}
 	a := &sdapp.App{
+		Labels:           u.GetLabels(),
+		Annotations:      u.GetAnnotations(),
 		UID:              string(u.GetUID()),
 		Name:             u.GetName(),
 		Namespace:        u.GetNamespace(),

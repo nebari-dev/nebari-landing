@@ -26,6 +26,10 @@ type ServiceInfo struct {
 	RequiredGroups    []string           `json:"requiredGroups,omitempty"`
 	Health            *HealthStatus      `json:"health,omitempty"`
 	HealthCheckConfig *HealthCheckConfig `json:"-"` // not serialised; used by the health checker
+	// Labels / Annotations from the NebariApp metadata; not serialised to the
+	// landing page, used by the admin area for pack attribution.
+	Labels      map[string]string `json:"-"`
+	Annotations map[string]string `json:"-"`
 }
 
 // IconURL returns a single icon URL for theme-neutral contexts (e.g. notifications).
@@ -94,6 +98,8 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 	}
 
 	service := &ServiceInfo{
+		Labels:            a.Labels,
+		Annotations:       a.Annotations,
 		UID:               a.UID,
 		Name:              a.Name,
 		Namespace:         a.Namespace,

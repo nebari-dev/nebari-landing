@@ -43,6 +43,12 @@ type App struct {
 	// LandingPage holds the resolved landing-page configuration, or nil when
 	// the application does not participate in service discovery.
 	LandingPage *LandingPage
+
+	// Labels and Annotations are copied from the NebariApp metadata. The
+	// admin area uses the Helm chart labels and the ArgoCD tracking-id
+	// annotation to attribute a service to its software pack.
+	Labels      map[string]string
+	Annotations map[string]string
 }
 
 // LandingPage holds the resolved settings for an App that is listed on the

@@ -90,6 +90,141 @@ function mockHealth(id: string) {
   };
 }
 
+const PACKS: {
+  name: string;
+  tier: "pack" | "platform";
+  namespace: string;
+  chart: string;
+  version: string;
+  appVersion?: string;
+  repo: string;
+  sync: string;
+  health: string;
+  services: string[];
+  images: string[];
+}[] = [
+  {
+    name: "data-science-pack",
+    tier: "pack",
+    namespace: "jupyterhub",
+    chart: "nebari-data-science-pack",
+    version: "0.1.0-alpha.11",
+    appVersion: "1.0.0",
+    repo: "https://github.com/nebari-dev/nebari-data-science-pack.git",
+    sync: "Synced",
+    health: "Healthy",
+    services: ["svc-jupyter", "svc-vscode"],
+    images: [
+      "quay.io/jupyterhub/k8s-hub:4.3.2",
+      "quay.io/nebari/nebari-data-science-pack-jupyterlab:sha-5dfee5e",
+    ],
+  },
+  {
+    name: "lgtm-pack",
+    tier: "pack",
+    namespace: "monitoring",
+    chart: "nebari-lgtm-pack",
+    version: "0.2.0",
+    appVersion: "1.0.0",
+    repo: "https://nebari-dev.github.io/helm-repository",
+    sync: "OutOfSync",
+    health: "Healthy",
+    services: ["svc-grafana"],
+    images: ["grafana/grafana:11.4.0", "grafana/mimir:2.15.0"],
+  },
+  {
+    name: "mlflow-pack",
+    tier: "pack",
+    namespace: "mlflow",
+    chart: "nebari-mlflow-pack",
+    version: "0.3.1",
+    repo: "https://nebari-dev.github.io/helm-repository",
+    sync: "Synced",
+    health: "Degraded",
+    services: ["svc-mlflow"],
+    images: ["ghcr.io/mlflow/mlflow:v2.20.0"],
+  },
+  {
+    name: "superset-pack",
+    tier: "pack",
+    namespace: "superset",
+    chart: "nebari-superset-pack",
+    version: "0.4.0",
+    repo: "https://nebari-dev.github.io/helm-repository",
+    sync: "Synced",
+    health: "Healthy",
+    services: ["svc-superset"],
+    images: ["apache/superset:4.1.1"],
+  },
+  {
+    name: "nebari-landingpage",
+    tier: "platform",
+    namespace: "nebari-system",
+    chart: "nebari-landing",
+    version: "0.1.5",
+    appVersion: "0.1.5",
+    repo: "https://github.com/nebari-dev/nebari-landing",
+    sync: "Synced",
+    health: "Healthy",
+    services: ["svc-docs", "svc-status"],
+    images: ["quay.io/nebari/nebari-landing:0.1.5", "quay.io/nebari/nebari-webapi:0.1.5"],
+  },
+  {
+    name: "keycloak",
+    tier: "platform",
+    namespace: "keycloak",
+    chart: "keycloakx",
+    version: "7.1.6",
+    repo: "https://codecentric.github.io/helm-charts",
+    sync: "Synced",
+    health: "Healthy",
+    services: ["svc-keycloak"],
+    images: ["quay.io/keycloak/keycloak:26.1.0"],
+  },
+];
+
+function mockPacks() {
+  const hours = (n: number) => new Date(Date.now() - n * 60 * 60 * 1000).toISOString();
+  return PACKS.map((p, i) => ({
+    name: p.name,
+    tier: p.tier,
+    namespace: p.namespace,
+    chartName: p.chart,
+    chartVersion: p.version,
+    appVersion: p.appVersion,
+    argo: {
+      name: p.name,
+      tier: p.tier,
+      namespace: p.namespace,
+      repoURL: p.repo,
+      chart: p.chart,
+      targetRevision: p.version,
+      syncStatus: p.sync,
+      healthStatus: p.health,
+      revision: `${(i + 1).toString(16).padStart(2, "0")}ab34cd56ef7890123456789012345678901234`,
+      lastSyncPhase: "Succeeded",
+      lastSyncAt: hours(3 + i * 7),
+      reconciledAt: hours(0.2),
+      autoSync: true,
+      images: p.images,
+      resourceCount: 8 + i * 5,
+    },
+    services: p.services
+      .map((id) => store.admin.services.find((s) => s.id === id))
+      .filter((s): s is NonNullable<typeof s> => Boolean(s))
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        displayName: s.displayName,
+        namespace: s.namespace,
+        url: s.url,
+        visibility: s.visibility,
+        requiredGroups: s.requiredGroups,
+        healthStatus: mockHealth(s.id)?.status ?? "unknown",
+      })),
+  }));
+}
+
 export const adminHandlers = [
   // --- users -------------------------------------------------------------
   http.get(`${BASE}/users`, ({ request }) => {
@@ -371,6 +506,13 @@ export const adminHandlers = [
       },
       activeSessions: 7,
     });
+  }),
+
+  // --- packs (read-only) ------------------------------------------------
+  http.get(`${BASE}/packs`, () => json(200, { argocdAvailable: true, packs: mockPacks() })),
+  http.get(`${BASE}/packs/:name`, ({ params }) => {
+    const pack = mockPacks().find((p) => p.name === params.name);
+    return pack ? json(200, pack) : problem(404, "pack not found");
   }),
 
   // --- services (read-only) ---------------------------------------------

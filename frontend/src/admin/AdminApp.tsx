@@ -9,7 +9,8 @@ import { EmptyState } from "./components/EmptyState";
 import { GroupDetailPage } from "./pages/GroupDetailPage";
 import { GroupsPage } from "./pages/GroupsPage";
 import { OverviewPage } from "./pages/OverviewPage";
-import { RequestsPage } from "./pages/RequestsPage";
+import { PackDetailPage } from "./pages/PackDetailPage";
+import { PacksPage } from "./pages/PacksPage";
 import { RoleDetailPage } from "./pages/RoleDetailPage";
 import { RolesPage } from "./pages/RolesPage";
 import { ServiceDetailPage } from "./pages/ServiceDetailPage";
@@ -91,7 +92,8 @@ export default function AdminApp({ user }: AdminAppProps) {
       <Route element={<AdminLayout />}>
         <Route index element={<Navigate to="overview" replace />} />
         <Route path="overview" element={<OverviewPage />} />
-        <Route path="requests" element={<RequestsPage />} />
+        <Route path="packs" element={<PacksPage />} />
+        <Route path="packs/:name" element={<PackDetailPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="users/:id" element={<UserDetailPage />} />
         <Route path="groups" element={<GroupsPage />} />

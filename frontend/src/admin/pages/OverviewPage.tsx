@@ -1,44 +1,190 @@
 import { ArrowRight } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ArgoHealthBadge, SyncBadge } from "../components/ArgoBadges";
 import { EmptyState } from "../components/EmptyState";
-import { GroupBadge, StatusBadge } from "../components/EntityBadges";
+import { StatusBadge as AccountStatusBadge, GroupBadge } from "../components/EntityBadges";
 import { PageHeader } from "../components/PageHeader";
 import { StatTile } from "../components/StatTile";
-import { useAccessRequests, useAdminOverview, useAdminWorld } from "../hooks/useAdminData";
+import { useAdminOverview, useAdminWorld, usePacks } from "../hooks/useAdminData";
 import { displayName, formatDateTime, pluralize } from "../lib/format";
 
+type AttentionRow = {
+  key: string;
+  kind: "service" | "pack" | "accounts";
+  item: React.ReactNode;
+  why: React.ReactNode;
+  to: string;
+  action: string;
+};
+
+type ActivityRow = {
+  key: string;
+  at: string;
+  event: string;
+  subject: React.ReactNode;
+  details: React.ReactNode;
+};
+
 /**
- * Admin landing page: a KPI row from /admin/overview, then two lists derived
- * from the entity queries: what needs attention and what changed recently.
+ * Admin landing page: a KPI row from /admin/overview, then two full-width
+ * tables derived from the entity queries: what needs attention and what
+ * changed recently.
  */
 export function OverviewPage() {
   const overview = useAdminOverview();
-  const pending = useAccessRequests("pending");
-  const resolved = useAccessRequests();
-  const { users, groups, isLoading: worldLoading } = useAdminWorld();
+  const packs = usePacks();
+  const { users, groups, services, isLoading: worldLoading } = useAdminWorld();
   const o = overview.data;
-
-  const usersWithoutGroups = useMemo(() => users.filter((u) => u.groups.length === 0), [users]);
-  const recentUsers = useMemo(
-    () =>
-      [...users]
-        .filter((u) => u.createdAt)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        .slice(0, 5),
-    [users],
-  );
-  const recentlyResolved = useMemo(
-    () =>
-      (resolved.data ?? [])
-        .filter((r) => r.status !== "pending" && r.resolvedAt)
-        .sort((a, b) => b.resolvedAt.localeCompare(a.resolvedAt))
-        .slice(0, 5),
-    [resolved.data],
-  );
+  const packList = packs.data?.packs ?? [];
   const groupName = useMemo(() => new Map(groups.map((g) => [g.id, g.name])), [groups]);
+
+  const attention = useMemo<AttentionRow[]>(() => {
+    const rows: AttentionRow[] = [];
+    for (const s of services) {
+      if (s.health?.status === "unhealthy") {
+        rows.push({
+          key: `svc-${s.id}`,
+          kind: "service",
+          item: s.displayName,
+          why: (
+            <span className="flex flex-wrap items-center gap-2">
+              <StatusBadge status="unhealthy" />
+              <span>{s.health.message || "Health probe failing"}</span>
+            </span>
+          ),
+          to: `/admin/services/${encodeURIComponent(s.id)}`,
+          action: "Open service",
+        });
+      }
+    }
+    for (const p of packList) {
+      if (!p.argo) continue;
+      const bad = p.argo.healthStatus !== "Healthy" && p.argo.healthStatus !== "Unknown";
+      const drift = p.argo.syncStatus === "OutOfSync";
+      if (!bad && !drift) continue;
+      rows.push({
+        key: `pack-${p.name}`,
+        kind: "pack",
+        item: p.name,
+        why: (
+          <span className="flex flex-wrap items-center gap-1">
+            {drift ? <SyncBadge status={p.argo.syncStatus} /> : null}
+            {bad ? <ArgoHealthBadge status={p.argo.healthStatus} /> : null}
+            <span className="text-muted-foreground">
+              {p.chartName}
+              {p.chartVersion ? ` ${p.chartVersion}` : ""}
+            </span>
+          </span>
+        ),
+        to: `/admin/packs/${encodeURIComponent(p.name)}`,
+        action: "Open pack",
+      });
+    }
+    const noGroups = users.filter((u) => u.groups.length === 0);
+    if (noGroups.length > 0) {
+      rows.push({
+        key: "no-groups",
+        kind: "accounts",
+        item: `${pluralize(noGroups.length, "account")} in no group`,
+        why: `${noGroups
+          .slice(0, 3)
+          .map((u) => displayName(u))
+          .join(", ")}${noGroups.length > 3 ? "…" : ""} can reach only public services`,
+        to: "/admin/users",
+        action: "Open users",
+      });
+    }
+    const disabled = users.filter((u) => !u.enabled);
+    if (disabled.length > 0) {
+      rows.push({
+        key: "disabled",
+        kind: "accounts",
+        item: `${pluralize(disabled.length, "disabled account")}`,
+        why: (
+          <span className="flex flex-wrap items-center gap-2">
+            <AccountStatusBadge enabled={false} />
+            <span>
+              {disabled
+                .slice(0, 3)
+                .map((u) => displayName(u))
+                .join(", ")}
+              {disabled.length > 3 ? "…" : ""}
+            </span>
+          </span>
+        ),
+        to: "/admin/users",
+        action: "Open users",
+      });
+    }
+    return rows;
+  }, [services, packList, users]);
+
+  const activity = useMemo<ActivityRow[]>(() => {
+    const rows: ActivityRow[] = [];
+    for (const u of users) {
+      if (!u.createdAt) continue;
+      rows.push({
+        key: `user-${u.id}`,
+        at: u.createdAt,
+        event: "Account created",
+        subject: (
+          <Link
+            to={`/admin/users/${encodeURIComponent(u.id)}`}
+            className="font-medium hover:underline"
+          >
+            {displayName(u)}
+          </Link>
+        ),
+        details: (
+          <span className="flex flex-wrap gap-1">
+            {u.groups.slice(0, 3).map((gid) => (
+              <GroupBadge key={gid} id={gid} name={groupName.get(gid) ?? gid} />
+            ))}
+            {u.groups.length === 0 ? (
+              <span className="text-muted-foreground">no groups</span>
+            ) : null}
+          </span>
+        ),
+      });
+    }
+    for (const p of packList) {
+      if (!p.argo?.lastSyncAt) continue;
+      rows.push({
+        key: `sync-${p.name}`,
+        at: p.argo.lastSyncAt,
+        event: `Pack sync ${p.argo.lastSyncPhase?.toLowerCase() || "finished"}`,
+        subject: (
+          <Link
+            to={`/admin/packs/${encodeURIComponent(p.name)}`}
+            className="font-medium hover:underline"
+          >
+            {p.name}
+          </Link>
+        ),
+        details: (
+          <span className="text-muted-foreground">
+            {p.chartName}
+            {p.chartVersion ? ` ${p.chartVersion}` : ""}
+            {p.argo.revision ? ` · ${p.argo.revision.slice(0, 7)}` : ""}
+          </span>
+        ),
+      });
+    }
+    return rows.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 10);
+  }, [users, packList, groupName]);
+
   const loading = overview.isPending;
 
   return (
@@ -81,22 +227,28 @@ export function OverviewPage() {
             loading={loading}
           />
           <StatTile
-            label="Pending requests"
-            value={o?.accessRequests.pending}
-            detail={
-              o ? `${o.accessRequests.approved} approved · ${o.accessRequests.denied} denied` : null
-            }
-            to="/admin/requests"
-            tone={o && o.accessRequests.pending > 0 ? "warning" : "default"}
-            loading={loading}
-          />
-          <StatTile
             label="Services healthy"
             value={o ? `${o.services.healthy}/${o.services.total}` : undefined}
             detail={o ? `${o.services.unhealthy} unhealthy · ${o.services.unknown} unknown` : null}
             to="/admin/services"
             tone={o && o.services.unhealthy > 0 ? "danger" : "default"}
             loading={loading}
+          />
+          <StatTile
+            label="Packs"
+            value={packs.data ? packList.filter((p) => p.tier === "pack").length : undefined}
+            detail={
+              packs.data
+                ? `${packList.filter((p) => p.argo?.syncStatus === "OutOfSync").length} out of sync`
+                : null
+            }
+            to="/admin/packs"
+            tone={
+              packList.some((p) => p.argo && p.argo.healthStatus === "Degraded")
+                ? "danger"
+                : "default"
+            }
+            loading={packs.isPending}
           />
           <StatTile
             label="Groups"
@@ -119,121 +271,86 @@ export function OverviewPage() {
         </div>
       )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Needs attention</CardTitle>
-            <CardDescription>Open decisions and gaps an admin should look at.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {worldLoading || pending.isPending ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : (pending.data?.length ?? 0) === 0 &&
-              usersWithoutGroups.length === 0 &&
-              (o?.users.disabled ?? 0) === 0 &&
-              (o?.services.unhealthy ?? 0) === 0 ? (
-              <EmptyState
-                title="Nothing waiting on you"
-                description="No pending requests, every account is in a group, and no service is unhealthy."
-              />
-            ) : (
-              <ul className="divide-y divide-border">
-                {(pending.data ?? []).slice(0, 5).map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-3 py-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {r.userID} wants {r.serviceName}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {r.message || "No message"} · {formatDateTime(r.requestedAt)}
-                      </p>
-                    </div>
-                    <Button size="sm" variant="outline" render={<Link to="/admin/requests" />}>
-                      Review
+      <div className="mt-8 flex flex-col gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">Needs attention</h3>
+          <p className="text-sm text-muted-foreground">
+            Unhealthy services, drifted or degraded packs, and accounts that can't reach anything.
+          </p>
+        </div>
+        {worldLoading || packs.isPending ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : attention.length === 0 ? (
+          <EmptyState
+            title="Nothing waiting on you"
+            description="Every service is healthy, every pack is in sync, and every account is in a group."
+          />
+        ) : (
+          <Table aria-label="Needs attention">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-40">Type</TableHead>
+                <TableHead>Item</TableHead>
+                <TableHead>Why</TableHead>
+                <TableHead className="w-36" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {attention.map((r) => (
+                <TableRow key={r.key}>
+                  <TableCell>
+                    <Badge variant="ghost" className="text-muted-foreground">
+                      {r.kind}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-medium text-foreground">{r.item}</TableCell>
+                  <TableCell>{r.why}</TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="outline" render={<Link to={r.to} />}>
+                      {r.action}
                       <ArrowRight aria-hidden="true" />
                     </Button>
-                  </li>
-                ))}
-                {usersWithoutGroups.length > 0 ? (
-                  <li className="flex items-center justify-between gap-3 py-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">
-                        {pluralize(usersWithoutGroups.length, "account")} in no group
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {usersWithoutGroups
-                          .slice(0, 3)
-                          .map((u) => displayName(u))
-                          .join(", ")}
-                        {usersWithoutGroups.length > 3 ? "…" : ""}
-                      </p>
-                    </div>
-                    <Button size="sm" variant="outline" render={<Link to="/admin/users" />}>
-                      Open users
-                      <ArrowRight aria-hidden="true" />
-                    </Button>
-                  </li>
-                ) : null}
-                {o && o.users.disabled > 0 ? (
-                  <li className="flex items-center justify-between gap-3 py-2">
-                    <p className="text-sm font-medium text-foreground">
-                      {pluralize(o.users.disabled, "disabled account")}
-                    </p>
-                    <StatusBadge enabled={false} />
-                  </li>
-                ) : null}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent activity</CardTitle>
-            <CardDescription>Newest accounts and the latest access decisions.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {worldLoading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : recentUsers.length === 0 && recentlyResolved.length === 0 ? (
-              <EmptyState title="No activity yet" />
-            ) : (
-              <ul className="divide-y divide-border">
-                {recentlyResolved.map((r) => (
-                  <li key={r.id} className="py-2">
-                    <p className="text-sm text-foreground">
-                      <span className="font-medium">{r.resolvedBy || "An admin"}</span>{" "}
-                      {r.status === "approved" ? "approved" : "denied"}{" "}
-                      <span className="font-medium">{r.userID}</span> for {r.serviceName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{formatDateTime(r.resolvedAt)}</p>
-                  </li>
-                ))}
-                {recentUsers.map((u) => (
-                  <li key={u.id} className="flex items-center justify-between gap-3 py-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm text-foreground">
-                        <Link
-                          to={`/admin/users/${encodeURIComponent(u.id)}`}
-                          className="font-medium hover:underline"
-                        >
-                          {displayName(u)}
-                        </Link>{" "}
-                        joined
-                      </p>
-                      <p className="text-xs text-muted-foreground">{formatDateTime(u.createdAt)}</p>
-                    </div>
-                    <span className="flex flex-wrap justify-end gap-1">
-                      {u.groups.slice(0, 2).map((gid) => (
-                        <GroupBadge key={gid} id={gid} name={groupName.get(gid) ?? gid} />
-                      ))}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+      <div className="mt-8 flex flex-col gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">Recent activity</h3>
+          <p className="text-sm text-muted-foreground">
+            Newest accounts and the latest pack syncs.
+          </p>
+        </div>
+        {worldLoading || packs.isPending ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : activity.length === 0 ? (
+          <EmptyState title="No activity yet" />
+        ) : (
+          <Table aria-label="Recent activity">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-48">When</TableHead>
+                <TableHead className="w-48">Event</TableHead>
+                <TableHead>Subject</TableHead>
+                <TableHead>Details</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {activity.map((r) => (
+                <TableRow key={r.key}>
+                  <TableCell className="text-muted-foreground">{formatDateTime(r.at)}</TableCell>
+                  <TableCell>{r.event}</TableCell>
+                  <TableCell>{r.subject}</TableCell>
+                  <TableCell>{r.details}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </div>
     </section>
   );

@@ -19,6 +19,7 @@ import (
 	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 	webkeycloak "github.com/nebari-dev/nebari-landing/internal/keycloak"
+	"github.com/nebari-dev/nebari-landing/internal/packs"
 )
 
 // fakeIdentity is an in-memory IdentityAdmin that mimics Keycloak's error
@@ -600,6 +601,47 @@ func TestAdminServiceHealthHistory(t *testing.T) {
 	sc.Remove("svc-grafana")
 	if n := len(sc.HealthHistory("svc-grafana")); n != 0 {
 		t.Fatalf("after remove: got %d", n)
+	}
+}
+
+type fakePackLister struct {
+	apps []packs.ArgoApp
+	err  error
+}
+
+func (f fakePackLister) ListArgoApps(context.Context) ([]packs.ArgoApp, error) { return f.apps, f.err }
+
+func TestAdminPacks(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&app.App{
+		UID: "svc-grafana", Name: "grafana", Namespace: "monitoring", Hostname: "grafana.example.com",
+		Labels:      map[string]string{"helm.sh/chart": "nebari-lgtm-pack-0.2.0", "app.kubernetes.io/instance": "lgtm-pack"},
+		Annotations: map[string]string{"argocd.argoproj.io/tracking-id": "lgtm-pack:reconcilers.nebari.dev/NebariApp:monitoring/grafana"},
+		LandingPage: &app.LandingPage{Enabled: true, DisplayName: "Grafana", Visibility: "private", RequiredGroups: []string{"admin"}},
+	})
+	lister := fakePackLister{apps: []packs.ArgoApp{{Name: "lgtm-pack", Tier: packs.TierPack, Namespace: "monitoring", Chart: "nebari-lgtm-pack", TargetRevision: "0.2.0", SyncStatus: "Synced", HealthStatus: "Healthy"}}}
+	h := NewHandler(sc, nil, true, nil, nil, WithClaimsExtractor(adminClaims), WithPackLister(lister)).Routes()
+
+	res := decode[AdminPacksResponse](t, do(t, h, http.MethodGet, "/api/v1/admin/packs", nil))
+	if !res.ArgoCDAvailable || len(res.Packs) != 1 || res.Packs[0].Argo == nil || len(res.Packs[0].Services) != 1 {
+		t.Fatalf("packs: %+v", res)
+	}
+	one := decode[packs.Pack](t, do(t, h, http.MethodGet, "/api/v1/admin/packs/lgtm-pack", nil))
+	if one.Name != "lgtm-pack" || one.Services[0].RequiredGroups[0] != "admin" {
+		t.Fatalf("pack: %+v", one)
+	}
+	if rec := do(t, h, http.MethodGet, "/api/v1/admin/packs/nope", nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing: want 404, got %d", rec.Code)
+	}
+
+	// ArgoCD unreadable: degraded but still answers from labels.
+	h = NewHandler(sc, nil, true, nil, nil, WithClaimsExtractor(adminClaims), WithPackLister(fakePackLister{err: errNotFound})).Routes()
+	res = decode[AdminPacksResponse](t, do(t, h, http.MethodGet, "/api/v1/admin/packs", nil))
+	if res.ArgoCDAvailable || res.Error == "" || len(res.Packs) != 1 || res.Packs[0].Argo != nil || res.Packs[0].ChartVersion != "0.2.0" {
+		t.Fatalf("degraded: %+v", res)
+	}
+	if rec := do(t, newIdentityHandler(t, nil, userClaims), http.MethodGet, "/api/v1/admin/packs", nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("non-admin: want 403, got %d", rec.Code)
 	}
 }
 

@@ -140,6 +140,42 @@ export const generatedHandlers = [
       },
     }),
   ),
+  http.get("/api/v1/admin/packs", () =>
+    HttpResponse.json({
+      argocdAvailable: false,
+      error: "",
+      packs: [],
+    }),
+  ),
+  http.get("/api/v1/admin/packs/:name", () =>
+    HttpResponse.json({
+      appVersion: "",
+      argo: {
+        autoSync: false,
+        chart: "",
+        healthStatus: "",
+        images: [],
+        lastSyncAt: "",
+        lastSyncPhase: "",
+        name: "",
+        namespace: "",
+        path: "",
+        reconciledAt: "",
+        repoURL: "",
+        resourceCount: 0,
+        revision: "",
+        syncStatus: "",
+        targetRevision: "",
+        tier: "",
+      },
+      chartName: "",
+      chartVersion: "",
+      name: "",
+      namespace: "",
+      services: [],
+      tier: "",
+    }),
+  ),
   http.get("/api/v1/admin/roles", () => HttpResponse.json([])),
   http.post("/api/v1/admin/roles", () =>
     HttpResponse.json(

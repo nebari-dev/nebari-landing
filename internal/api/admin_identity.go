@@ -206,6 +206,8 @@ func (h *Handler) registerIdentityRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/v1/admin/services", h.handleAdminListServices)
 	mux.HandleFunc("GET /api/v1/admin/overview", h.handleAdminOverview)
+	mux.HandleFunc("GET /api/v1/admin/packs", h.handleAdminListPacks)
+	mux.HandleFunc("GET /api/v1/admin/packs/{name}", h.handleAdminGetPack)
 	mux.HandleFunc("GET /api/v1/admin/services/{id}", h.handleAdminGetService)
 	mux.HandleFunc("GET /api/v1/admin/services/{id}/health", h.handleAdminServiceHealth)
 }

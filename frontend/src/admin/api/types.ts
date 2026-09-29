@@ -80,22 +80,6 @@ export type AdminServiceHealth = {
 
 export type AdminServiceHealthHistory = AdminServiceHealth & { history: HealthSample[] };
 
-export type AccessRequestStatus = "pending" | "approved" | "denied";
-
-/** Mirrors `accessrequests.AccessRequest` from the webapi. */
-export type AccessRequest = {
-  id: string;
-  serviceUID: string;
-  serviceName: string;
-  userID: string;
-  userEmail: string;
-  message: string;
-  status: AccessRequestStatus;
-  requestedAt: string;
-  resolvedAt: string;
-  resolvedBy: string;
-};
-
 /** Mirrors `api.AdminOverview` from the webapi. */
 export type AdminOverview = {
   generatedAt: string;
@@ -120,6 +104,55 @@ export type AdminOverview = {
   accessRequestsAvailable: boolean;
   accessRequests: { pending: number; approved: number; denied: number };
   activeSessions: number | null;
+};
+
+/** Mirrors `packs.ArgoApp`. */
+export type ArgoApp = {
+  name: string;
+  tier: "pack" | "platform";
+  namespace: string;
+  repoURL: string;
+  chart?: string;
+  path?: string;
+  targetRevision: string;
+  syncStatus: string;
+  healthStatus: string;
+  revision?: string;
+  lastSyncPhase?: string;
+  lastSyncAt: string;
+  reconciledAt: string;
+  autoSync: boolean;
+  images: string[];
+  resourceCount: number;
+};
+
+export type PackService = {
+  id: string;
+  name: string;
+  displayName: string;
+  namespace: string;
+  url: string;
+  visibility: ServiceVisibility;
+  requiredGroups: string[];
+  healthStatus: string;
+};
+
+/** Mirrors `packs.Pack`. */
+export type Pack = {
+  name: string;
+  tier: "pack" | "platform";
+  namespace: string;
+  chartName?: string;
+  chartVersion?: string;
+  appVersion?: string;
+  argo?: ArgoApp;
+  services: PackService[];
+};
+
+export type AdminPacksResponse = {
+  argocdAvailable: boolean;
+  error?: string;
+  packs: Pack[];
 };
 
 export type UsersListResponse = {

@@ -121,6 +121,25 @@
                 },
                 "type": "object"
             },
+            "api.AdminPacksResponse": {
+                "properties": {
+                    "argocdAvailable": {
+                        "description": "ArgoCDAvailable is false when Applications could not be listed; packs\nare then derived from NebariApp labels only and carry no `argo` block.",
+                        "type": "boolean"
+                    },
+                    "error": {
+                        "type": "string"
+                    },
+                    "packs": {
+                        "items": {
+                            "$ref": "#/components/schemas/packs.Pack"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
             "api.AdminRoleInput": {
                 "properties": {
                     "description": {
@@ -717,6 +736,129 @@
                     },
                     "visibility": {
                         "description": "Visibility mirrors ServiceInfo.Visibility for the source service:\n\"public\" | \"private\" | \"\" (untagged). Consumed by canAccessPolicy.",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "packs.ArgoApp": {
+                "properties": {
+                    "autoSync": {
+                        "type": "boolean"
+                    },
+                    "chart": {
+                        "type": "string"
+                    },
+                    "healthStatus": {
+                        "type": "string"
+                    },
+                    "images": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "lastSyncAt": {
+                        "type": "string"
+                    },
+                    "lastSyncPhase": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "namespace": {
+                        "type": "string"
+                    },
+                    "path": {
+                        "type": "string"
+                    },
+                    "reconciledAt": {
+                        "type": "string"
+                    },
+                    "repoURL": {
+                        "type": "string"
+                    },
+                    "resourceCount": {
+                        "type": "integer"
+                    },
+                    "revision": {
+                        "type": "string"
+                    },
+                    "syncStatus": {
+                        "type": "string"
+                    },
+                    "targetRevision": {
+                        "type": "string"
+                    },
+                    "tier": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "packs.Pack": {
+                "properties": {
+                    "appVersion": {
+                        "type": "string"
+                    },
+                    "argo": {
+                        "$ref": "#/components/schemas/packs.ArgoApp"
+                    },
+                    "chartName": {
+                        "type": "string"
+                    },
+                    "chartVersion": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "namespace": {
+                        "type": "string"
+                    },
+                    "services": {
+                        "items": {
+                            "$ref": "#/components/schemas/packs.PackService"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "tier": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "packs.PackService": {
+                "properties": {
+                    "displayName": {
+                        "type": "string"
+                    },
+                    "healthStatus": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "namespace": {
+                        "type": "string"
+                    },
+                    "requiredGroups": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "url": {
+                        "type": "string"
+                    },
+                    "visibility": {
                         "type": "string"
                     }
                 },
@@ -1533,6 +1675,88 @@
                     }
                 ],
                 "summary": "Admin overview figures",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/admin/packs": {
+            "get": {
+                "description": "One row per ArgoCD Application labeled part-of=nebari-packs (tier \"pack\") or nebari-foundational (tier \"platform\"), joined with the landing-page services it owns via the ArgoCD tracking-id annotation or destination namespace. Degrades to NebariApp Helm labels when ArgoCD is not readable.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.AdminPacksResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "Forbidden: admin group required"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "List software packs (admin)",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/admin/packs/{name}": {
+            "get": {
+                "parameters": [
+                    {
+                        "description": "Pack (ArgoCD Application) name",
+                        "in": "path",
+                        "name": "name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/packs.Pack"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.AdminError"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Get a software pack (admin)",
                 "tags": [
                     "admin"
                 ]

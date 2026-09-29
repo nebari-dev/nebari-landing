@@ -37,6 +37,9 @@ type Handler struct {
 	// identity backs the /api/v1/admin/{users,groups,roles} endpoints. Set from
 	// keycloakClient by default; nil means those endpoints answer 501.
 	identity IdentityAdmin
+	// packLister reads ArgoCD Applications for /api/v1/admin/packs; nil
+	// degrades that view to NebariApp labels.
+	packLister PackLister
 	// adminGroup is the Keycloak group name whose members may access admin-only endpoints.
 	// Defaults to "admin" when not set.
 	adminGroup string

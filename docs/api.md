@@ -76,6 +76,8 @@ directly on the upgrade. The `/ws` endpoint accepts either mechanism.
 | `DELETE` | [`/admin/groups/{id}/roles/{role}`](#delete-admingroupsidrolesrole) | Map or unmap a realm role on a group (admin) |
 | `POST` | [`/admin/notifications`](#post-adminnotifications) | Create a notification (admin) |
 | `GET` | [`/admin/overview`](#get-adminoverview) | Admin overview figures |
+| `GET` | [`/admin/packs`](#get-adminpacks) | List software packs (admin) |
+| `GET` | [`/admin/packs/{name}`](#get-adminpacksname) | Get a software pack (admin) |
 | `GET` | [`/admin/roles`](#get-adminroles) | List realm roles (admin) |
 | `POST` | [`/admin/roles`](#post-adminroles) | Create a realm role (admin) |
 | `PATCH` | [`/admin/roles/{name}`](#patch-adminrolesname) | Update a realm role's description (admin) |
@@ -268,6 +270,30 @@ Headline counts for the admin dashboard: accounts, groups, roles, service health
 
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/admin/overview \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="get-adminpacks"></a>`GET /admin/packs`
+
+List software packs (admin)
+
+One row per ArgoCD Application labeled part-of=nebari-packs (tier "pack") or nebari-foundational (tier "platform"), joined with the landing-page services it owns via the ArgoCD tracking-id annotation or destination namespace. Degrades to NebariApp Helm labels when ArgoCD is not readable.
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/packs \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
+### <a name="get-adminpacksname"></a>`GET /admin/packs/{name}`
+
+Get a software pack (admin)
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/packs/{name} \
   -H 'Authorization: Bearer $TOKEN'
 ```
 

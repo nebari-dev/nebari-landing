@@ -42,6 +42,7 @@ import (
 	"github.com/nebari-dev/nebari-landing/internal/health"
 	webkeycloak "github.com/nebari-dev/nebari-landing/internal/keycloak"
 	"github.com/nebari-dev/nebari-landing/internal/notifications"
+	"github.com/nebari-dev/nebari-landing/internal/packs"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
 	"github.com/nebari-dev/nebari-landing/internal/watcher"
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
@@ -292,6 +293,7 @@ func main() {
 	}
 
 	handlerOpts := []api.HandlerOption{
+		api.WithPackLister(packs.NewLister(k8sClient)),
 		api.WithAccessRequestStore(accessRequestStore),
 		api.WithAdminGroup(adminGroup),
 		api.WithNotificationStore(notificationStore),

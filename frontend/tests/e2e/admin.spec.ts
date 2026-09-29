@@ -53,29 +53,17 @@ test.describe("entry point", () => {
 });
 
 test.describe("overview", () => {
-  test("shows headline figures and what needs attention", async ({ page }) => {
+  test("shows headline figures, attention items and recent activity", async ({ page }) => {
     await page.goto("/admin/overview");
     await expect(page.getByRole("link", { name: /^Accounts: 60/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /^Pending requests: 2/ })).toBeVisible();
-    await expect(page.getByText("alice wants MLflow")).toBeVisible();
-    await expect(page.getByText(/approved/).first()).toBeVisible();
-  });
-});
+    await expect(page.getByRole("link", { name: /^Packs: 4/ })).toBeVisible();
 
-test.describe("requests", () => {
-  test("approves a pending request", async ({ page }) => {
-    await page.goto("/admin/requests");
-    const table = page.getByRole("table", { name: "Pending access requests" });
-    await expect(table.getByRole("row")).toHaveCount(3);
-    await expect(page.getByText("Approving joins ml-engineers, data-science")).toBeVisible();
+    const attention = page.getByRole("table", { name: "Needs attention" });
+    await expect(attention.getByRole("row", { name: /lgtm-pack/ })).toContainText("Out of sync");
+    await expect(attention.getByRole("row", { name: /5 disabled accounts/ })).toBeVisible();
 
-    await page.getByRole("button", { name: "Approve alice for MLflow" }).click();
-    await expect(page.getByText("Request updated")).toBeVisible();
-    await expect(table.getByRole("row")).toHaveCount(2);
-
-    await page.getByRole("tab", { name: /Resolved/ }).click();
-    const resolved = page.getByRole("table", { name: "Resolved access requests" });
-    await expect(resolved.getByRole("row").filter({ hasText: "MLflow" })).toContainText("Approved");
+    const recent = page.getByRole("table", { name: "Recent activity" });
+    await expect(recent.getByRole("row", { name: /Tomás Brennan/ })).toContainText("joined");
   });
 });
 
@@ -195,8 +183,34 @@ test.describe("services", () => {
   });
 });
 
+test.describe("packs", () => {
+  test("lists packs with version, sync and services, and opens one", async ({ page }) => {
+    await page.goto("/admin/packs");
+    const table = page.getByRole("table", { name: "Software packs" });
+    await expect(table.getByRole("row")).toHaveCount(5);
+    await expect(table.getByRole("row", { name: /lgtm-pack/ })).toContainText("Out of sync");
+    await expect(table.getByRole("row", { name: /mlflow-pack/ })).toContainText("Degraded");
+
+    await page.getByRole("tab", { name: /Platform/ }).click();
+    await expect(page.getByRole("table", { name: "Platform components" }).getByRole("row")).toHaveCount(3);
+
+    await page.getByRole("tab", { name: /^Packs/ }).click();
+    await table.getByRole("link", { name: /data-science-pack/ }).click();
+    await expect(page.getByRole("heading", { level: 2, name: /data-science-pack/ })).toBeVisible();
+    await expect(page.getByRole("table", { name: "Services of data-science-pack" }).getByRole("row")).toHaveCount(3);
+    await expect(page.getByText("quay.io/jupyterhub/k8s-hub:4.3.2")).toBeVisible();
+  });
+});
+
 test.describe("accessibility", () => {
-  for (const path of ["/admin/users", "/admin/users/usr-alice", "/admin/services/svc-superset"]) {
+  for (const path of [
+    "/admin/overview",
+    "/admin/users",
+    "/admin/users/usr-alice",
+    "/admin/services/svc-superset",
+    "/admin/packs",
+    "/admin/packs/lgtm-pack",
+  ]) {
     test(`${path} has no automatically detectable WCAG A/AA violations`, async ({
       page,
       makeAxeBuilder,

@@ -67,7 +67,6 @@ test("homepage dark theme", async ({ page }) => {
 // Admin / user-management prototype (#208). Same light/dark pinning as above.
 const ADMIN_SHOTS: { name: string; path: string; ready: RegExp }[] = [
   { name: "admin-overview", path: "/admin/overview", ready: /Overview/ },
-  { name: "admin-requests", path: "/admin/requests", ready: /Access requests/ },
   { name: "admin-users", path: "/admin/users", ready: /Users/ },
   { name: "admin-user-detail", path: "/admin/users/usr-alice", ready: /Alice Alvarez/ },
   { name: "admin-groups", path: "/admin/groups", ready: /Groups/ },
@@ -75,6 +74,8 @@ const ADMIN_SHOTS: { name: string; path: string; ready: RegExp }[] = [
   { name: "admin-roles", path: "/admin/roles", ready: /Roles/ },
   { name: "admin-services", path: "/admin/services", ready: /Service access/ },
   { name: "admin-service-detail", path: "/admin/services/svc-superset", ready: /Superset/ },
+  { name: "admin-packs", path: "/admin/packs", ready: /Software packs/ },
+  { name: "admin-pack-detail", path: "/admin/packs/data-science-pack", ready: /data-science-pack/ },
 ];
 
 for (const mode of ["light", "dark"] as const) {
