@@ -22,7 +22,7 @@ import { displayName, formatDateTime, pluralize } from "../lib/format";
 
 type AttentionRow = {
   key: string;
-  kind: "service" | "pack" | "accounts";
+  kind: "service" | "pack" | "platform" | "accounts";
   item: React.ReactNode;
   why: React.ReactNode;
   to: string;
@@ -76,7 +76,7 @@ export function OverviewPage() {
       if (!bad && !drift) continue;
       rows.push({
         key: `pack-${p.name}`,
-        kind: "pack",
+        kind: p.tier,
         item: p.name,
         why: (
           <span className="flex flex-wrap items-center gap-1">
@@ -89,7 +89,7 @@ export function OverviewPage() {
           </span>
         ),
         to: `/admin/packs/${encodeURIComponent(p.name)}`,
-        action: "Open pack",
+        action: p.tier === "pack" ? "Open pack" : "Open component",
       });
     }
     const noGroups = users.filter((u) => u.groups.length === 0);
