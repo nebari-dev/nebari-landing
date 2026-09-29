@@ -75,6 +75,7 @@ directly on the upgrade. The `/ws` endpoint accepts either mechanism.
 | `PUT` | [`/admin/groups/{id}/roles/{role}`](#put-admingroupsidrolesrole) | Map or unmap a realm role on a group (admin) |
 | `DELETE` | [`/admin/groups/{id}/roles/{role}`](#delete-admingroupsidrolesrole) | Map or unmap a realm role on a group (admin) |
 | `POST` | [`/admin/notifications`](#post-adminnotifications) | Create a notification (admin) |
+| `GET` | [`/admin/overview`](#get-adminoverview) | Admin overview figures |
 | `GET` | [`/admin/roles`](#get-adminroles) | List realm roles (admin) |
 | `POST` | [`/admin/roles`](#post-adminroles) | Create a realm role (admin) |
 | `PATCH` | [`/admin/roles/{name}`](#patch-adminrolesname) | Update a realm role's description (admin) |
@@ -254,6 +255,19 @@ curl -s -X POST http://localhost:8080/api/v1/admin/notifications \
   -H 'Authorization: Bearer $TOKEN' \
   -H 'Content-Type: application/json' \
   -d '{}'
+```
+
+---
+
+### <a name="get-adminoverview"></a>`GET /admin/overview`
+
+Admin overview figures
+
+Headline counts for the admin dashboard: accounts, groups, roles, service health and gates, access requests by status, and live Keycloak sessions. Figures that depend on an unavailable backend are zero and flagged via the *Available booleans. Admin-only.
+
+```sh
+curl -s -X GET http://localhost:8080/api/v1/admin/overview \
+  -H 'Authorization: Bearer $TOKEN'
 ```
 
 ---

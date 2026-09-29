@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -516,4 +517,39 @@ func (c *Client) DeleteUser(ctx context.Context, id string) error {
 	}
 	log.Info("Deleted Keycloak user", "realm", s.realm, "id", id)
 	return nil
+}
+
+// clientSessionStat mirrors one entry of GET /admin/realms/{realm}/client-session-stats.
+type clientSessionStat struct {
+	ClientID string `json:"clientId"`
+	Active   string `json:"active"`
+	Offline  string `json:"offline"`
+}
+
+// CountActiveSessions sums the active sessions Keycloak reports per client
+// for the realm. gocloak has no wrapper for client-session-stats, so this
+// issues the request directly with the admin token.
+func (c *Client) CountActiveSessions(ctx context.Context) (int, error) {
+	s, err := c.session(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var stats []clientSessionStat
+	resp, err := s.kc.GetRequestWithBearerAuth(ctx, s.token).
+		SetResult(&stats).
+		Get(fmt.Sprintf("%s/admin/realms/%s/client-session-stats", strings.TrimRight(c.cfg.URL, "/"), s.realm))
+	if err != nil {
+		return 0, fmt.Errorf("fetching client session stats: %w", err)
+	}
+	if resp.IsError() {
+		return 0, &gocloak.APIError{Code: resp.StatusCode(), Message: resp.String()}
+	}
+	total := 0
+	for _, st := range stats {
+		n, convErr := strconv.Atoi(st.Active)
+		if convErr == nil {
+			total += n
+		}
+	}
+	return total, nil
 }

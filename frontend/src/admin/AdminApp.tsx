@@ -8,6 +8,8 @@ import { AdminLayout } from "./components/AdminLayout";
 import { EmptyState } from "./components/EmptyState";
 import { GroupDetailPage } from "./pages/GroupDetailPage";
 import { GroupsPage } from "./pages/GroupsPage";
+import { OverviewPage } from "./pages/OverviewPage";
+import { RequestsPage } from "./pages/RequestsPage";
 import { RoleDetailPage } from "./pages/RoleDetailPage";
 import { RolesPage } from "./pages/RolesPage";
 import { ServiceDetailPage } from "./pages/ServiceDetailPage";
@@ -87,7 +89,9 @@ export default function AdminApp({ user }: AdminAppProps) {
   return (
     <Routes>
       <Route element={<AdminLayout />}>
-        <Route index element={<Navigate to="users" replace />} />
+        <Route index element={<Navigate to="overview" replace />} />
+        <Route path="overview" element={<OverviewPage />} />
+        <Route path="requests" element={<RequestsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="users/:id" element={<UserDetailPage />} />
         <Route path="groups" element={<GroupsPage />} />
@@ -96,7 +100,7 @@ export default function AdminApp({ user }: AdminAppProps) {
         <Route path="roles/:name" element={<RoleDetailPage />} />
         <Route path="services" element={<ServicesPage />} />
         <Route path="services/:id" element={<ServiceDetailPage />} />
-        <Route path="*" element={<Navigate to="users" replace />} />
+        <Route path="*" element={<Navigate to="overview" replace />} />
       </Route>
     </Routes>
   );

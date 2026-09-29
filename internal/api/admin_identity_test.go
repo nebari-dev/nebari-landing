@@ -216,6 +216,8 @@ func (f *fakeIdentity) RemoveRealmRoleFromGroup(_ context.Context, groupID, role
 	return nil
 }
 
+func (f *fakeIdentity) CountActiveSessions(context.Context) (int, error) { return 3, nil }
+
 func (f *fakeIdentity) ListRoles(context.Context) ([]webkeycloak.IdentityRole, error) {
 	out := []webkeycloak.IdentityRole{}
 	for _, r := range f.roles {
@@ -513,6 +515,40 @@ func TestAdminIdentity_Roles(t *testing.T) {
 	}
 	if rec := do(t, h, http.MethodDelete, "/api/v1/admin/roles/dashboard-editor", nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("delete missing: want 404, got %d", rec.Code)
+	}
+}
+
+func TestAdminOverview(t *testing.T) {
+	h := newIdentityHandler(t, newFakeIdentity(), adminClaims)
+	rec := do(t, h, http.MethodGet, "/api/v1/admin/overview", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d %s", rec.Code, rec.Body.String())
+	}
+	o := decode[AdminOverview](t, rec)
+	if !o.IdentityAvailable || o.Users.Total != 3 || o.Users.Disabled != 1 || o.Users.WithoutGroups != 1 {
+		t.Fatalf("users: %+v", o.Users)
+	}
+	if o.Groups != 2 || o.Roles != 2 {
+		t.Fatalf("groups/roles: %d/%d", o.Groups, o.Roles)
+	}
+	if o.Services.Total != 2 || o.Services.Public != 1 || o.Services.Gated != 1 || o.Services.Unknown != 2 {
+		t.Fatalf("services: %+v", o.Services)
+	}
+	if o.ActiveSessions == nil || *o.ActiveSessions != 3 {
+		t.Fatalf("sessions: %v", o.ActiveSessions)
+	}
+	if o.AccessRequestsAvailable {
+		t.Fatal("no access-request store was configured")
+	}
+
+	// Without an identity backend the endpoint still answers with service figures.
+	h = newIdentityHandler(t, nil, adminClaims)
+	o = decode[AdminOverview](t, do(t, h, http.MethodGet, "/api/v1/admin/overview", nil))
+	if o.IdentityAvailable || o.Services.Total != 2 {
+		t.Fatalf("no identity: %+v", o)
+	}
+	if rec := do(t, newIdentityHandler(t, nil, userClaims), http.MethodGet, "/api/v1/admin/overview", nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("non-admin: want 403, got %d", rec.Code)
 	}
 }
 

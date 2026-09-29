@@ -22,11 +22,11 @@ test.describe("entry point", () => {
 
     await page.getByRole("button", { name: "Account menu" }).click();
     await page.getByRole("menuitem", { name: "Administration" }).click();
-    await expect(page).toHaveURL(/\/admin\/users$/);
+    await expect(page).toHaveURL(/\/admin\/overview$/);
     await expect(page.getByRole("heading", { level: 1, name: "Administration" })).toBeVisible();
     await expect(
       page.getByRole("navigation", { name: "Admin sections" }).getByRole("link", {
-        name: "Users",
+        name: "Overview",
       }),
     ).toHaveAttribute("aria-current", "page");
   });
@@ -49,6 +49,33 @@ test.describe("entry point", () => {
     await page.goto("/admin/users");
     await expect(page.getByRole("status")).toContainText("don't have access");
     await expect(page.getByRole("link", { name: "Back to the Launchpad" })).toBeVisible();
+  });
+});
+
+test.describe("overview", () => {
+  test("shows headline figures and what needs attention", async ({ page }) => {
+    await page.goto("/admin/overview");
+    await expect(page.getByRole("link", { name: /^Accounts: 60/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Pending requests: 2/ })).toBeVisible();
+    await expect(page.getByText("alice wants MLflow")).toBeVisible();
+    await expect(page.getByText(/approved/).first()).toBeVisible();
+  });
+});
+
+test.describe("requests", () => {
+  test("approves a pending request", async ({ page }) => {
+    await page.goto("/admin/requests");
+    const table = page.getByRole("table", { name: "Pending access requests" });
+    await expect(table.getByRole("row")).toHaveCount(3);
+    await expect(page.getByText("Approving joins ml-engineers, data-science")).toBeVisible();
+
+    await page.getByRole("button", { name: "Approve alice for MLflow" }).click();
+    await expect(page.getByText("Request updated")).toBeVisible();
+    await expect(table.getByRole("row")).toHaveCount(2);
+
+    await page.getByRole("tab", { name: /Resolved/ }).click();
+    const resolved = page.getByRole("table", { name: "Resolved access requests" });
+    await expect(resolved.getByRole("row").filter({ hasText: "MLflow" })).toContainText("Approved");
   });
 });
 

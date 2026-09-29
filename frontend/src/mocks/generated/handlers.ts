@@ -110,6 +110,36 @@ export const generatedHandlers = [
       { status: 201 },
     ),
   ),
+  http.get("/api/v1/admin/overview", () =>
+    HttpResponse.json({
+      accessRequests: {
+        approved: 0,
+        denied: 0,
+        pending: 0,
+      },
+      accessRequestsAvailable: false,
+      activeSessions: 0,
+      generatedAt: "",
+      groups: 0,
+      identityAvailable: false,
+      roles: 0,
+      services: {
+        gated: 0,
+        healthy: 0,
+        public: 0,
+        total: 0,
+        unhealthy: 0,
+        unknown: 0,
+      },
+      users: {
+        createdLast7Days: 0,
+        disabled: 0,
+        enabled: 0,
+        total: 0,
+        withoutGroups: 0,
+      },
+    }),
+  ),
   http.get("/api/v1/admin/roles", () => HttpResponse.json([])),
   http.post("/api/v1/admin/roles", () =>
     HttpResponse.json(

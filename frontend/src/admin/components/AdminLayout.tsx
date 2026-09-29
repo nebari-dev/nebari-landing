@@ -1,13 +1,15 @@
-import { KeyRound, LayoutGrid, Users, UsersRound } from "lucide-react";
+import { Gauge, Inbox, KeyRound, LayoutGrid, Users, UsersRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, Outlet, useLocation } from "react-router";
 import { NavLink } from "@/components/ui/navigation-menu";
 
 const SECTIONS: { to: string; label: string; icon: ReactNode }[] = [
+  { to: "/admin/overview", label: "Overview", icon: <Gauge aria-hidden="true" /> },
   { to: "/admin/users", label: "Users", icon: <Users aria-hidden="true" /> },
   { to: "/admin/groups", label: "Groups", icon: <UsersRound aria-hidden="true" /> },
   { to: "/admin/roles", label: "Roles", icon: <KeyRound aria-hidden="true" /> },
   { to: "/admin/services", label: "Services", icon: <LayoutGrid aria-hidden="true" /> },
+  { to: "/admin/requests", label: "Requests", icon: <Inbox aria-hidden="true" /> },
 ];
 
 /**

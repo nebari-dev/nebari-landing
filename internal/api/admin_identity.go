@@ -37,6 +37,7 @@ type IdentityAdmin interface {
 	RemoveRealmRoleFromGroup(ctx context.Context, groupID, roleName string) error
 
 	ListRoles(ctx context.Context) ([]keycloak.IdentityRole, error)
+	CountActiveSessions(ctx context.Context) (int, error)
 	CreateRole(ctx context.Context, name, description string) (*keycloak.IdentityRole, error)
 	UpdateRoleDescription(ctx context.Context, name, description string) error
 	DeleteRole(ctx context.Context, name string) error
@@ -185,6 +186,7 @@ func (h *Handler) registerIdentityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/admin/roles/{name}", h.handleAdminDeleteRole)
 
 	mux.HandleFunc("GET /api/v1/admin/services", h.handleAdminListServices)
+	mux.HandleFunc("GET /api/v1/admin/overview", h.handleAdminOverview)
 	mux.HandleFunc("GET /api/v1/admin/services/{id}", h.handleAdminGetService)
 }
 

@@ -296,6 +296,44 @@ export const adminHandlers = [
     return new HttpResponse(null, { status: 204 });
   }),
 
+  // --- overview ----------------------------------------------------------
+  http.get(`${BASE}/overview`, () => {
+    const users = store.admin.users;
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const healthByName = new Map(store.services.map((s) => [s.name, s.status.toLowerCase()]));
+    const services = store.admin.services;
+    const health = services.map((s) => healthByName.get(s.displayName) ?? "unknown");
+    return json(200, {
+      generatedAt: new Date().toISOString(),
+      identityAvailable: true,
+      users: {
+        total: users.length,
+        enabled: users.filter((u) => u.enabled).length,
+        disabled: users.filter((u) => !u.enabled).length,
+        withoutGroups: users.filter((u) => u.groups.length === 0).length,
+        createdLast7Days: users.filter((u) => Date.parse(u.createdAt) > weekAgo).length,
+      },
+      groups: store.admin.groups.length,
+      roles: store.admin.roles.filter((r) => !r.builtIn).length,
+      services: {
+        total: services.length,
+        healthy: health.filter((h) => h === "healthy").length,
+        unhealthy: health.filter((h) => h === "unhealthy").length,
+        unknown: health.filter((h) => h !== "healthy" && h !== "unhealthy").length,
+        public: services.filter((s) => s.visibility === "public").length,
+        gated: services.filter((s) => s.visibility !== "public" && s.requiredGroups.length > 0)
+          .length,
+      },
+      accessRequestsAvailable: true,
+      accessRequests: {
+        pending: store.accessRequests.filter((r) => r.status === "pending").length,
+        approved: store.accessRequests.filter((r) => r.status === "approved").length,
+        denied: store.accessRequests.filter((r) => r.status === "denied").length,
+      },
+      activeSessions: 7,
+    });
+  }),
+
   // --- services (read-only) ---------------------------------------------
   http.get(`${BASE}/services`, () => json(200, store.admin.services)),
 

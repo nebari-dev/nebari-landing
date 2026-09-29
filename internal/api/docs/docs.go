@@ -93,6 +93,41 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "api.AdminOverview": {
+                "properties": {
+                    "accessRequests": {
+                        "$ref": "#/components/schemas/api.OverviewAccessRequests"
+                    },
+                    "accessRequestsAvailable": {
+                        "description": "AccessRequestsAvailable is false when the access-request store is off.",
+                        "type": "boolean"
+                    },
+                    "activeSessions": {
+                        "description": "ActiveSessions is Keycloak's count of live sessions across clients, or\nnull when it could not be read.",
+                        "type": "integer"
+                    },
+                    "generatedAt": {
+                        "type": "string"
+                    },
+                    "groups": {
+                        "type": "integer"
+                    },
+                    "identityAvailable": {
+                        "description": "IdentityAvailable is false when no Keycloak admin client is configured;\nuser/group/role/session figures are then zero.",
+                        "type": "boolean"
+                    },
+                    "roles": {
+                        "type": "integer"
+                    },
+                    "services": {
+                        "$ref": "#/components/schemas/api.OverviewServices"
+                    },
+                    "users": {
+                        "$ref": "#/components/schemas/api.OverviewUsers"
+                    }
+                },
+                "type": "object"
+            },
             "api.AdminRoleInput": {
                 "properties": {
                     "description": {
@@ -256,6 +291,63 @@ const docTemplate = `{
                     },
                     "title": {
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "api.OverviewAccessRequests": {
+                "properties": {
+                    "approved": {
+                        "type": "integer"
+                    },
+                    "denied": {
+                        "type": "integer"
+                    },
+                    "pending": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "api.OverviewServices": {
+                "properties": {
+                    "gated": {
+                        "type": "integer"
+                    },
+                    "healthy": {
+                        "type": "integer"
+                    },
+                    "public": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "type": "integer"
+                    },
+                    "unhealthy": {
+                        "type": "integer"
+                    },
+                    "unknown": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "api.OverviewUsers": {
+                "properties": {
+                    "createdLast7Days": {
+                        "type": "integer"
+                    },
+                    "disabled": {
+                        "type": "integer"
+                    },
+                    "enabled": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "type": "integer"
+                    },
+                    "withoutGroups": {
+                        "type": "integer"
                     }
                 },
                 "type": "object"
@@ -1323,6 +1415,42 @@ const docTemplate = `{
                     }
                 ],
                 "summary": "Create a notification (admin)",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/admin/overview": {
+            "get": {
+                "description": "Headline counts for the admin dashboard: accounts, groups, roles, service health and gates, access requests by status, and live Keycloak sessions. Figures that depend on an unavailable backend are zero and flagged via the *Available booleans. Admin-only.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.AdminOverview"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "Forbidden: admin group required"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Admin overview figures",
                 "tags": [
                     "admin"
                 ]

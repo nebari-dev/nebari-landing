@@ -5,10 +5,12 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
+import { listAccessRequests, resolveAccessRequest } from "../api/accessRequests";
 import * as groupsApi from "../api/groups";
+import { getAdminOverview } from "../api/overview";
 import * as rolesApi from "../api/roles";
 import { listAdminServices } from "../api/services";
-import type { BulkUsersRequest } from "../api/types";
+import type { AccessRequestStatus, BulkUsersRequest } from "../api/types";
 import * as usersApi from "../api/users";
 
 export const adminKeys = {
@@ -17,6 +19,9 @@ export const adminKeys = {
   groups: () => [...adminKeys.all, "groups"] as const,
   roles: () => [...adminKeys.all, "roles"] as const,
   services: () => [...adminKeys.all, "services"] as const,
+  overview: () => [...adminKeys.all, "overview"] as const,
+  accessRequests: (status?: AccessRequestStatus) =>
+    [...adminKeys.all, "access-requests", status ?? "all"] as const,
 };
 
 /**
@@ -62,6 +67,32 @@ export function useAdminServices() {
     queryKey: adminKeys.services(),
     queryFn: listAdminServices,
   });
+}
+
+export function useAdminOverview() {
+  return useQuery({
+    ...adminQueryOptions,
+    refetchInterval: 30 * 1000,
+    queryKey: adminKeys.overview(),
+    queryFn: getAdminOverview,
+  });
+}
+
+export function useAccessRequests(status?: AccessRequestStatus) {
+  return useQuery({
+    ...adminQueryOptions,
+    refetchInterval: 30 * 1000,
+    queryKey: adminKeys.accessRequests(status),
+    queryFn: () => listAccessRequests(status),
+  });
+}
+
+export function useResolveAccessRequest() {
+  return useAdminMutation(
+    ({ id, action }: { id: string; action: "approve" | "deny" }) =>
+      resolveAccessRequest(id, action),
+    { success: "Request updated" },
+  );
 }
 
 /** Loads every admin entity at once; detail pages need all four to explain access. */

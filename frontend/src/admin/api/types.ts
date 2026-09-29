@@ -61,6 +61,48 @@ export type AdminService = {
   settingsUrl?: string;
 };
 
+export type AccessRequestStatus = "pending" | "approved" | "denied";
+
+/** Mirrors `accessrequests.AccessRequest` from the webapi. */
+export type AccessRequest = {
+  id: string;
+  serviceUID: string;
+  serviceName: string;
+  userID: string;
+  userEmail: string;
+  message: string;
+  status: AccessRequestStatus;
+  requestedAt: string;
+  resolvedAt: string;
+  resolvedBy: string;
+};
+
+/** Mirrors `api.AdminOverview` from the webapi. */
+export type AdminOverview = {
+  generatedAt: string;
+  identityAvailable: boolean;
+  users: {
+    total: number;
+    enabled: number;
+    disabled: number;
+    withoutGroups: number;
+    createdLast7Days: number;
+  };
+  groups: number;
+  roles: number;
+  services: {
+    total: number;
+    healthy: number;
+    unhealthy: number;
+    unknown: number;
+    public: number;
+    gated: number;
+  };
+  accessRequestsAvailable: boolean;
+  accessRequests: { pending: number; approved: number; denied: number };
+  activeSessions: number | null;
+};
+
 export type UsersListResponse = {
   users: AdminUser[];
   total: number;

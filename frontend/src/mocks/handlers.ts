@@ -94,7 +94,7 @@ const overrides = [
     const list = status
       ? store.accessRequests.filter((r) => r.status === status)
       : store.accessRequests;
-    return HttpResponse.json(list);
+    return HttpResponse.json({ accessRequests: list });
   }),
 
   http.put("/api/v1/admin/access-requests/:id/:action", ({ params }) => {
