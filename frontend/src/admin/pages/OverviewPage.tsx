@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { ArgoHealthBadge, SyncBadge } from "../components/ArgoBadges";
 import { EmptyState } from "../components/EmptyState";
-import { StatusBadge as AccountStatusBadge, GroupBadge } from "../components/EntityBadges";
+import { StatusBadge as AccountStatusBadge } from "../components/EntityBadges";
 import { PageHeader } from "../components/PageHeader";
 import { StatTile } from "../components/StatTile";
 import { useAdminOverview, useAdminWorld, usePacks } from "../hooks/useAdminData";
@@ -147,9 +147,9 @@ export function OverviewPage() {
           }
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <StatTile
-            label="Accounts"
+            label="Users"
             value={o?.users.total}
             detail={
               o ? `${o.users.disabled} disabled · ${o.users.createdLast7Days} new this week` : null
@@ -158,19 +158,31 @@ export function OverviewPage() {
             loading={loading}
           />
           <StatTile
-            label="Online now"
-            value={o ? (o.sessions ? o.sessions.users : "—") : undefined}
+            label="Groups"
+            value={o?.groups}
             detail={
-              o?.sessions
-                ? `${pluralize(o.sessions.sessions, "session")} across ${pluralize(o.sessions.clients.length, "app")}`
-                : "Keycloak sessions unavailable"
+              o
+                ? `${o.services.gated} gated ${o.services.gated === 1 ? "service" : "services"}`
+                : null
             }
+            to="/admin/groups"
             loading={loading}
           />
           <StatTile
-            label="Services healthy"
+            label="Roles"
+            value={o?.roles}
+            detail="Custom realm roles"
+            to="/admin/roles"
+            loading={loading}
+          />
+          <StatTile
+            label="Services"
             value={o ? `${o.services.healthy}/${o.services.total}` : undefined}
-            detail={o ? `${o.services.unhealthy} unhealthy · ${o.services.unknown} unknown` : null}
+            detail={
+              o
+                ? `healthy · ${o.services.unhealthy} unhealthy · ${o.services.unknown} unknown`
+                : null
+            }
             to="/admin/services"
             tone={o && o.services.unhealthy > 0 ? "danger" : "default"}
             loading={loading}
@@ -190,24 +202,6 @@ export function OverviewPage() {
                 : "default"
             }
             loading={packs.isPending}
-          />
-          <StatTile
-            label="Groups"
-            value={o?.groups}
-            detail={
-              o
-                ? `${o.services.gated} gated ${o.services.gated === 1 ? "service" : "services"}`
-                : null
-            }
-            to="/admin/groups"
-            loading={loading}
-          />
-          <StatTile
-            label="Roles"
-            value={o?.roles}
-            detail="Custom realm roles"
-            to="/admin/roles"
-            loading={loading}
           />
         </div>
       )}

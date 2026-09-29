@@ -55,7 +55,7 @@ test.describe("entry point", () => {
 test.describe("overview", () => {
   test("shows headline figures, attention items and recent activity", async ({ page }) => {
     await page.goto("/admin/overview");
-    await expect(page.getByRole("link", { name: /^Accounts: 60/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Users: 60/ })).toBeVisible();
     await expect(page.getByRole("link", { name: /^Packs: 4/ })).toBeVisible();
 
     const attention = page.getByRole("table", { name: "Needs attention" });
