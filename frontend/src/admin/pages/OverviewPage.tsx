@@ -222,8 +222,12 @@ export function OverviewPage() {
           />
           <StatTile
             label="Online now"
-            value={o?.activeSessions ?? (loading ? undefined : "—")}
-            detail="Active Keycloak sessions"
+            value={o ? (o.sessions ? o.sessions.users : "—") : undefined}
+            detail={
+              o?.sessions
+                ? `${pluralize(o.sessions.sessions, "session")} across ${pluralize(o.sessions.clients.length, "app")}`
+                : "Keycloak sessions unavailable"
+            }
             loading={loading}
           />
           <StatTile

@@ -218,7 +218,9 @@ func (f *fakeIdentity) RemoveRealmRoleFromGroup(_ context.Context, groupID, role
 	return nil
 }
 
-func (f *fakeIdentity) CountActiveSessions(context.Context) (int, error) { return 3, nil }
+func (f *fakeIdentity) ActiveSessions(context.Context) (*webkeycloak.SessionStats, error) {
+	return &webkeycloak.SessionStats{Users: 2, Sessions: 3, Clients: []webkeycloak.ClientSessions{{ClientID: "spa", Active: 2}, {ClientID: "grafana", Active: 1}}}, nil
+}
 
 func (f *fakeIdentity) ListRoles(context.Context) ([]webkeycloak.IdentityRole, error) {
 	out := []webkeycloak.IdentityRole{}
@@ -536,8 +538,8 @@ func TestAdminOverview(t *testing.T) {
 	if o.Services.Total != 2 || o.Services.Public != 1 || o.Services.Gated != 1 || o.Services.Unknown != 2 {
 		t.Fatalf("services: %+v", o.Services)
 	}
-	if o.ActiveSessions == nil || *o.ActiveSessions != 3 {
-		t.Fatalf("sessions: %v", o.ActiveSessions)
+	if o.Sessions == nil || o.Sessions.Users != 2 || o.Sessions.Sessions != 3 || len(o.Sessions.Clients) != 2 {
+		t.Fatalf("sessions: %+v", o.Sessions)
 	}
 	if o.AccessRequestsAvailable {
 		t.Fatal("no access-request store was configured")

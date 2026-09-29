@@ -38,7 +38,7 @@ type IdentityAdmin interface {
 	RemoveRealmRoleFromGroup(ctx context.Context, groupID, roleName string) error
 
 	ListRoles(ctx context.Context) ([]keycloak.IdentityRole, error)
-	CountActiveSessions(ctx context.Context) (int, error)
+	ActiveSessions(ctx context.Context) (*keycloak.SessionStats, error)
 	CreateRole(ctx context.Context, name, description string) (*keycloak.IdentityRole, error)
 	UpdateRoleDescription(ctx context.Context, name, description string) error
 	DeleteRole(ctx context.Context, name string) error

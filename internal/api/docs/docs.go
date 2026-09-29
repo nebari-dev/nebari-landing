@@ -102,10 +102,6 @@ const docTemplate = `{
                         "description": "AccessRequestsAvailable is false when the access-request store is off.",
                         "type": "boolean"
                     },
-                    "activeSessions": {
-                        "description": "ActiveSessions is Keycloak's count of live sessions across clients, or\nnull when it could not be read.",
-                        "type": "integer"
-                    },
                     "generatedAt": {
                         "type": "string"
                     },
@@ -121,6 +117,9 @@ const docTemplate = `{
                     },
                     "services": {
                         "$ref": "#/components/schemas/api.OverviewServices"
+                    },
+                    "sessions": {
+                        "$ref": "#/components/schemas/keycloak.SessionStats"
                     },
                     "users": {
                         "$ref": "#/components/schemas/api.OverviewUsers"
@@ -615,6 +614,17 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "keycloak.ClientSessions": {
+                "properties": {
+                    "active": {
+                        "type": "integer"
+                    },
+                    "clientId": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "keycloak.IdentityGroup": {
                 "properties": {
                     "createdAt": {
@@ -703,6 +713,25 @@ const docTemplate = `{
                     },
                     "username": {
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "keycloak.SessionStats": {
+                "description": "Sessions is who is online right now (distinct users, raw sessions and\nthe per-client breakdown), or null when Keycloak could not be read.",
+                "properties": {
+                    "clients": {
+                        "items": {
+                            "$ref": "#/components/schemas/keycloak.ClientSessions"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "sessions": {
+                        "type": "integer"
+                    },
+                    "users": {
+                        "type": "integer"
                     }
                 },
                 "type": "object"

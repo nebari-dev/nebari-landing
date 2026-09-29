@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
+	"github.com/nebari-dev/nebari-landing/internal/keycloak"
 )
 
 // OverviewUsers summarises the realm's accounts.
@@ -49,9 +50,9 @@ type AdminOverview struct {
 	// AccessRequestsAvailable is false when the access-request store is off.
 	AccessRequestsAvailable bool                   `json:"accessRequestsAvailable"`
 	AccessRequests          OverviewAccessRequests `json:"accessRequests"`
-	// ActiveSessions is Keycloak's count of live sessions across clients, or
-	// null when it could not be read.
-	ActiveSessions *int `json:"activeSessions"`
+	// Sessions is who is online right now (distinct users, raw sessions and
+	// the per-client breakdown), or null when Keycloak could not be read.
+	Sessions *keycloak.SessionStats `json:"sessions"`
 }
 
 // handleAdminOverview serves GET /api/v1/admin/overview.
@@ -120,8 +121,8 @@ func (h *Handler) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		if n, err := h.identity.CountActiveSessions(ctx); err == nil {
-			out.ActiveSessions = &n
+		if stats, err := h.identity.ActiveSessions(ctx); err == nil {
+			out.Sessions = stats
 		} else {
 			log.Info("Overview: active session count unavailable", "error", err.Error())
 		}

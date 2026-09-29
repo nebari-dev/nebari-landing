@@ -118,7 +118,6 @@ export const generatedHandlers = [
         pending: 0,
       },
       accessRequestsAvailable: false,
-      activeSessions: 0,
       generatedAt: "",
       groups: 0,
       identityAvailable: false,
@@ -130,6 +129,11 @@ export const generatedHandlers = [
         total: 0,
         unhealthy: 0,
         unknown: 0,
+      },
+      sessions: {
+        clients: [],
+        sessions: 0,
+        users: 0,
       },
       users: {
         createdLast7Days: 0,

@@ -504,7 +504,16 @@ export const adminHandlers = [
         approved: store.accessRequests.filter((r) => r.status === "approved").length,
         denied: store.accessRequests.filter((r) => r.status === "denied").length,
       },
-      activeSessions: 7,
+      sessions: {
+        users: 5,
+        sessions: 11,
+        clients: [
+          { clientId: "nebari-frontend-spa", active: 5 },
+          { clientId: "jupyterhub", active: 3 },
+          { clientId: "grafana", active: 2 },
+          { clientId: "superset", active: 1 },
+        ],
+      },
     });
   }),
 

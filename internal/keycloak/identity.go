@@ -521,35 +521,74 @@ func (c *Client) DeleteUser(ctx context.Context, id string) error {
 
 // clientSessionStat mirrors one entry of GET /admin/realms/{realm}/client-session-stats.
 type clientSessionStat struct {
+	ID       string `json:"id"`
 	ClientID string `json:"clientId"`
 	Active   string `json:"active"`
 	Offline  string `json:"offline"`
 }
 
-// CountActiveSessions sums the active sessions Keycloak reports per client
-// for the realm. gocloak has no wrapper for client-session-stats, so this
-// issues the request directly with the admin token.
-func (c *Client) CountActiveSessions(ctx context.Context) (int, error) {
+// ClientSessions is the active-session count for one OIDC client.
+type ClientSessions struct {
+	ClientID string `json:"clientId"`
+	Active   int    `json:"active"`
+}
+
+// SessionStats answers "who is online": distinct users holding at least one
+// active session, the raw session total, and the per-client breakdown.
+type SessionStats struct {
+	Users    int              `json:"users"`
+	Sessions int              `json:"sessions"`
+	Clients  []ClientSessions `json:"clients"`
+}
+
+// ActiveSessions reads client-session-stats (gocloak has no wrapper, so the
+// request is issued directly) and then lists each active client's user
+// sessions to count distinct users. One person signed in to several packs
+// therefore counts once in Users and several times in Sessions.
+func (c *Client) ActiveSessions(ctx context.Context) (*SessionStats, error) {
 	s, err := c.session(ctx)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	var stats []clientSessionStat
 	resp, err := s.kc.GetRequestWithBearerAuth(ctx, s.token).
 		SetResult(&stats).
 		Get(fmt.Sprintf("%s/admin/realms/%s/client-session-stats", strings.TrimRight(c.cfg.URL, "/"), s.realm))
 	if err != nil {
-		return 0, fmt.Errorf("fetching client session stats: %w", err)
+		return nil, fmt.Errorf("fetching client session stats: %w", err)
 	}
 	if resp.IsError() {
-		return 0, &gocloak.APIError{Code: resp.StatusCode(), Message: resp.String()}
+		return nil, &gocloak.APIError{Code: resp.StatusCode(), Message: resp.String()}
 	}
-	total := 0
+
+	out := &SessionStats{Clients: []ClientSessions{}}
+	users := map[string]struct{}{}
 	for _, st := range stats {
 		n, convErr := strconv.Atoi(st.Active)
-		if convErr == nil {
-			total += n
+		if convErr != nil || n == 0 {
+			continue
+		}
+		out.Sessions += n
+		out.Clients = append(out.Clients, ClientSessions{ClientID: st.ClientID, Active: n})
+
+		const page = 500
+		for first := 0; ; first += page {
+			sessions, err := s.kc.GetClientUserSessions(ctx, s.token, s.realm, st.ID, gocloak.GetClientUserSessionsParams{
+				First: gocloak.IntP(first), Max: gocloak.IntP(page),
+			})
+			if err != nil {
+				return nil, fmt.Errorf("listing sessions for client %q: %w", st.ClientID, err)
+			}
+			for _, sess := range sessions {
+				if id := gocloak.PString(sess.UserID); id != "" {
+					users[id] = struct{}{}
+				}
+			}
+			if len(sessions) < page {
+				break
+			}
 		}
 	}
-	return total, nil
+	out.Users = len(users)
+	return out, nil
 }

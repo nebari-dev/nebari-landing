@@ -103,7 +103,12 @@ export type AdminOverview = {
   };
   accessRequestsAvailable: boolean;
   accessRequests: { pending: number; approved: number; denied: number };
-  activeSessions: number | null;
+  /** Who is online: distinct users, raw sessions, per-client breakdown; null when unreadable. */
+  sessions: {
+    users: number;
+    sessions: number;
+    clients: { clientId: string; active: number }[];
+  } | null;
 };
 
 /** Mirrors `packs.ArgoApp`. */
