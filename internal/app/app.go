@@ -40,6 +40,12 @@ type App struct {
 	// ServicePort is spec.service.port — the port on the Kubernetes Service.
 	ServicePort int
 
+	// Static is true for entries loaded from the webapi's static-services
+	// configuration rather than from a NebariApp CR. Static entries are not
+	// reconciled from the cluster and do not accept access requests: access to
+	// them is managed by the target service itself, not by the landing page.
+	Static bool
+
 	// LandingPage holds the resolved landing-page configuration, or nil when
 	// the application does not participate in service discovery.
 	LandingPage *LandingPage
@@ -115,4 +121,9 @@ type HealthCheck struct {
 	// Keycloak X exposes /health/ready on port 9000, not the main 8080).
 	// When 0, spec.service.port is used.
 	Port int
+
+	// URL is a complete probe URL that overrides the in-cluster address built
+	// from ServiceName/ServiceNamespace/ServicePort. Set only for static
+	// entries, which have no Kubernetes Service reference of their own.
+	URL string
 }

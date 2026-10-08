@@ -1261,6 +1261,16 @@ const docTemplate = `{
                         },
                         "description": "Unauthorized"
                     },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "Access to this service is not managed by the landing page"
+                    },
                     "404": {
                         "content": {
                             "application/json": {

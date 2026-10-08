@@ -77,3 +77,40 @@ Uses the Bitnami standalone service naming convention.
 {{- define "nebari-landing.redisAddr" -}}
 {{- printf "%s-redis-master:6379" .Release.Name }}
 {{- end }}
+
+{{/*
+Static landing-page entries as a JSON array for the webapi's STATIC_SERVICES:
+webapi.staticServices plus, when webapi.keycloak.landingPage.enabled, an entry
+for the Keycloak admin console derived from the existing Keycloak settings.
+Renders an empty string when there are none.
+*/}}
+{{- define "nebari-landing.staticServices" -}}
+{{- $services := list -}}
+{{- range .Values.webapi.staticServices -}}
+{{- $services = append $services . -}}
+{{- end -}}
+{{- $kc := .Values.webapi.keycloak.landingPage -}}
+{{- if $kc.enabled -}}
+{{- $publicURL := required "frontend.keycloak.url is required when webapi.keycloak.landingPage.enabled=true" .Values.frontend.keycloak.url | trimSuffix "/" -}}
+{{- $entry := dict
+  "id" "keycloak"
+  "displayName" $kc.displayName
+  "description" $kc.description
+  "url" (printf "%s/admin/%s/console/" $publicURL .Values.frontend.keycloak.realm)
+  "category" $kc.category
+  "priority" $kc.priority
+  "visibility" "private"
+  "requiredGroups" $kc.requiredGroups
+-}}
+{{- if $kc.icon -}}
+{{- $_ := set $entry "icon" $kc.icon -}}
+{{- end -}}
+{{- with .Values.webapi.keycloak.url -}}
+{{- $_ := set $entry "healthCheck" (dict "url" (printf "%s/realms/%s" (trimSuffix "/" .) $.Values.webapi.keycloak.realm)) -}}
+{{- end -}}
+{{- $services = append $services $entry -}}
+{{- end -}}
+{{- if $services -}}
+{{- toJson $services -}}
+{{- end -}}
+{{- end }}

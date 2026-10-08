@@ -26,6 +26,9 @@ type ServiceInfo struct {
 	RequiredGroups    []string           `json:"requiredGroups,omitempty"`
 	Health            *HealthStatus      `json:"health,omitempty"`
 	HealthCheckConfig *HealthCheckConfig `json:"-"` // not serialised; used by the health checker
+	// Static marks entries loaded from the webapi's static-services config.
+	// Not serialised: it only gates server-side behaviour (access requests).
+	Static bool `json:"-"`
 }
 
 // IconURL returns a single icon URL for theme-neutral contexts (e.g. notifications).
@@ -107,6 +110,7 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 		RequiredGroups:    lp.RequiredGroups,
 		Health:            c.preserveHealthStatus(a.UID),
 		HealthCheckConfig: buildHealthCheckConfig(a),
+		Static:            a.Static,
 	}
 
 	c.mu.Lock()
@@ -230,6 +234,13 @@ func buildHealthCheckConfig(a *sdapp.App) *HealthCheckConfig {
 	timeout := hc.TimeoutSeconds
 	if timeout <= 0 {
 		timeout = 5
+	}
+	if hc.URL != "" {
+		return &HealthCheckConfig{
+			ProbeURL:        hc.URL,
+			IntervalSeconds: interval,
+			TimeoutSeconds:  timeout,
+		}
 	}
 	// Probe the Kubernetes service directly using in-cluster DNS so the health
 	// check bypasses the ingress/gateway and always uses HTTP regardless of

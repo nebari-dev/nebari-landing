@@ -598,8 +598,10 @@ type RequestAccessBody struct {
 }
 
 // handleRequestAccess serves POST /api/v1/services/{id}/request_access.
-// Requires authentication. Returns 202 Accepted on success, 409 Conflict when
-// a pending request already exists, 501 when the access-request store is not configured.
+// Requires authentication. Returns 202 Accepted on success, 403 Forbidden for
+// static services (access to those is managed by the target service itself),
+// 409 Conflict when a pending request already exists, 501 when the
+// access-request store is not configured.
 //
 //	@Summary		Request access to a private service
 //	@Description	Requires authentication. Creates a pending access request for the caller against the named service; an admin then approves or denies via /admin/access-requests/{id}/{approve|deny}.
@@ -611,6 +613,7 @@ type RequestAccessBody struct {
 //	@Success		202		{object}	accessrequests.AccessRequest
 //	@Failure		400		{string}	string	"Bad request"
 //	@Failure		401		{string}	string	"Unauthorized"
+//	@Failure		403		{string}	string	"Access to this service is not managed by the landing page"
 //	@Failure		404		{string}	string	"Service not found"
 //	@Failure		405		{string}	string	"Method not allowed"
 //	@Failure		409		{string}	string	"Pending request already exists"
@@ -635,6 +638,14 @@ func (h *Handler) handleRequestAccess(w http.ResponseWriter, r *http.Request, se
 	service := h.cache.Get(serviceID)
 	if service == nil {
 		http.Error(w, "Service not found", http.StatusNotFound)
+		return
+	}
+	// Approving a request adds the user to the service's requiredGroups in
+	// Keycloak. For a static entry such as the Keycloak admin console that
+	// would turn an access request into a privilege grant, so static services
+	// never accept requests.
+	if service.Static {
+		http.Error(w, "Access to this service is not managed by the landing page", http.StatusForbidden)
 		return
 	}
 
@@ -1000,6 +1011,12 @@ func (h *Handler) applyKeycloakGroupMembership(ctx context.Context, req *accessr
 	if service == nil {
 		log.Info("Service no longer in cache — cannot determine required groups for Keycloak",
 			"serviceUID", req.ServiceUID, "user", req.UserID)
+		return
+	}
+
+	if service.Static {
+		log.Info("Static service — access is not managed by the landing page, skipping Keycloak group update",
+			"service", service.Name, "user", req.UserID)
 		return
 	}
 
