@@ -55,7 +55,7 @@ func TestAdd_Enabled_StoresCorrectFields(t *testing.T) {
 		Category:       "Development",
 		Priority:       42,
 		Visibility:     "public",
-		RequiredGroups: []string{"admins"},
+		RequiredGroups: []string{"/admins"},
 		ExternalURL:    "https://external.example.com",
 	}
 	c.Add(makeApp("uid-2", "myapp", "default", "myapp.example.com", lp))
@@ -80,8 +80,32 @@ func TestAdd_Enabled_StoresCorrectFields(t *testing.T) {
 			t.Errorf("%s: want %v, got %v", name, v[0], v[1])
 		}
 	}
-	if len(svc.RequiredGroups) != 1 || svc.RequiredGroups[0] != "admins" {
-		t.Errorf("RequiredGroups: got %v, want [admins]", svc.RequiredGroups)
+	if len(svc.RequiredGroups) != 1 || svc.RequiredGroups[0] != "/admins" {
+		t.Errorf("RequiredGroups: got %v, want [/admins]", svc.RequiredGroups)
+	}
+	if len(svc.InvalidRequiredGroups) != 0 {
+		t.Errorf("InvalidRequiredGroups: got %v, want empty", svc.InvalidRequiredGroups)
+	}
+}
+
+func TestAdd_LeafRequiredGroupMarkedInvalid(t *testing.T) {
+	c := NewServiceCache()
+	lp := &sdapp.LandingPage{
+		Enabled:        true,
+		Visibility:     "private",
+		RequiredGroups: []string{"admins", "/division-a/research"},
+	}
+	c.Add(makeApp("uid-invalid", "myapp", "default", "myapp.example.com", lp))
+
+	svc := c.Get("uid-invalid")
+	if svc == nil {
+		t.Fatal("expected service in cache")
+	}
+	if len(svc.RequiredGroups) != 1 || svc.RequiredGroups[0] != "/division-a/research" {
+		t.Fatalf("RequiredGroups: got %v, want [/division-a/research]", svc.RequiredGroups)
+	}
+	if len(svc.InvalidRequiredGroups) != 1 || svc.InvalidRequiredGroups[0] != "admins" {
+		t.Fatalf("InvalidRequiredGroups: got %v, want [admins]", svc.InvalidRequiredGroups)
 	}
 }
 

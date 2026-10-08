@@ -50,6 +50,43 @@ type Claims struct {
 	Name              string   `json:"name"`
 	PreferredUsername string   `json:"preferred_username"`
 	Groups            []string `json:"groups"`
+	AuthorizedParty   string   `json:"azp"`
+	ResourceAccess    RolesMap `json:"resource_access"`
+}
+
+// RolesMap mirrors Keycloak's resource_access claim:
+//
+//	"resource_access": {"client-id": {"roles": ["role-a"]}}
+type RolesMap map[string]RoleSet
+
+// RoleSet is the roles payload nested under a Keycloak client entry.
+type RoleSet struct {
+	Roles []string `json:"roles"`
+}
+
+// HasClientRole reports whether the token carries role for clientID. When
+// clientID is empty, the token's azp (authorized party) is used, which is the
+// SPA client for browser-issued Keycloak access tokens.
+func (c *Claims) HasClientRole(clientID, role string) bool {
+	if c == nil || role == "" {
+		return false
+	}
+	if clientID == "" {
+		clientID = c.AuthorizedParty
+	}
+	if clientID == "" {
+		return false
+	}
+	roleSet, ok := c.ResourceAccess[clientID]
+	if !ok {
+		return false
+	}
+	for _, got := range roleSet.Roles {
+		if got == role {
+			return true
+		}
+	}
+	return false
 }
 
 // JWTValidator validates JWT tokens from Keycloak.

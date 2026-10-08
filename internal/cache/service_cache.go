@@ -7,25 +7,27 @@ import (
 	"time"
 
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
+	"github.com/nebari-dev/nebari-landing/internal/groupidentity"
 )
 
 // ServiceInfo represents a service that appears on the landing page
 type ServiceInfo struct {
-	UID               string             `json:"uid"`
-	Name              string             `json:"name"`
-	Namespace         string             `json:"namespace"`
-	DisplayName       string             `json:"displayName"`
-	Description       string             `json:"description"`
-	URL               string             `json:"url"`
-	Icon              string             `json:"icon,omitempty"`
-	IconLight         string             `json:"iconLight,omitempty"`
-	IconDark          string             `json:"iconDark,omitempty"`
-	Category          string             `json:"category"`
-	Priority          int                `json:"priority"`
-	Visibility        string             `json:"visibility"`
-	RequiredGroups    []string           `json:"requiredGroups,omitempty"`
-	Health            *HealthStatus      `json:"health,omitempty"`
-	HealthCheckConfig *HealthCheckConfig `json:"-"` // not serialised; used by the health checker
+	UID                   string             `json:"uid"`
+	Name                  string             `json:"name"`
+	Namespace             string             `json:"namespace"`
+	DisplayName           string             `json:"displayName"`
+	Description           string             `json:"description"`
+	URL                   string             `json:"url"`
+	Icon                  string             `json:"icon,omitempty"`
+	IconLight             string             `json:"iconLight,omitempty"`
+	IconDark              string             `json:"iconDark,omitempty"`
+	Category              string             `json:"category"`
+	Priority              int                `json:"priority"`
+	Visibility            string             `json:"visibility"`
+	RequiredGroups        []string           `json:"requiredGroups,omitempty"`
+	InvalidRequiredGroups []string           `json:"-"`
+	Health                *HealthStatus      `json:"health,omitempty"`
+	HealthCheckConfig     *HealthCheckConfig `json:"-"` // not serialised; used by the health checker
 }
 
 // IconURL returns a single icon URL for theme-neutral contexts (e.g. notifications).
@@ -92,21 +94,22 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 	}
 
 	service := &ServiceInfo{
-		UID:               a.UID,
-		Name:              a.Name,
-		Namespace:         a.Namespace,
-		DisplayName:       lp.DisplayName,
-		Description:       lp.Description,
-		URL:               buildURL(a),
-		Icon:              lp.Icon,
-		IconLight:         lp.IconLight,
-		IconDark:          lp.IconDark,
-		Category:          lp.Category,
-		Priority:          priority,
-		Visibility:        visibility,
-		RequiredGroups:    lp.RequiredGroups,
-		Health:            c.preserveHealthStatus(a.UID),
-		HealthCheckConfig: buildHealthCheckConfig(a),
+		UID:                   a.UID,
+		Name:                  a.Name,
+		Namespace:             a.Namespace,
+		DisplayName:           lp.DisplayName,
+		Description:           lp.Description,
+		URL:                   buildURL(a),
+		Icon:                  lp.Icon,
+		IconLight:             lp.IconLight,
+		IconDark:              lp.IconDark,
+		Category:              lp.Category,
+		Priority:              priority,
+		Visibility:            visibility,
+		RequiredGroups:        groupidentity.RequiredPaths(lp.RequiredGroups),
+		InvalidRequiredGroups: groupidentity.InvalidRequiredPaths(lp.RequiredGroups),
+		Health:                c.preserveHealthStatus(a.UID),
+		HealthCheckConfig:     buildHealthCheckConfig(a),
 	}
 
 	c.mu.Lock()

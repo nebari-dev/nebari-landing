@@ -12,6 +12,7 @@ import (
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
 	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
+	"github.com/nebari-dev/nebari-landing/internal/groupidentity"
 	webkeycloak "github.com/nebari-dev/nebari-landing/internal/keycloak"
 	"github.com/nebari-dev/nebari-landing/internal/notifications"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
@@ -21,6 +22,8 @@ import (
 )
 
 var log = ctrl.Log.WithName("api")
+
+const defaultAdminRole = "nebari-landing-admin"
 
 // Handler handles HTTP requests for the landing page API
 type Handler struct {
@@ -34,9 +37,12 @@ type Handler struct {
 	// keycloakClient is used for admin operations (e.g. adding users to groups on approval).
 	// When nil, Keycloak group membership is not updated automatically.
 	keycloakClient *webkeycloak.Client
-	// adminGroup is the Keycloak group name whose members may access admin-only endpoints.
-	// Defaults to "admin" when not set.
-	adminGroup string
+	// adminRole is the Keycloak client role whose bearers may access admin-only endpoints.
+	// Defaults to defaultAdminRole when not set.
+	adminRole string
+	// adminRoleClientID is the Keycloak client that owns adminRole. When empty,
+	// the JWT azp claim is used.
+	adminRoleClientID string
 	// allowedOrigins is the list of Origins permitted by the CORS middleware.
 	// Use ["*"] (default) to allow all origins, or supply specific origins such
 	// as ["https://nebari.example.com"] for stricter enforcement.
@@ -71,10 +77,13 @@ func WithAccessRequestStore(s *accessrequests.Store) HandlerOption {
 	return func(h *Handler) { h.accessRequestStore = s }
 }
 
-// WithAdminGroup sets the Keycloak group name that grants admin privileges.
-// Defaults to "admin".
-func WithAdminGroup(group string) HandlerOption {
-	return func(h *Handler) { h.adminGroup = group }
+// WithAdminRole sets the Keycloak client role that grants admin privileges.
+// When clientID is empty, isAdmin uses the JWT azp claim.
+func WithAdminRole(clientID, role string) HandlerOption {
+	return func(h *Handler) {
+		h.adminRoleClientID = clientID
+		h.adminRole = role
+	}
 }
 
 // WithNotificationStore attaches a notification store to the handler.
@@ -128,7 +137,7 @@ func WithDocsEnabled() HandlerOption {
 //
 //	h := NewHandler(sc, nil, true, nil, nil,
 //	    WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
-//	        return &auth.Claims{PreferredUsername: "alice", Groups: []string{"admin"}}, true
+//	        return &auth.Claims{PreferredUsername: "alice", Groups: []string{"/admin"}}, true
 //	    }))
 func WithClaimsExtractor(fn func(*http.Request) (*auth.Claims, bool)) HandlerOption {
 	return func(h *Handler) { h.claimsExtractor = fn }
@@ -149,7 +158,7 @@ func NewHandler(serviceCache *cache.ServiceCache, jwtValidator *auth.JWTValidato
 		enableAuth:     enableAuth,
 		hub:            hub,
 		pinStore:       pinStore,
-		adminGroup:     "admin",
+		adminRole:      defaultAdminRole,
 		allowedOrigins: []string{"*"},
 	}
 	for _, opt := range opts {
@@ -201,7 +210,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/v1/pins", h.handleGetPins)
 	mux.HandleFunc("/api/v1/pins/", h.handlePinByUID)
 
-	// Admin routes — require caller to be a member of h.adminGroup
+	// Admin routes — require caller to carry h.adminRole.
 	mux.HandleFunc("/api/v1/admin/access-requests", h.handleAdminListAccessRequests)
 	mux.HandleFunc("/api/v1/admin/access-requests/", h.handleAdminAccessRequestSub)
 	mux.HandleFunc("/api/v1/admin/notifications", h.handleAdminCreateNotification)
@@ -825,17 +834,18 @@ func (h *Handler) handleNotificationSub(w http.ResponseWriter, r *http.Request) 
 
 // --- Admin access-request handlers ---
 
-// isAdmin returns true when the caller's JWT groups contain h.adminGroup.
+// isAdmin returns true when the caller carries h.adminRole.
 func (h *Handler) isAdmin(claims *auth.Claims) bool {
-	for _, g := range claims.Groups {
-		if g == h.adminGroup {
-			return true
-		}
+	if claims == nil {
+		return false
+	}
+	if claims.HasClientRole(h.adminRoleClientID, h.adminRole) {
+		return true
 	}
 	return false
 }
 
-// requireAdmin validates the JWT and checks admin-group membership.
+// requireAdmin validates the JWT and checks the configured admin role.
 // Writes an appropriate error and returns ok=false on failure.
 func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) (*auth.Claims, bool) {
 	claims, ok := h.requireAuth(w, r)
@@ -843,23 +853,43 @@ func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) (*auth.Cl
 		return nil, false
 	}
 	if !h.isAdmin(claims) {
-		http.Error(w, "Forbidden: admin group required", http.StatusForbidden)
+		http.Error(w, "Forbidden: admin role required", http.StatusForbidden)
 		return nil, false
 	}
 	return claims, true
+}
+
+func (h *Handler) accessRequestsWithGroups(reqs []*accessrequests.AccessRequest) []*accessrequests.AccessRequest {
+	out := make([]*accessrequests.AccessRequest, 0, len(reqs))
+	for _, req := range reqs {
+		out = append(out, h.accessRequestWithGroups(req))
+	}
+	return out
+}
+
+func (h *Handler) accessRequestWithGroups(req *accessrequests.AccessRequest) *accessrequests.AccessRequest {
+	if req == nil {
+		return nil
+	}
+	out := *req
+	if service := h.cache.Get(req.ServiceUID); service != nil {
+		out.RequiredGroups = append([]string(nil), service.RequiredGroups...)
+		out.InvalidRequiredGroups = append([]string(nil), service.InvalidRequiredGroups...)
+	}
+	return &out
 }
 
 // handleAdminListAccessRequests serves GET /api/v1/admin/access-requests.
 // Accepts an optional ?status=pending|approved|denied query parameter.
 //
 //	@Summary		List access requests (admin)
-//	@Description	Returns access requests across the cluster. Admin-only — caller's JWT must include the configured admin group.
+//	@Description	Returns access requests across the cluster. Admin-only — caller's JWT must include the configured admin client role.
 //	@Tags			admin
 //	@Produce		json
 //	@Param			status	query		string	false	"Filter by status: pending, approved, or denied"
 //	@Success		200		{array}		accessrequests.AccessRequest
 //	@Failure		401		{string}	string	"Unauthorized"
-//	@Failure		403		{string}	string	"Forbidden: admin group required"
+//	@Failure		403		{string}	string	"Forbidden: admin role required"
 //	@Failure		405		{string}	string	"Method not allowed"
 //	@Failure		501		{string}	string	"Access request feature not configured"
 //	@Security		BearerAuth
@@ -894,7 +924,7 @@ func (h *Handler) handleAdminListAccessRequests(w http.ResponseWriter, r *http.R
 		reqs = []*accessrequests.AccessRequest{}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"accessRequests": reqs}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"accessRequests": h.accessRequestsWithGroups(reqs)}); err != nil {
 		log.Error(err, "Failed to encode access requests")
 	}
 }
@@ -910,7 +940,8 @@ func (h *Handler) handleAdminListAccessRequests(w http.ResponseWriter, r *http.R
 //	@Success		200		{object}	accessrequests.AccessRequest
 //	@Failure		400		{string}	string	"Bad request"
 //	@Failure		401		{string}	string	"Unauthorized"
-//	@Failure		403		{string}	string	"Forbidden: admin group required"
+//	@Failure		403		{string}	string	"Forbidden: admin role required"
+//	@Failure		409		{string}	string	"Service auth.groups requires migration"
 //	@Failure		404		{string}	string	"Request not found"
 //	@Failure		405		{string}	string	"Method not allowed"
 //	@Failure		501		{string}	string	"Access request feature not configured"
@@ -958,6 +989,23 @@ func (h *Handler) handleAdminAccessRequestSub(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	if status == accessrequests.StatusApproved {
+		req, err := h.accessRequestStore.Get(id)
+		if err != nil {
+			if errors.Is(err, accessrequests.ErrNotFound) {
+				http.Error(w, "Access request not found", http.StatusNotFound)
+				return
+			}
+			log.Error(err, "Failed to read access request before approval", "id", id)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		if service := h.cache.Get(req.ServiceUID); service != nil && len(service.InvalidRequiredGroups) > 0 {
+			http.Error(w, "Service auth.groups contains non-full Keycloak group paths; migrate them before approving access", http.StatusConflict)
+			return
+		}
+	}
+
 	updated, err := h.accessRequestStore.UpdateStatus(id, status, adminUser)
 	if err != nil {
 		if errors.Is(err, accessrequests.ErrNotFound) {
@@ -977,7 +1025,7 @@ func (h *Handler) handleAdminAccessRequestSub(w http.ResponseWriter, r *http.Req
 	}
 	log.Info("Access request updated", "id", id, "status", status, "by", adminUser)
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(updated); err != nil {
+	if err := json.NewEncoder(w).Encode(h.accessRequestWithGroups(updated)); err != nil {
 		log.Error(err, "Failed to encode access request")
 	}
 }
@@ -1025,7 +1073,7 @@ type CreateNotificationBody struct {
 }
 
 // handleAdminCreateNotification serves POST /api/v1/admin/notifications.
-// Creates a new platform-wide notification. Requires admin group membership.
+// Creates a new platform-wide notification. Requires admin role membership.
 //
 //	@Summary		Create a notification (admin)
 //	@Description	Creates a new platform-wide notification visible to all users via GET /notifications. Admin-only.
@@ -1036,7 +1084,7 @@ type CreateNotificationBody struct {
 //	@Success		201		{object}	notifications.Notification
 //	@Failure		400		{string}	string	"Bad request"
 //	@Failure		401		{string}	string	"Unauthorized"
-//	@Failure		403		{string}	string	"Forbidden: admin group required"
+//	@Failure		403		{string}	string	"Forbidden: admin role required"
 //	@Failure		405		{string}	string	"Method not allowed"
 //	@Failure		501		{string}	string	"Notifications feature not configured"
 //	@Security		BearerAuth
@@ -1211,6 +1259,12 @@ func writeAuthWarmupResponse(w http.ResponseWriter) {
 // handlers. It delegates to the pure canAccessPolicy helper so REST and the
 // WebSocket fan-out apply the same rule against the same inputs.
 func (h *Handler) canAccessService(service *cache.ServiceInfo, authenticated bool, claims *auth.Claims) bool {
+	if service == nil {
+		return false
+	}
+	if len(service.InvalidRequiredGroups) > 0 {
+		return false
+	}
 	var groups []string
 	if claims != nil {
 		groups = claims.Groups
@@ -1224,6 +1278,12 @@ func (h *Handler) canAccessService(service *cache.ServiceInfo, authenticated boo
 // (groups, authenticated) so the hub does not have to learn the shape of
 // auth.Claims.
 func (h *Handler) CanAccessService(service *cache.ServiceInfo, p wshub.Principal) bool {
+	if service == nil {
+		return false
+	}
+	if len(service.InvalidRequiredGroups) > 0 {
+		return false
+	}
 	return canAccessPolicy(service.Visibility, p.Authenticated, service.RequiredGroups, p.Groups)
 }
 
@@ -1251,19 +1311,7 @@ func canAccessPolicy(visibility string, authenticated bool, requiredGroups, user
 }
 
 func hasRequiredGroups(userGroups, requiredGroups []string) bool {
-	if len(requiredGroups) == 0 {
-		return true
-	}
-
-	for _, required := range requiredGroups {
-		for _, userGroup := range userGroups {
-			if userGroup == required {
-				return true
-			}
-		}
-	}
-
-	return false
+	return groupidentity.HasIntersection(userGroups, requiredGroups)
 }
 
 // handleCallerIdentity serves GET /api/v1/caller-identity.
@@ -1357,7 +1405,7 @@ func (h *Handler) handleGetPins(w http.ResponseWriter, r *http.Request) {
 	}
 	svcs := make([]*cache.ServiceInfo, 0, len(uids))
 	for _, uid := range uids {
-		if svc := h.cache.Get(uid); svc != nil {
+		if svc := h.cache.Get(uid); svc != nil && h.canAccessService(svc, true, claims) {
 			svcs = append(svcs, svc)
 		}
 	}

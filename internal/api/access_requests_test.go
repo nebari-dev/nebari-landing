@@ -14,6 +14,8 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
+	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
+	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 )
 
@@ -29,6 +31,21 @@ func newARStore(t *testing.T) *accessrequests.Store {
 // newARHandler returns a Handler with auth disabled and an access request store wired in.
 func newARHandler(sc *cache.ServiceCache, store *accessrequests.Store) *Handler {
 	return NewHandler(sc, nil, false, nil, nil, WithAccessRequestStore(store))
+}
+
+func newAdminARHandler(sc *cache.ServiceCache, store *accessrequests.Store) *Handler {
+	return NewHandler(sc, nil, true, nil, nil,
+		WithAccessRequestStore(store),
+		WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
+			return &auth.Claims{
+				PreferredUsername: "admin-user",
+				AuthorizedParty:   "landing-spa",
+				ResourceAccess: auth.RolesMap{
+					"landing-spa": {Roles: []string{"nebari-landing-admin"}},
+				},
+			}, true
+		}),
+	)
 }
 
 // --- POST /api/v1/services/{id}/request_access ---
@@ -86,6 +103,35 @@ func TestHandleRequestAccess_Success_Returns202(t *testing.T) {
 	}
 }
 
+func TestHandleRequestAccess_DoesNotExposeRequiredGroups(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID: "svc-a", Name: "Research A", Namespace: "ns",
+		Hostname: "a.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"/division-a/research"},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/svc-a/request_access", nil)
+	rr := httptest.NewRecorder()
+	newARHandler(sc, newARStore(t)).Routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d — body: %s", rr.Code, rr.Body.String())
+	}
+	var ar accessrequests.AccessRequest
+	if err := json.NewDecoder(rr.Body).Decode(&ar); err != nil {
+		t.Fatal(err)
+	}
+	if len(ar.RequiredGroups) != 0 {
+		t.Fatalf("non-admin request response exposed requiredGroups: %v", ar.RequiredGroups)
+	}
+	if len(ar.InvalidRequiredGroups) != 0 {
+		t.Fatalf("non-admin request response exposed invalidRequiredGroups: %v", ar.InvalidRequiredGroups)
+	}
+}
+
 func TestHandleRequestAccess_DuplicatePending_Returns409(t *testing.T) {
 	sc := buildCache(entry{"uid-pub", "pub", "public", "", 0})
 	store := newARStore(t)
@@ -127,7 +173,7 @@ func TestHandleAdminListAccessRequests_NoStore_Returns501(t *testing.T) {
 
 func TestHandleAdminListAccessRequests_NotAdmin_Returns403(t *testing.T) {
 	// Even with enableAuth=true, when jwtValidator is nil requireAuth returns the
-	// anonymous claims (not 401). The anonymous user has no groups, so isAdmin→false→403.
+	// anonymous claims (not 401). The anonymous user has no admin role, so isAdmin→false→403.
 	sc := buildCache(entry{"uid-pub", "pub", "public", "", 0})
 	store := newARStore(t)
 	h := NewHandler(sc, nil, true, nil, nil, WithAccessRequestStore(store))
@@ -144,7 +190,7 @@ func TestHandleAdminListAccessRequests_AuthDisabled_NoAdminGroup_Returns403(t *t
 	h := newARHandler(sc, store)
 	rr := doGet(t, h.Routes(), "/api/v1/admin/access-requests")
 	if rr.Code != http.StatusForbidden {
-		t.Errorf("expected 403 (_anonymous has no admin group), got %d", rr.Code)
+		t.Errorf("expected 403 (_anonymous has no admin role), got %d", rr.Code)
 	}
 }
 
@@ -159,6 +205,74 @@ func TestHandleAdminListAccessRequests_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestHandleAdminListAccessRequests_IncludesRequiredGroupPaths(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID: "svc-a", Name: "Research A", Namespace: "ns",
+		Hostname: "a.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"/division-a/research"},
+		},
+	})
+	store := newARStore(t)
+	if _, err := store.Create("svc-a", "Research A", "alice", "alice@example.com", "please"); err != nil {
+		t.Fatal(err)
+	}
+
+	rr := doGet(t, newAdminARHandler(sc, store).Routes(), "/api/v1/admin/access-requests")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d — body: %s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		AccessRequests []accessrequests.AccessRequest `json:"accessRequests"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.AccessRequests) != 1 {
+		t.Fatalf("expected 1 access request, got %d", len(resp.AccessRequests))
+	}
+	got := resp.AccessRequests[0].RequiredGroups
+	if len(got) != 1 || got[0] != "/division-a/research" {
+		t.Fatalf("expected requiredGroups [/division-a/research], got %v", got)
+	}
+}
+
+func TestHandleAdminListAccessRequests_IncludesInvalidRequiredGroups(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID: "svc-a", Name: "Research A", Namespace: "ns",
+		Hostname: "a.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"research"},
+		},
+	})
+	store := newARStore(t)
+	if _, err := store.Create("svc-a", "Research A", "alice", "alice@example.com", "please"); err != nil {
+		t.Fatal(err)
+	}
+
+	rr := doGet(t, newAdminARHandler(sc, store).Routes(), "/api/v1/admin/access-requests")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d — body: %s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		AccessRequests []accessrequests.AccessRequest `json:"accessRequests"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.AccessRequests) != 1 {
+		t.Fatalf("expected 1 access request, got %d", len(resp.AccessRequests))
+	}
+	got := resp.AccessRequests[0].InvalidRequiredGroups
+	if len(got) != 1 || got[0] != "research" {
+		t.Fatalf("expected invalidRequiredGroups [research], got %v", got)
+	}
+}
+
 // --- PUT /api/v1/admin/access-requests/{id}/approve|deny ---
 
 func TestHandleAdminAccessRequestSub_NoStore_Returns501(t *testing.T) {
@@ -170,7 +284,7 @@ func TestHandleAdminAccessRequestSub_NoStore_Returns501(t *testing.T) {
 	}
 }
 
-// With a store configured, anonymous callers (no admin group) get 403 before path dispatch.
+// With a store configured, anonymous callers (no admin role) get 403 before path dispatch.
 // Full path/action routing is covered by store unit tests.
 func TestHandleAdminAccessRequestSub_AnonymousCaller_Returns403(t *testing.T) {
 	store := newARStore(t)
@@ -178,6 +292,37 @@ func TestHandleAdminAccessRequestSub_AnonymousCaller_Returns403(t *testing.T) {
 	rr := httptest.NewRecorder()
 	newARHandler(cache.NewServiceCache(), store).Routes().ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden {
-		t.Errorf("expected 403 (anonymous → no admin group), got %d", rr.Code)
+		t.Errorf("expected 403 (anonymous has no admin role), got %d", rr.Code)
+	}
+}
+
+func TestHandleAdminAccessRequestSub_InvalidRequiredGroupsBlocksApproval(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID: "svc-a", Name: "Research A", Namespace: "ns",
+		Hostname: "a.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"research"},
+		},
+	})
+	store := newARStore(t)
+	req, err := store.Create("svc-a", "Research A", "alice", "alice@example.com", "please")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := httptest.NewRequest(http.MethodPut, "/api/v1/admin/access-requests/"+req.ID+"/approve", nil)
+	rr := httptest.NewRecorder()
+	newAdminARHandler(sc, store).Routes().ServeHTTP(rr, r)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d — body: %s", rr.Code, rr.Body.String())
+	}
+	got, err := store.Get(req.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != accessrequests.StatusPending {
+		t.Fatalf("expected request to remain pending, got %q", got.Status)
 	}
 }

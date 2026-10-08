@@ -21,10 +21,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/Nerzal/gocloak/v13"
+	"github.com/nebari-dev/nebari-landing/internal/groupidentity"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -175,8 +178,75 @@ func (c *Client) authenticate(ctx context.Context) (*gocloak.GoCloak, *gocloak.J
 	return kc, token, nil
 }
 
-// AddUserToGroup finds the user by username and the group by name in cfg.Realm,
-// then adds the user to the group. The group is created if it does not exist.
+// EnsureClientRole creates roleName on the Keycloak client named clientID when
+// the role is missing. It is safe to call repeatedly.
+func (c *Client) EnsureClientRole(ctx context.Context, clientID, roleName string) error {
+	clientID = strings.TrimSpace(clientID)
+	roleName = strings.TrimSpace(roleName)
+	if clientID == "" {
+		return errors.New("Keycloak client ID is required to ensure admin role")
+	}
+	if roleName == "" {
+		return errors.New("Keycloak client role name is required")
+	}
+
+	kc, token, err := c.authenticate(ctx)
+	if err != nil {
+		return err
+	}
+
+	clients, err := kc.GetClients(ctx, token.AccessToken, c.cfg.Realm, gocloak.GetClientsParams{
+		ClientID: gocloak.StringP(clientID),
+	})
+	if err != nil {
+		return fmt.Errorf("looking up Keycloak client %q in realm %q: %w", clientID, c.cfg.Realm, err)
+	}
+	internalID, ok := clientInternalID(clients, clientID)
+	if !ok {
+		return fmt.Errorf("Keycloak client %q not found in realm %q", clientID, c.cfg.Realm)
+	}
+
+	role, err := kc.GetClientRole(ctx, token.AccessToken, c.cfg.Realm, internalID, roleName)
+	if err == nil {
+		log.Info("Keycloak client role already exists",
+			"realm", c.cfg.Realm, "clientID", clientID, "role", roleName, "roleID", gocloak.PString(role.ID))
+		return nil
+	}
+	if !isNotFound(err) {
+		return fmt.Errorf("looking up Keycloak client role %q on client %q in realm %q: %w", roleName, clientID, c.cfg.Realm, err)
+	}
+
+	_, err = kc.CreateClientRole(ctx, token.AccessToken, c.cfg.Realm, internalID, gocloak.Role{
+		Name:        gocloak.StringP(roleName),
+		Description: gocloak.StringP("Nebari Landing administrator"),
+	})
+	if err != nil {
+		if isConflict(err) {
+			log.Info("Keycloak client role already exists",
+				"realm", c.cfg.Realm, "clientID", clientID, "role", roleName)
+			return nil
+		}
+		return fmt.Errorf("creating Keycloak client role %q on client %q in realm %q: %w", roleName, clientID, c.cfg.Realm, err)
+	}
+	log.Info("Created Keycloak client role", "realm", c.cfg.Realm, "clientID", clientID, "role", roleName)
+	return nil
+}
+
+func clientInternalID(clients []*gocloak.Client, clientID string) (string, bool) {
+	for _, client := range clients {
+		if client == nil {
+			continue
+		}
+		if gocloak.PString(client.ClientID) == clientID && gocloak.PString(client.ID) != "" {
+			return gocloak.PString(client.ID), true
+		}
+	}
+	return "", false
+}
+
+// AddUserToGroup finds the user by username and the group by full path in
+// cfg.Realm, then adds the user to the group. Missing root groups are created
+// only when the configured path explicitly names that root group.
 // This operation is idempotent: adding a user to a group they already belong to
 // is a no-op (Keycloak Admin API returns 204 regardless).
 func (c *Client) AddUserToGroup(ctx context.Context, username, groupName string) error {
@@ -199,39 +269,128 @@ func (c *Client) AddUserToGroup(ctx context.Context, username, groupName string)
 	}
 	userID := gocloak.PString(users[0].ID)
 
-	// ── locate or create group ────────────────────────────────────────────────
-	groups, err := kc.GetGroups(ctx, token.AccessToken, realm, gocloak.GetGroupsParams{
-		Search: gocloak.StringP(groupName),
+	// Locate or create the explicit full-path group.
+	groupPath, ok := groupidentity.RequiredPath(groupName)
+	if !ok {
+		return fmt.Errorf("group path %q must be an explicit full Keycloak path", groupName)
+	}
+	groupID, err := c.groupIDByPath(ctx, kc, token.AccessToken, realm, groupPath)
+	if err != nil {
+		return err
+	}
+
+	// Add user to group.
+	if err := kc.AddUserToGroup(ctx, token.AccessToken, realm, userID, groupID); err != nil {
+		return fmt.Errorf("adding user %q to group %q in realm %q: %w", username, groupPath, realm, err)
+	}
+
+	log.Info("Added user to Keycloak group", "realm", realm, "user", username, "group", groupPath)
+	return nil
+}
+
+func (c *Client) groupIDByPath(ctx context.Context, kc *gocloak.GoCloak, token, realm, groupPath string) (string, error) {
+	group, err := kc.GetGroupByPath(ctx, token, realm, groupPath)
+	if err == nil && gocloak.PString(group.ID) != "" {
+		return gocloak.PString(group.ID), nil
+	}
+	if err == nil {
+		return "", fmt.Errorf("Keycloak group path %q in realm %q has no id", groupPath, realm)
+	}
+	if !isNotFound(err) {
+		return "", fmt.Errorf("looking up group path %q in realm %q: %w", groupPath, realm, err)
+	}
+	if !groupidentity.IsRootPath(groupPath) {
+		return "", fmt.Errorf("Keycloak group path %q not found in realm %q; create the explicit path before approving access", groupPath, realm)
+	}
+
+	groupName := groupidentity.Leaf(groupPath)
+	id, err := kc.CreateGroup(ctx, token, realm, gocloak.Group{
+		Name: gocloak.StringP(groupName),
 	})
 	if err != nil {
-		return fmt.Errorf("looking up group %q in realm %q: %w", groupName, realm, err)
+		return "", fmt.Errorf("creating root group %q in realm %q: %w", groupPath, realm, err)
+	}
+	log.Info("Created Keycloak root group", "realm", realm, "group", groupPath, "id", id)
+	return id, nil
+}
+
+func isNotFound(err error) bool {
+	var apiErr *gocloak.APIError
+	return errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound
+}
+
+func isConflict(err error) bool {
+	var apiErr *gocloak.APIError
+	return errors.As(err, &apiErr) && apiErr.Code == http.StatusConflict
+}
+
+// GroupLeafCollision reports multiple full group paths that share the same
+// leaf name. Operators should resolve these before migrating any leaf-based
+// service configuration to full-path authorization.
+type GroupLeafCollision struct {
+	Leaf  string   `json:"leaf"`
+	Paths []string `json:"paths"`
+}
+
+// DuplicateGroupLeafNames inventories Keycloak groups whose final path segment
+// is not unique within the configured realm.
+func (c *Client) DuplicateGroupLeafNames(ctx context.Context) ([]GroupLeafCollision, error) {
+	kc, token, err := c.authenticate(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	var groupID string
-	for _, g := range groups {
-		if strings.EqualFold(gocloak.PString(g.Name), groupName) {
-			groupID = gocloak.PString(g.ID)
-			break
+	groups, err := kc.GetGroups(ctx, token.AccessToken, c.cfg.Realm, gocloak.GetGroupsParams{
+		Full: gocloak.BoolP(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing Keycloak groups in realm %q: %w", c.cfg.Realm, err)
+	}
+
+	byLeaf := make(map[string][]string)
+	collectGroupPaths(groups, byLeaf)
+
+	collisions := make([]GroupLeafCollision, 0)
+	for leaf, paths := range byLeaf {
+		if len(paths) < 2 {
+			continue
 		}
-	}
-
-	if groupID == "" {
-		// Group does not exist — create it.
-		id, err := kc.CreateGroup(ctx, token.AccessToken, realm, gocloak.Group{
-			Name: gocloak.StringP(groupName),
+		sort.Strings(paths)
+		collisions = append(collisions, GroupLeafCollision{
+			Leaf:  leaf,
+			Paths: append([]string(nil), paths...),
 		})
-		if err != nil {
-			return fmt.Errorf("creating group %q in realm %q: %w", groupName, realm, err)
+	}
+	sort.Slice(collisions, func(i, j int) bool {
+		return collisions[i].Leaf < collisions[j].Leaf
+	})
+	return collisions, nil
+}
+
+func collectGroupPaths(groups []*gocloak.Group, byLeaf map[string][]string) {
+	for _, group := range groups {
+		if group == nil {
+			continue
 		}
-		groupID = id
-		log.Info("Created Keycloak group", "realm", realm, "group", groupName, "id", groupID)
+		path := gocloak.PString(group.Path)
+		if path == "" {
+			if name := strings.TrimSpace(gocloak.PString(group.Name)); name != "" {
+				path = "/" + name
+			}
+		}
+		if leaf := groupidentity.Leaf(path); leaf != "" {
+			byLeaf[leaf] = append(byLeaf[leaf], path)
+		}
+		if group.SubGroups != nil {
+			collectGroupValues(*group.SubGroups, byLeaf)
+		}
 	}
+}
 
-	// ── add user to group ─────────────────────────────────────────────────────
-	if err := kc.AddUserToGroup(ctx, token.AccessToken, realm, userID, groupID); err != nil {
-		return fmt.Errorf("adding user %q to group %q in realm %q: %w", username, groupName, realm, err)
+func collectGroupValues(groups []gocloak.Group, byLeaf map[string][]string) {
+	ptrs := make([]*gocloak.Group, 0, len(groups))
+	for i := range groups {
+		ptrs = append(ptrs, &groups[i])
 	}
-
-	log.Info("Added user to Keycloak group", "realm", realm, "user", username, "group", groupName)
-	return nil
+	collectGroupPaths(ptrs, byLeaf)
 }

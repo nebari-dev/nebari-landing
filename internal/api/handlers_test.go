@@ -467,7 +467,7 @@ func TestHandleGetServices_AuthenticatedUser_SeesPublicAndOpenPrivate(t *testing
 	// Build a cache with the 2-tier model:
 	//   public   → everyone
 	//   private (no groups) → any authenticated user
-	//   private (admin group) → admin only; alice (viewer) cannot see it
+	//   private (/admin path) → /admin members only; alice (viewer) cannot see it
 	sc := cache.NewServiceCache()
 	sc.Add(&sdapp.App{
 		UID: "u1", Name: "pub", Namespace: "ns",
@@ -487,10 +487,10 @@ func TestHandleGetServices_AuthenticatedUser_SeesPublicAndOpenPrivate(t *testing
 		Hostname: "admin.example.com", TLSEnabled: true,
 		LandingPage: &sdapp.LandingPage{
 			Enabled: true, Visibility: "private",
-			RequiredGroups: []string{"admin"}, // alice (viewer) is not in this group
+			RequiredGroups: []string{"/admin"}, // alice (viewer) is not in this group
 		},
 	})
-	claims := &auth.Claims{PreferredUsername: "alice", Groups: []string{"viewer"}}
+	claims := &auth.Claims{PreferredUsername: "alice", Groups: []string{"/viewer"}}
 	rr := doGet(t, newHandlerWithClaims(sc, claims).Routes(), "/api/v1/services")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
@@ -527,7 +527,7 @@ func TestHandleGetServices_AdminUser_SeesPrivateServices(t *testing.T) {
 		Hostname: "secret.example.com", TLSEnabled: true,
 		LandingPage: &sdapp.LandingPage{
 			Enabled: true, Visibility: "private",
-			RequiredGroups: []string{"admin"},
+			RequiredGroups: []string{"/admin"},
 		},
 	})
 	sc.Add(&sdapp.App{
@@ -536,7 +536,7 @@ func TestHandleGetServices_AdminUser_SeesPrivateServices(t *testing.T) {
 		LandingPage: &sdapp.LandingPage{Enabled: true, Visibility: "public"},
 	})
 
-	adminClaims := &auth.Claims{PreferredUsername: "admin", Groups: []string{"admin"}}
+	adminClaims := &auth.Claims{PreferredUsername: "admin", Groups: []string{"/admin"}}
 	rr := doGet(t, newHandlerWithClaims(sc, adminClaims).Routes(), "/api/v1/services")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
@@ -557,7 +557,7 @@ func TestHandleGetServices_NonAdminUser_CannotSeePrivateService(t *testing.T) {
 		Hostname: "secret.example.com", TLSEnabled: true,
 		LandingPage: &sdapp.LandingPage{
 			Enabled: true, Visibility: "private",
-			RequiredGroups: []string{"admin"},
+			RequiredGroups: []string{"/admin"},
 		},
 	})
 	sc.Add(&sdapp.App{
@@ -566,7 +566,7 @@ func TestHandleGetServices_NonAdminUser_CannotSeePrivateService(t *testing.T) {
 		LandingPage: &sdapp.LandingPage{Enabled: true, Visibility: "public"},
 	})
 
-	userClaims := &auth.Claims{PreferredUsername: "alice", Groups: []string{"viewer"}}
+	userClaims := &auth.Claims{PreferredUsername: "alice", Groups: []string{"/viewer"}}
 	rr := doGet(t, newHandlerWithClaims(sc, userClaims).Routes(), "/api/v1/services")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
@@ -580,6 +580,89 @@ func TestHandleGetServices_NonAdminUser_CannotSeePrivateService(t *testing.T) {
 	}
 	if len(resp.Services) > 0 && resp.Services[0].ID != "u-pub" {
 		t.Errorf("expected public service, got %q", resp.Services[0].ID)
+	}
+}
+
+func TestHandleGetServices_FullPathGroupLeavesRemainDistinct(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID: "svc-a", Name: "research-a", Namespace: "ns",
+		Hostname: "a.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"/division-a/research"},
+		},
+	})
+	sc.Add(&sdapp.App{
+		UID: "svc-b", Name: "research-b", Namespace: "ns",
+		Hostname: "b.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"/division-b/research"},
+		},
+	})
+
+	claims := &auth.Claims{PreferredUsername: "alice", Groups: []string{"/division-a/research"}}
+	rr := doGet(t, newHandlerWithClaims(sc, claims).Routes(), "/api/v1/services")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var resp ServiceResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Services) != 1 || resp.Services[0].ID != "svc-a" {
+		t.Fatalf("expected only division-a service, got %+v", resp.Services)
+	}
+}
+
+func TestHandleGetServices_LeafTokenGroupDoesNotMatchFullPath(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID: "svc-a", Name: "research-a", Namespace: "ns",
+		Hostname: "a.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"/division-a/research"},
+		},
+	})
+
+	claims := &auth.Claims{PreferredUsername: "alice", Groups: []string{"research"}}
+	rr := doGet(t, newHandlerWithClaims(sc, claims).Routes(), "/api/v1/services")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var resp ServiceResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Services) != 0 {
+		t.Fatalf("leaf-only token group should not authorize full-path service, got %+v", resp.Services)
+	}
+}
+
+func TestHandleGetServices_ConfiguredLeafGroupRejected(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID: "svc-a", Name: "research-a", Namespace: "ns",
+		Hostname: "a.example.com", TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled: true, Visibility: "private",
+			RequiredGroups: []string{"research"},
+		},
+	})
+
+	claims := &auth.Claims{PreferredUsername: "alice", Groups: []string{"/research"}}
+	rr := doGet(t, newHandlerWithClaims(sc, claims).Routes(), "/api/v1/services")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var resp ServiceResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Services) != 0 {
+		t.Fatalf("leaf-only configured group should block service access until migrated, got %+v", resp.Services)
 	}
 }
 
@@ -620,7 +703,7 @@ func TestHandleDebug_AuthenticatedUser_ShowsClaims(t *testing.T) {
 		entry{"u1", "pub", "public", "", 0},
 		entry{"u2", "priv-open", "private", "", 0},
 	)
-	claims := &auth.Claims{PreferredUsername: "alice", Email: "alice@example.com", Groups: []string{"devs"}}
+	claims := &auth.Claims{PreferredUsername: "alice", Email: "alice@example.com", Groups: []string{"/devs"}}
 	h := NewHandler(sc, nil, true, nil, nil,
 		WithDebugMode(),
 		WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
