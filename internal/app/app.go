@@ -8,13 +8,16 @@
 package app
 
 // App is the internal representation of a Nebari application that participates
-// in service discovery. It is derived from a NebariApp CR by the watcher and
-// passed to the ServiceCache.
+// in service discovery. It is derived from a NebariApp CR by the watcher, or
+// from a static entry by internal/staticservices, and passed to the
+// ServiceCache. The field comments below describe the NebariApp mapping; a
+// static entry sets UID, Name, Static and LandingPage only.
 type App struct {
-	// UID is the Kubernetes UID of the underlying NebariApp.
+	// UID is the Kubernetes UID of the underlying NebariApp, or
+	// "static-<id>" for a static entry.
 	UID string
 
-	// Name is the name of the NebariApp CR.
+	// Name is the name of the NebariApp CR, or the id of a static entry.
 	Name string
 
 	// Namespace is the namespace of the NebariApp CR.
@@ -100,7 +103,8 @@ type LandingPage struct {
 }
 
 // HealthCheck holds the health-probing configuration derived from
-// spec.landingPage.healthCheck in the NebariApp CRD.
+// spec.landingPage.healthCheck in the NebariApp CRD, or from a static entry's
+// healthCheck.
 type HealthCheck struct {
 	// Enabled mirrors spec.landingPage.healthCheck.enabled.
 	Enabled bool

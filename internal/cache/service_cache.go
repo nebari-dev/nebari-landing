@@ -43,11 +43,13 @@ func (s *ServiceInfo) IconURL() string {
 }
 
 // HealthCheckConfig holds the resolved probe settings for a service.
-// It is populated by the watcher from spec.landingPage.healthCheck in the
-// NebariApp CRD and consumed exclusively by the health checker.
+// It is built in Add from the App's health check (spec.landingPage.healthCheck
+// for a NebariApp, healthCheck for a static entry) and consumed exclusively by
+// the health checker.
 type HealthCheckConfig struct {
 	// ProbeURL is the full HTTP URL the health checker will GET on each interval.
-	// Constructed as http://<service-name>.<namespace>:<port><path>.
+	// Constructed as http://<service-name>.<namespace>:<port><path>, unless the
+	// health check gives a complete URL (static entries).
 	ProbeURL        string
 	IntervalSeconds int
 	TimeoutSeconds  int

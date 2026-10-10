@@ -145,8 +145,9 @@ webapi:
     # it cannot carry a NebariApp with spec.auth enabled; this renders a
     # static entry instead (see staticServices below). The card URL is built
     # from frontend.keycloak.url + frontend.keycloak.realm, and the health
-    # probe from webapi.keycloak.url + realm, so enabling it is usually the
-    # only change needed.
+    # probe from webapi.keycloak.url + the same realm, so enabling it is
+    # usually the only change needed. requiredGroups must not be empty, and
+    # staticServices must not also define an entry with id "keycloak".
     landingPage:
       enabled: false
       # Full Keycloak group paths (leading slash): the realm's groups mapper

@@ -40,3 +40,6 @@ jobs:
         run: |
           helm template nebari-landing charts/nebari-landing --namespace nebari-system \
             | ruby charts/nebari-landing/tests/assert-resource-defaults.rb
+
+      - name: Assert static services rendering
+        run: charts/nebari-landing/tests/assert-static-services.sh

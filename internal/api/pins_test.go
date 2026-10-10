@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
+	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
 )
@@ -130,6 +132,68 @@ func TestHandleGetPins_StaleUID_AbsentFromPinsButInUIDs(t *testing.T) {
 	}
 	if len(resp.UIDs) != 1 || resp.UIDs[0] != "stale-uid" {
 		t.Errorf("stale uid should appear in UIDs, got %v", resp.UIDs)
+	}
+}
+
+func TestHandleGetPins_FiltersServicesCallerCannotAccess(t *testing.T) {
+	// PUT /pins accepts any UID, and static UIDs are guessable, so GET /pins
+	// must apply the same visibility rule as GET /services.
+	sc := cache.NewServiceCache()
+	addApp(sc, "uid-1", "grafana")
+	sc.Add(&sdapp.App{
+		UID:    "static-keycloak",
+		Name:   "keycloak",
+		Static: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled:        true,
+			DisplayName:    "Keycloak",
+			Visibility:     "private",
+			RequiredGroups: []string{"/keycloak-admins"},
+			ExternalURL:    "https://keycloak.example.com/admin/nebari/console/",
+		},
+	})
+
+	tests := []struct {
+		name      string
+		groups    []string
+		wantNames []string
+	}{
+		{"non-member sees only the public pin", []string{"/users"}, []string{"grafana"}},
+		{"member sees both pins", []string{"/keycloak-admins"}, []string{"grafana", "keycloak"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ps := newPinStore(t)
+			h := NewHandler(sc, nil, true, nil, ps,
+				WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
+					return &auth.Claims{PreferredUsername: "alice", Groups: tt.groups}, true
+				}))
+			for _, uid := range []string{"uid-1", "static-keycloak"} {
+				if err := ps.Pin("alice", uid); err != nil {
+					t.Fatalf("pre-pin %s: %v", uid, err)
+				}
+			}
+
+			rr := doGet(t, h.Routes(), "/api/v1/pins")
+			if rr.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+			}
+			var resp PinsResponse
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			var got []string
+			for _, p := range resp.Pins {
+				got = append(got, p.Name)
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, tt.wantNames) {
+				t.Errorf("Pins = %v, want %v", got, tt.wantNames)
+			}
+			if len(resp.UIDs) != 2 {
+				t.Errorf("UIDs should list every stored pin, got %v", resp.UIDs)
+			}
+		})
 	}
 }
 

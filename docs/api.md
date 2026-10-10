@@ -194,7 +194,7 @@ curl -s -X PUT http://localhost:8080/api/v1/notifications/{id}/read \
 
 List the caller's pins
 
-Returns the caller's pinned services. UIDs is the raw stored list; Pins is the subset still resolvable in the live cache (so deleted services are gracefully filtered out).
+Returns the caller's pinned services. UIDs is the raw stored list; Pins is the subset still resolvable in the live cache and visible to the caller (deleted or inaccessible services are filtered out).
 
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/pins \
@@ -207,7 +207,7 @@ curl -s -X GET http://localhost:8080/api/v1/pins \
 
 Pin or unpin a service
 
-PUT pins the service; DELETE unpins. Both operations are idempotent. The UID is the NebariApp UID exposed at status.serviceDiscovery.
+PUT pins the service; DELETE unpins. Both operations are idempotent. The UID is the service UID: the NebariApp UID exposed at status.serviceDiscovery, or static-<id> for a static entry.
 
 ```sh
 curl -s -X PUT http://localhost:8080/api/v1/pins/{uid} \
@@ -222,7 +222,7 @@ curl -s -X PUT http://localhost:8080/api/v1/pins/{uid} \
 
 Pin or unpin a service
 
-PUT pins the service; DELETE unpins. Both operations are idempotent. The UID is the NebariApp UID exposed at status.serviceDiscovery.
+PUT pins the service; DELETE unpins. Both operations are idempotent. The UID is the service UID: the NebariApp UID exposed at status.serviceDiscovery, or static-<id> for a static entry.
 
 ```sh
 curl -s -X DELETE http://localhost:8080/api/v1/pins/{uid} \

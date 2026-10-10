@@ -69,6 +69,8 @@ func TestParse_Errors(t *testing.T) {
 	}{
 		{"not json", `{`, "decoding"},
 		{"object not array", `{"id":"a"}`, "decoding"},
+		{"trailing data", `[{"id":"a","url":"https://a.example.com"}] garbage`, "unexpected data"},
+		{"two arrays", `[] []`, "unexpected data"},
 		{"unknown field", `[{"id":"a","url":"https://a.example.com","requiredGroup":["/x"]}]`, "unknown field"},
 		{"missing id", `[{"url":"https://a.example.com"}]`, "id must be"},
 		{"bad id", `[{"id":"Key Cloak","url":"https://a.example.com"}]`, "id must be"},

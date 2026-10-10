@@ -240,17 +240,18 @@ webapi:
 ```
 
 The card URL is built from `frontend.keycloak.url` and `frontend.keycloak.realm`, and the health probe from
-`webapi.keycloak.url`. Anything else goes in `webapi.staticServices` (see the example in `values.yaml`).
+`webapi.keycloak.url` and the same realm. `requiredGroups` must not be empty. Anything else goes in
+`webapi.staticServices` (see the example in `values.yaml`).
 
 A few things to keep in mind:
 
 - **Discovery only.** `visibility` and `requiredGroups` decide who sees the card. The target must still enforce its
   own access, which Keycloak does for its admin console.
-- **Group values are full paths.** The realm's groups mapper emits paths such as `/keycloak-admins`, and the webapi
-  compares them exactly. The group must already exist in the realm.
+- **Group values must match the token's `groups` claim exactly.** On NIC the realm's groups mapper emits full paths
+  such as `/keycloak-admins`. The local dev realm (`dev/keycloak/`) sets `full.path=false` on the SPA client, so
+  there the claim holds bare names (`keycloak-admins`). The group must already exist in the realm.
 - **No access requests.** Approving a request adds the user to the service's `requiredGroups`, so static entries
   reject access requests with `403` rather than turning an approval into a privilege grant.
-
 
 
 ## Quick Start

@@ -1333,17 +1333,18 @@ type PinsResponse struct {
 	// Pins is the ordered list of pinned services (cached ServiceInfo snapshots).
 	Pins []*cache.ServiceInfo `json:"pins"`
 	// UIDs lists exactly which UIDs are stored, including those that are no longer
-	// cached (e.g. the NebariApp was deleted).
+	// cached (e.g. the NebariApp was deleted) or not visible to the caller.
 	UIDs []string `json:"uids"`
 }
 
 // handleGetPins serves GET /api/v1/pins.
 // Requires a valid JWT. Returns the caller's pinned services as full ServiceInfo
 // objects, resolved from the live cache. Pins whose UIDs are no longer in the
-// cache are included in UIDs but absent from Pins (graceful stale handling).
+// cache, or that the caller cannot access, are included in UIDs but absent
+// from Pins.
 //
 //	@Summary		List the caller's pins
-//	@Description	Returns the caller's pinned services. UIDs is the raw stored list; Pins is the subset still resolvable in the live cache (so deleted services are gracefully filtered out).
+//	@Description	Returns the caller's pinned services. UIDs is the raw stored list; Pins is the subset still resolvable in the live cache and visible to the caller (deleted or inaccessible services are filtered out).
 //	@Tags			pins
 //	@Produce		json
 //	@Success		200	{object}	PinsResponse
@@ -1372,9 +1373,11 @@ func (h *Handler) handleGetPins(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	// Pinning accepts any UID, so filter on read: a pin must not reveal a
+	// service the caller cannot see in GET /services.
 	svcs := make([]*cache.ServiceInfo, 0, len(uids))
 	for _, uid := range uids {
-		if svc := h.cache.Get(uid); svc != nil {
+		if svc := h.cache.Get(uid); svc != nil && h.canAccessService(svc, true, claims) {
 			svcs = append(svcs, svc)
 		}
 	}
@@ -1386,12 +1389,13 @@ func (h *Handler) handleGetPins(w http.ResponseWriter, r *http.Request) {
 
 // handlePinByUID serves PUT and DELETE /api/v1/pins/{uid}.
 // PUT pins the service; DELETE unpins it. Both are idempotent.
-// The {uid} segment is the NebariApp UID (UIDType string from status.serviceDiscovery).
+// The {uid} segment is the service UID: the NebariApp UID from
+// status.serviceDiscovery, or static-<id> for a static entry.
 //
 //	@Summary		Pin or unpin a service
-//	@Description	PUT pins the service; DELETE unpins. Both operations are idempotent. The UID is the NebariApp UID exposed at status.serviceDiscovery.
+//	@Description	PUT pins the service; DELETE unpins. Both operations are idempotent. The UID is the service UID: the NebariApp UID exposed at status.serviceDiscovery, or static-<id> for a static entry.
 //	@Tags			pins
-//	@Param			uid	path	string	true	"NebariApp UID"
+//	@Param			uid	path	string	true	"Service UID"
 //	@Success		204
 //	@Failure		400	{string}	string	"UID is required"
 //	@Failure		401	{string}	string	"Unauthorized"

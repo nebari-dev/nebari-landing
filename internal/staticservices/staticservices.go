@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"regexp"
 
@@ -69,6 +70,9 @@ func Parse(data []byte) ([]Service, error) {
 	var services []Service
 	if err := dec.Decode(&services); err != nil {
 		return nil, fmt.Errorf("decoding static services: %w", err)
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, fmt.Errorf("decoding static services: unexpected data after the JSON array")
 	}
 
 	seen := make(map[string]bool, len(services))
