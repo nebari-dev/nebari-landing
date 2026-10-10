@@ -70,6 +70,10 @@ const redisPubSubChannel = "nebari:events"
 // the session.
 const writeTimeout = 10 * time.Second
 
+// subscribeTimeout bounds how long NewHub waits for Redis to confirm the
+// event-channel subscription before carrying on without it.
+const subscribeTimeout = 5 * time.Second
+
 var upgrader = websocket.Upgrader{
 	// Allow all origins — CORS is handled at the Envoy Gateway level.
 	CheckOrigin: func(r *http.Request) bool { return true },
@@ -147,9 +151,15 @@ type Hub struct {
 	nilPolicyWarn sync.Once
 }
 
-// NewHub creates a Hub backed by the given Redis client and starts the
-// background subscription goroutine. The provided context controls the
-// subscription lifetime — cancel it to stop the goroutine cleanly.
+// NewHub creates a Hub backed by the given Redis client, subscribes it to the
+// event channel, and starts the background goroutine that dispatches events.
+// The provided context controls the subscription lifetime — cancel it to stop
+// the goroutine cleanly.
+//
+// NewHub returns only after Redis has confirmed the subscription (bounded by
+// subscribeTimeout). Redis Pub/Sub does not buffer: a message published before
+// the SUBSCRIBE is processed is dropped, so returning earlier would let a
+// caller that publishes right away lose its first events.
 //
 // The hub starts without an access policy. Call SetAccessPolicy after the
 // handler that implements ServiceAccessPolicy is constructed.
@@ -158,7 +168,17 @@ func NewHub(ctx context.Context, rdb *redis.Client) *Hub {
 		rdb:     rdb,
 		clients: make(map[*client]struct{}),
 	}
-	go h.subscribe(ctx)
+	pubsub := rdb.Subscribe(ctx, redisPubSubChannel)
+	confirmCtx, cancel := context.WithTimeout(ctx, subscribeTimeout)
+	defer cancel()
+	if _, err := pubsub.Receive(confirmCtx); err != nil {
+		// Not fatal: go-redis keeps retrying the subscription in the
+		// background, and events published in the meantime are lost exactly
+		// as they would be during any later reconnect.
+		log.Info("WebSocket: Redis subscription not confirmed, continuing",
+			"error", err.Error())
+	}
+	go h.subscribe(ctx, pubsub)
 	return h
 }
 
@@ -175,8 +195,7 @@ func (h *Hub) SetAccessPolicy(p ServiceAccessPolicy) {
 
 // subscribe blocks, receiving messages from the Redis Pub/Sub channel and
 // dispatching them to the appropriate broadcast path.
-func (h *Hub) subscribe(ctx context.Context) {
-	pubsub := h.rdb.Subscribe(ctx, redisPubSubChannel)
+func (h *Hub) subscribe(ctx context.Context, pubsub *redis.PubSub) {
 	defer func() { _ = pubsub.Close() }()
 	ch := pubsub.Channel()
 	for {
