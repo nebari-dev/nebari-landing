@@ -140,6 +140,27 @@ webapi:
     adminSecretName: "nebari-realm-admin-credentials"
     adminSecretNamespace: "keycloak"
 
+    # Show Keycloak's admin console as a card on the landing page, visible
+    # only to members of requiredGroups. Keycloak is the identity provider, so
+    # it cannot carry a NebariApp with spec.auth enabled; this renders a
+    # static entry instead (see staticServices below). The card URL is built
+    # from frontend.keycloak.url + frontend.keycloak.realm, and the health
+    # probe from webapi.keycloak.url + the same realm, so enabling it is
+    # usually the only change needed. requiredGroups must not be empty, and
+    # staticServices must not also define an entry with id "keycloak".
+    landingPage:
+      enabled: false
+      # Full Keycloak group paths (leading slash): the realm's groups mapper
+      # emits paths, and the webapi matches them exactly. The group must
+      # already exist in the realm.
+      requiredGroups: ["/keycloak-admins"]
+      displayName: "Keycloak"
+      description: "Identity and access administration"
+      # Icon URL. Leave empty to use the default service icon.
+      icon: ""
+      category: "Platform"
+      priority: 90
+
   # Comma-separated list of Origins the webapi CORS middleware will accept.
   # "*" (default) allows all origins — safe because the webapi is ClusterIP-only
   # and never exposed through the Gateway. Set explicit origins only when running
@@ -161,6 +182,29 @@ webapi:
   docsEnabled: false
 
   healthInterval: 30
+
+  # Landing-page entries served by the webapi without a NebariApp, for
+  # services that do their own auth and therefore cannot get a group-gated
+  # card from spec.auth (the operator derives card visibility from it).
+  # Visibility and requiredGroups are enforced by the same access policy as
+  # every other card; they gate discovery only, so the target must still
+  # enforce its own access. Static entries never accept access requests.
+  # Example:
+  #   staticServices:
+  #     - id: grafana-admin               # lowercase DNS label, unique
+  #       displayName: Grafana (admin)
+  #       description: Platform dashboards
+  #       url: https://grafana.example.com/admin
+  #       icon: https://grafana.example.com/public/img/grafana_icon.svg
+  #       category: Platform
+  #       priority: 80
+  #       visibility: private             # public | private (default private)
+  #       requiredGroups: ["/grafana-admins"]
+  #       healthCheck:                    # optional
+  #         url: http://grafana.monitoring.svc:3000/api/health
+  #         intervalSeconds: 30
+  #         timeoutSeconds: 5
+  staticServices: []
 
   # Automatic platform notifications — require Redis (notifications.enabled implies redis.enabled).
   notifications:

@@ -43,6 +43,7 @@ import (
 	webkeycloak "github.com/nebari-dev/nebari-landing/internal/keycloak"
 	"github.com/nebari-dev/nebari-landing/internal/notifications"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
+	"github.com/nebari-dev/nebari-landing/internal/staticservices"
 	"github.com/nebari-dev/nebari-landing/internal/watcher"
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
 	"github.com/nebari-dev/nebari-landing/internal/wsticket"
@@ -92,6 +93,7 @@ func main() {
 		notifLifecycle bool
 		notifRetention time.Duration
 		enableDocs     bool
+		staticServices string
 	)
 
 	// Flags fall back to environment variables so the binary works naturally when
@@ -130,6 +132,8 @@ func main() {
 		"How long notifications remain in Redis before expiring, e.g. 72h (env: NOTIFICATIONS_RETENTION)")
 	flag.BoolVar(&enableDocs, "enable-docs", envBool("ENABLE_DOCS", false),
 		"Expose the OpenAPI spec at /api/v1/docs/openapi.json and a Scalar viewer at /api/v1/docs. Never enable in production (env: ENABLE_DOCS)")
+	flag.StringVar(&staticServices, "static-services", os.Getenv("STATIC_SERVICES"),
+		"JSON array of landing-page entries served without a NebariApp, e.g. the Keycloak admin console (env: STATIC_SERVICES)")
 
 	opts := zap.Options{
 		Development: true,
@@ -169,6 +173,20 @@ func main() {
 	defer cancel()
 
 	serviceCache := cache.NewServiceCache()
+
+	// Static entries are loaded before the watcher starts so they are present
+	// from the first request. The watcher only removes entries by NebariApp
+	// UID, so it never evicts them. Invalid config is fatal: a silently dropped
+	// entry could also mean a silently dropped visibility gate.
+	statics, err := staticservices.Parse([]byte(staticServices))
+	if err != nil {
+		setupLog.Error(err, "Invalid static services configuration")
+		os.Exit(1)
+	}
+	for _, s := range statics {
+		serviceCache.Add(s.App())
+		setupLog.Info("Static service registered", "id", s.ID, "visibility", s.Visibility)
+	}
 
 	// Build Redis client — shared by all stores and the WebSocket hub.
 	rdb := redis.NewClient(&redis.Options{

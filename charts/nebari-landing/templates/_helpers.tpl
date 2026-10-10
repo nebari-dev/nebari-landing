@@ -77,3 +77,49 @@ Uses the Bitnami standalone service naming convention.
 {{- define "nebari-landing.redisAddr" -}}
 {{- printf "%s-redis-master:6379" .Release.Name }}
 {{- end }}
+
+{{/*
+Static landing-page entries as a JSON array for the webapi's STATIC_SERVICES:
+webapi.staticServices plus, when webapi.keycloak.landingPage.enabled, an entry
+for the Keycloak admin console derived from the existing Keycloak settings.
+Renders an empty string when there are none.
+*/}}
+{{- define "nebari-landing.staticServices" -}}
+{{- $services := list -}}
+{{- $kc := .Values.webapi.keycloak.landingPage -}}
+{{- range .Values.webapi.staticServices -}}
+{{- if and $kc.enabled (eq (toString .id) "keycloak") -}}
+{{- fail "webapi.staticServices must not define id \"keycloak\" while webapi.keycloak.landingPage.enabled=true" -}}
+{{- end -}}
+{{- $services = append $services . -}}
+{{- end -}}
+{{- if $kc.enabled -}}
+{{- $publicURL := regexReplaceAll "/+$" (required "frontend.keycloak.url is required when webapi.keycloak.landingPage.enabled=true" .Values.frontend.keycloak.url) "" -}}
+{{- /* One realm for the card and the probe: login only works when the
+       frontend and webapi realms match anyway. */ -}}
+{{- $realm := required "frontend.keycloak.realm is required when webapi.keycloak.landingPage.enabled=true" .Values.frontend.keycloak.realm -}}
+{{- if not $kc.requiredGroups -}}
+{{- fail "webapi.keycloak.landingPage.requiredGroups must not be empty: an empty list shows the Keycloak card to every signed-in user" -}}
+{{- end -}}
+{{- $entry := dict
+  "id" "keycloak"
+  "displayName" $kc.displayName
+  "description" $kc.description
+  "url" (printf "%s/admin/%s/console/" $publicURL $realm)
+  "category" $kc.category
+  "priority" $kc.priority
+  "visibility" "private"
+  "requiredGroups" $kc.requiredGroups
+-}}
+{{- if $kc.icon -}}
+{{- $_ := set $entry "icon" $kc.icon -}}
+{{- end -}}
+{{- with .Values.webapi.keycloak.url -}}
+{{- $_ := set $entry "healthCheck" (dict "url" (printf "%s/realms/%s" (regexReplaceAll "/+$" . "") $realm)) -}}
+{{- end -}}
+{{- $services = append $services $entry -}}
+{{- end -}}
+{{- if $services -}}
+{{- toJson $services -}}
+{{- end -}}
+{{- end }}

@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
+	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 )
 
@@ -60,6 +61,41 @@ func TestHandleRequestAccess_ServiceNotFound(t *testing.T) {
 	newARHandler(cache.NewServiceCache(), newARStore(t)).Routes().ServeHTTP(rr, req)
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestHandleRequestAccess_StaticService_Returns403(t *testing.T) {
+	// Approving a request grants the service's requiredGroups in Keycloak, so a
+	// static entry (e.g. the Keycloak admin console gated on /keycloak-admins)
+	// must never accept one.
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID:    "static-keycloak",
+		Name:   "keycloak",
+		Static: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled:        true,
+			DisplayName:    "Keycloak",
+			Visibility:     "private",
+			RequiredGroups: []string{"/keycloak-admins"},
+			ExternalURL:    "https://keycloak.example.com/admin/nebari/console/",
+		},
+	})
+	store := newARStore(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/static-keycloak/request_access", nil)
+	rr := httptest.NewRecorder()
+	newARHandler(sc, store).Routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d — body: %s", rr.Code, rr.Body.String())
+	}
+
+	all, err := store.ListAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 0 {
+		t.Errorf("expected no access request to be stored, got %d", len(all))
 	}
 }
 

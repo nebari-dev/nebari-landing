@@ -223,6 +223,35 @@ have an `/auth` context root). `webapi.keycloak.url` is the in-cluster URL the w
 
 See [`charts/nebari-landing/values.yaml`](charts/nebari-landing/values.yaml) for the full set of configurable values.
 
+### Static services and the Keycloak card
+
+Cards normally come from `NebariApp` resources, and their visibility is derived from the app's `spec.auth`. A service
+that does its own auth, Keycloak being the obvious one, cannot get a group-gated card that way. For those, the webapi
+can serve static entries configured through the chart.
+
+To show the Keycloak admin console only to Keycloak admins:
+
+```yaml
+webapi:
+  keycloak:
+    landingPage:
+      enabled: true
+      requiredGroups: ["/keycloak-admins"]
+```
+
+The card URL is built from `frontend.keycloak.url` and `frontend.keycloak.realm`, and the health probe from
+`webapi.keycloak.url` and the same realm. `requiredGroups` must not be empty. Anything else goes in
+`webapi.staticServices` (see the example in `values.yaml`).
+
+A few things to keep in mind:
+
+- **Discovery only.** `visibility` and `requiredGroups` decide who sees the card. The target must still enforce its
+  own access, which Keycloak does for its admin console.
+- **Group values must match the token's `groups` claim exactly.** On NIC the realm's groups mapper emits full paths
+  such as `/keycloak-admins`. The local dev realm (`dev/keycloak/`) sets `full.path=false` on the SPA client, so
+  there the claim holds bare names (`keycloak-admins`). The group must already exist in the realm.
+- **No access requests.** Approving a request adds the user to the service's `requiredGroups`, so static entries
+  reject access requests with `403` rather than turning an approval into a privilege grant.
 
 
 ## Quick Start
@@ -328,6 +357,7 @@ npm run dev
   - `keycloak/` — Keycloak client.
   - `notifications/` — Notification store.
   - `pins/` — Pin store.
+  - `staticservices/` — Landing-page entries configured on the webapi instead of discovered from `NebariApp`s.
   - `watcher/` — NebariApp CR watcher.
   - `websocket/` — WebSocket hub.
   - `wsticket/` — Single-use WebSocket ticket store (Redis-backed).
