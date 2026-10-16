@@ -32,6 +32,11 @@ on:
       - charts/**
       - .github/workflows/e2e.yml
   workflow_dispatch:
+    inputs:
+      build_local_image:
+        description: Build the webapi image on the runner instead of pulling it from Quay
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -87,10 +92,17 @@ jobs:
       #   3. Otherwise, webapi.yml will not run. Fall back to :latest
       #      (the current main webapi), which is what the unmodified webapi
       #      code in this PR/push would have used anyway.
+      #   4. Pull requests from forks get no registry secrets, so webapi.yml
+      #      builds their image but cannot push it, and step 2 would wait out
+      #      its timeout. For those (and for workflow_dispatch with
+      #      build_local_image) build the image on the runner and import it
+      #      into k3d once the sandbox is up.
       - name: Resolve webapi image tag
         id: branch
         env:
           GH_TOKEN: ${{ github.token }}
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          BUILD_LOCAL: ${{ inputs.build_local_image == true }}
         run: |
           set -euo pipefail
           EVENT="${GITHUB_EVENT_NAME}"
@@ -134,6 +146,16 @@ jobs:
           fi
           echo "::endgroup::"
 
+          if [[ "$BUILD_LOCAL" == "true" ]] || { [[ "$IS_FORK" == "true" ]] && $webapi_will_build; }; then
+            # A tag no registry has, so a failed import shows up as an image
+            # pull error instead of silently running some other build.
+            TAG="local-${PR_NUMBER:-${HEAD_SHA:0:7}}"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "build_local=true" >> "$GITHUB_OUTPUT"
+            echo "  → building :$TAG on the runner (no registry image for this event)"
+            exit 0
+          fi
+
           if $webapi_will_build; then
             TARGET="$EXPECTED_TAG"
             MAX_ATTEMPTS=60   # 10 min, comfortably above webapi.yml's typical 3-5 min build
@@ -156,6 +178,12 @@ jobs:
           echo "✗ :$TARGET never became available"
           exit 1
 
+      - name: Build webapi image on the runner
+        if: steps.branch.outputs.build_local == 'true'
+        env:
+          TAG: ${{ steps.branch.outputs.tag }}
+        run: docker build -t "quay.io/nebari/nebari-webapi:${TAG}" .
+
       # ── Kubernetes cluster + Nebari platform ─────────────────────────────────
       # The image override below is applied via a Git commit to the local
       # file:// gitops repo ArgoCD reads from, so ArgoCD's auto-sync converges
@@ -168,6 +196,15 @@ jobs:
         with:
           profile: platform
           cluster-name: nebari-e2e
+
+      # The chart uses imagePullPolicy IfNotPresent, so the deployment runs the
+      # imported image once the override below points it at this tag.
+      - name: Import webapi image into k3d
+        if: steps.branch.outputs.build_local == 'true'
+        env:
+          TAG: ${{ steps.branch.outputs.tag }}
+          CLUSTER: ${{ steps.sandbox.outputs.cluster-name }}
+        run: k3d image import "quay.io/nebari/nebari-webapi:${TAG}" -c "${CLUSTER}"
 
       # ── NebariApp CRD ─────────────────────────────────────────────────────────
       # Apply directly so the tests don't depend on ArgoCD sync timing.
