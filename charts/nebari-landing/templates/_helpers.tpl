@@ -80,26 +80,30 @@ Uses the Bitnami standalone service naming convention.
 
 {{/*
 Static landing-page entries as a JSON array for the webapi's STATIC_SERVICES:
-webapi.staticServices plus, when webapi.keycloak.landingPage.enabled, an entry
-for the Keycloak admin console derived from the existing Keycloak settings.
-Renders an empty string when there are none.
+webapi.staticServices (a map keyed by id, so value overlays merge entries
+instead of replacing the whole set) plus, when
+webapi.keycloak.landingPage.enabled, an entry for the Keycloak admin console
+derived from the existing Keycloak settings. Entries set to null are skipped,
+so an overlay can remove one. Renders an empty string when there are none.
 */}}
 {{- define "nebari-landing.staticServices" -}}
 {{- $services := list -}}
 {{- $kc := .Values.webapi.keycloak.landingPage -}}
-{{- range .Values.webapi.staticServices -}}
-{{- if and $kc.enabled (eq (toString .id) "keycloak") -}}
+{{- if and $kc.enabled (index .Values.webapi.staticServices "keycloak") -}}
 {{- fail "webapi.staticServices must not define id \"keycloak\" while webapi.keycloak.landingPage.enabled=true" -}}
 {{- end -}}
-{{- $services = append $services . -}}
+{{- range $id, $svc := .Values.webapi.staticServices -}}
+{{- if $svc -}}
+{{- $services = append $services (set (deepCopy $svc) "id" $id) -}}
+{{- end -}}
 {{- end -}}
 {{- if $kc.enabled -}}
 {{- $publicURL := regexReplaceAll "/+$" (required "frontend.keycloak.url is required when webapi.keycloak.landingPage.enabled=true" .Values.frontend.keycloak.url) "" -}}
 {{- /* One realm for the card and the probe: login only works when the
        frontend and webapi realms match anyway. */ -}}
 {{- $realm := required "frontend.keycloak.realm is required when webapi.keycloak.landingPage.enabled=true" .Values.frontend.keycloak.realm -}}
-{{- if not $kc.requiredGroups -}}
-{{- fail "webapi.keycloak.landingPage.requiredGroups must not be empty: an empty list shows the Keycloak card to every signed-in user" -}}
+{{- if or (not (kindIs "slice" $kc.requiredGroups)) (not $kc.requiredGroups) -}}
+{{- fail "webapi.keycloak.landingPage.requiredGroups must be a non-empty list: an empty list shows the Keycloak card to every signed-in user" -}}
 {{- end -}}
 {{- $entry := dict
   "id" "keycloak"

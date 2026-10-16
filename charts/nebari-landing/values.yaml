@@ -145,9 +145,10 @@ webapi:
     # it cannot carry a NebariApp with spec.auth enabled; this renders a
     # static entry instead (see staticServices below). The card URL is built
     # from frontend.keycloak.url + frontend.keycloak.realm, and the health
-    # probe from webapi.keycloak.url + the same realm, so enabling it is
-    # usually the only change needed. requiredGroups must not be empty, and
-    # staticServices must not also define an entry with id "keycloak".
+    # probe from webapi.keycloak.url + the same realm (no probe when that is
+    # empty). requiredGroups must be a non-empty list, and staticServices must
+    # not also define an entry with id "keycloak". On NIC, the chart version
+    # NIC pins must include this setting and the group must exist in the realm.
     landingPage:
       enabled: false
       # Full Keycloak group paths (leading slash): the realm's groups mapper
@@ -189,9 +190,10 @@ webapi:
   # Visibility and requiredGroups are enforced by the same access policy as
   # every other card; they gate discovery only, so the target must still
   # enforce its own access. Static entries never accept access requests.
-  # Example:
+  # Keyed by id (a lowercase DNS label) so separate value files merge their
+  # entries; set an id to null in a later file to remove it. Example:
   #   staticServices:
-  #     - id: grafana-admin               # lowercase DNS label, unique
+  #     grafana-admin:
   #       displayName: Grafana (admin)
   #       description: Platform dashboards
   #       url: https://grafana.example.com/admin
@@ -204,7 +206,7 @@ webapi:
   #         url: http://grafana.monitoring.svc:3000/api/health
   #         intervalSeconds: 30
   #         timeoutSeconds: 5
-  staticServices: []
+  staticServices: {}
 
   # Automatic platform notifications — require Redis (notifications.enabled implies redis.enabled).
   notifications:

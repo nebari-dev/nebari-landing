@@ -240,8 +240,20 @@ webapi:
 ```
 
 The card URL is built from `frontend.keycloak.url` and `frontend.keycloak.realm`, and the health probe from
-`webapi.keycloak.url` and the same realm. `requiredGroups` must not be empty. Anything else goes in
-`webapi.staticServices` (see the example in `values.yaml`).
+`webapi.keycloak.url` and the same realm (no probe when it is empty). `requiredGroups` must be a non-empty list.
+On NIC, the chart version NIC deploys must include this setting, and the group must exist in the realm.
+
+Other services that do their own auth go in `webapi.staticServices`, a map keyed by id so that separate value files
+(for example NIC overlays) add entries instead of replacing each other's (see the example in `values.yaml`):
+
+```yaml
+webapi:
+  staticServices:
+    grafana-admin:
+      displayName: Grafana (admin)
+      url: https://grafana.example.com/admin
+      requiredGroups: ["/grafana-admins"]
+```
 
 A few things to keep in mind:
 

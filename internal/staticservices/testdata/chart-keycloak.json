@@ -1,0 +1,17 @@
+[
+  {
+    "category": "Platform",
+    "description": "Identity and access administration",
+    "displayName": "Keycloak",
+    "healthCheck": {
+      "url": "http://keycloak.keycloak.svc:8080/realms/nebari"
+    },
+    "id": "keycloak",
+    "priority": 90,
+    "requiredGroups": [
+      "/keycloak-admins"
+    ],
+    "url": "https://keycloak.example.com/admin/nebari/console/",
+    "visibility": "private"
+  }
+]

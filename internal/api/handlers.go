@@ -1014,6 +1014,10 @@ func (h *Handler) applyKeycloakGroupMembership(ctx context.Context, req *accessr
 		return
 	}
 
+	// Not reachable through the API (handleRequestAccess rejects static
+	// services first), but this is the last check before AddUserToGroup: a
+	// request that reaches the store any other way would otherwise grant the
+	// card's requiredGroups, e.g. Keycloak admin.
 	if service.Static {
 		log.Info("Static service — access is not managed by the landing page, skipping Keycloak group update",
 			"service", service.Name, "user", req.UserID)
