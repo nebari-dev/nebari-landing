@@ -156,10 +156,11 @@ type Hub struct {
 // The provided context controls the subscription lifetime — cancel it to stop
 // the goroutine cleanly.
 //
-// NewHub returns only after Redis has confirmed the subscription (bounded by
-// subscribeTimeout). Redis Pub/Sub does not buffer: a message published before
-// the SUBSCRIBE is processed is dropped, so returning earlier would let a
-// caller that publishes right away lose its first events.
+// NewHub returns only after Redis has confirmed the subscription, or after
+// subscribeTimeout plus the client's handshake read timeout. Redis Pub/Sub
+// does not buffer: a message published before the SUBSCRIBE is processed is
+// dropped, so returning earlier would let a caller that publishes right away
+// lose its first events.
 //
 // The hub starts without an access policy. Call SetAccessPolicy after the
 // handler that implements ServiceAccessPolicy is constructed.
@@ -168,13 +169,18 @@ func NewHub(ctx context.Context, rdb *redis.Client) *Hub {
 		rdb:     rdb,
 		clients: make(map[*client]struct{}),
 	}
-	pubsub := rdb.Subscribe(ctx, redisPubSubChannel)
 	confirmCtx, cancel := context.WithTimeout(ctx, subscribeTimeout)
 	defer cancel()
-	if _, err := pubsub.Receive(confirmCtx); err != nil {
-		// Not fatal: go-redis keeps retrying the subscription in the
-		// background, and events published in the meantime are lost exactly
-		// as they would be during any later reconnect.
+	pubsub := rdb.Subscribe(confirmCtx, redisPubSubChannel)
+	if _, err := pubsub.Receive(confirmCtx); redis.IsPermissionError(err) {
+		// go-redis does not retry error replies, so this replica gets no
+		// events until it restarts with a user allowed on the channel.
+		log.Error(err, "WebSocket: Redis refused SUBSCRIBE; real-time events disabled (check ACL channel permissions)",
+			"channel", redisPubSubChannel)
+	} else if err != nil {
+		// Not fatal: go-redis reconnects and resubscribes after connection
+		// errors and timeouts, and events published in the meantime are lost
+		// exactly as they would be during any later reconnect.
 		log.Info("WebSocket: Redis subscription not confirmed, continuing",
 			"error", err.Error())
 	}
