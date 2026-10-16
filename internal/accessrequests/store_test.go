@@ -26,11 +26,15 @@ const (
 	userB   = "bob"
 )
 
+func testIdentity(id, email string) UserIdentity {
+	return UserIdentity{ID: id, Email: email}
+}
+
 // --- Create ---
 
 func TestCreate_HappyPath(t *testing.T) {
 	s := newStore(t)
-	req, err := s.Create(svcUID, svcName, userA, "alice@example.com", "please")
+	req, err := s.Create(svcUID, svcName, testIdentity(userA, "alice@example.com"), "please")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -45,12 +49,39 @@ func TestCreate_HappyPath(t *testing.T) {
 	}
 }
 
+func TestCreate_PersistsImmutableIdentityAndDisplayUsername(t *testing.T) {
+	s := newStore(t)
+	req, err := s.Create(svcUID, svcName, UserIdentity{
+		ID:       "stable-user-key",
+		Issuer:   "https://keycloak.example/realms/main",
+		Subject:  "keycloak-user-id",
+		Username: "alice",
+		Email:    "alice@example.com",
+	}, "please")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := s.Get(req.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.UserID != "stable-user-key" {
+		t.Errorf("expected stable user key, got %q", got.UserID)
+	}
+	if got.UserIssuer != "https://keycloak.example/realms/main" || got.UserSubject != "keycloak-user-id" {
+		t.Errorf("expected immutable issuer/subject, got issuer=%q subject=%q", got.UserIssuer, got.UserSubject)
+	}
+	if got.Username != "alice" || got.UserEmail != "alice@example.com" {
+		t.Errorf("expected display metadata, got username=%q email=%q", got.Username, got.UserEmail)
+	}
+}
+
 func TestCreate_DuplicatePending_ReturnsError(t *testing.T) {
 	s := newStore(t)
-	if _, err := s.Create(svcUID, svcName, userA, "", ""); err != nil {
+	if _, err := s.Create(svcUID, svcName, testIdentity(userA, ""), ""); err != nil {
 		t.Fatalf("first Create: %v", err)
 	}
-	_, err := s.Create(svcUID, svcName, userA, "", "please again")
+	_, err := s.Create(svcUID, svcName, testIdentity(userA, ""), "please again")
 	if !errors.Is(err, ErrDuplicatePending) {
 		t.Errorf("expected ErrDuplicatePending, got %v", err)
 	}
@@ -58,35 +89,35 @@ func TestCreate_DuplicatePending_ReturnsError(t *testing.T) {
 
 func TestCreate_DifferentUsers_BothAllowed(t *testing.T) {
 	s := newStore(t)
-	if _, err := s.Create(svcUID, svcName, userA, "", ""); err != nil {
+	if _, err := s.Create(svcUID, svcName, testIdentity(userA, ""), ""); err != nil {
 		t.Fatalf("alice Create: %v", err)
 	}
-	if _, err := s.Create(svcUID, svcName, userB, "", ""); err != nil {
+	if _, err := s.Create(svcUID, svcName, testIdentity(userB, ""), ""); err != nil {
 		t.Fatalf("bob Create: %v", err)
 	}
 }
 
 func TestCreate_DifferentServices_BothAllowed(t *testing.T) {
 	s := newStore(t)
-	if _, err := s.Create(svcUID, svcName, userA, "", ""); err != nil {
+	if _, err := s.Create(svcUID, svcName, testIdentity(userA, ""), ""); err != nil {
 		t.Fatalf("svc1 Create: %v", err)
 	}
-	if _, err := s.Create("svc-uid-2", "mlflow", userA, "", ""); err != nil {
+	if _, err := s.Create("svc-uid-2", "mlflow", testIdentity(userA, ""), ""); err != nil {
 		t.Fatalf("svc2 Create: %v", err)
 	}
 }
 
 func TestCreate_AfterResolved_AllowsNewPending(t *testing.T) {
 	s := newStore(t)
-	req, err := s.Create(svcUID, svcName, userA, "", "")
+	req, err := s.Create(svcUID, svcName, testIdentity(userA, ""), "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := s.UpdateStatus(req.ID, StatusDenied, "admin"); err != nil {
+	if _, err := s.UpdateStatus(req.ID, StatusDenied, UserIdentity{ID: "admin"}); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	// Now a new pending request should be accepted since old one is resolved.
-	if _, err := s.Create(svcUID, svcName, userA, "", "please try again"); err != nil {
+	if _, err := s.Create(svcUID, svcName, testIdentity(userA, ""), "please try again"); err != nil {
 		t.Fatalf("second Create after denial: %v", err)
 	}
 }
@@ -95,7 +126,7 @@ func TestCreate_AfterResolved_AllowsNewPending(t *testing.T) {
 
 func TestGet_Existing(t *testing.T) {
 	s := newStore(t)
-	req, _ := s.Create(svcUID, svcName, userA, "", "")
+	req, _ := s.Create(svcUID, svcName, testIdentity(userA, ""), "")
 	got, err := s.Get(req.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -128,8 +159,8 @@ func TestListAll_Empty_ReturnsEmptySlice(t *testing.T) {
 
 func TestListAll_ReturnsAllRequests(t *testing.T) {
 	s := newStore(t)
-	s.Create(svcUID, svcName, userA, "", "") //nolint:errcheck
-	s.Create(svcUID, svcName, userB, "", "") //nolint:errcheck
+	s.Create(svcUID, svcName, testIdentity(userA, ""), "") //nolint:errcheck
+	s.Create(svcUID, svcName, testIdentity(userB, ""), "") //nolint:errcheck
 	all, err := s.ListAll()
 	if err != nil {
 		t.Fatalf("ListAll: %v", err)
@@ -143,9 +174,9 @@ func TestListAll_ReturnsAllRequests(t *testing.T) {
 
 func TestListPending_ExcludesResolved(t *testing.T) {
 	s := newStore(t)
-	req, _ := s.Create(svcUID, svcName, userA, "", "")
-	s.Create(svcUID, svcName, userB, "", "")        //nolint:errcheck
-	s.UpdateStatus(req.ID, StatusApproved, "admin") //nolint:errcheck
+	req, _ := s.Create(svcUID, svcName, testIdentity(userA, ""), "")
+	s.Create(svcUID, svcName, testIdentity(userB, ""), "")            //nolint:errcheck
+	s.UpdateStatus(req.ID, StatusApproved, UserIdentity{ID: "admin"}) //nolint:errcheck
 	pending, err := s.ListPending()
 	if err != nil {
 		t.Fatalf("ListPending: %v", err)
@@ -162,9 +193,9 @@ func TestListPending_ExcludesResolved(t *testing.T) {
 
 func TestListForUser_ReturnsOnlyUserRequests(t *testing.T) {
 	s := newStore(t)
-	s.Create(svcUID, svcName, userA, "", "")   //nolint:errcheck
-	s.Create("svc-2", "mlflow", userA, "", "") //nolint:errcheck
-	s.Create(svcUID, svcName, userB, "", "")   //nolint:errcheck
+	s.Create(svcUID, svcName, testIdentity(userA, ""), "")   //nolint:errcheck
+	s.Create("svc-2", "mlflow", testIdentity(userA, ""), "") //nolint:errcheck
+	s.Create(svcUID, svcName, testIdentity(userB, ""), "")   //nolint:errcheck
 	reqs, err := s.ListForUser(userA)
 	if err != nil {
 		t.Fatalf("ListForUser: %v", err)
@@ -183,8 +214,8 @@ func TestListForUser_ReturnsOnlyUserRequests(t *testing.T) {
 
 func TestUpdateStatus_Approve_SetsFields(t *testing.T) {
 	s := newStore(t)
-	req, _ := s.Create(svcUID, svcName, userA, "", "")
-	updated, err := s.UpdateStatus(req.ID, StatusApproved, "admin-user")
+	req, _ := s.Create(svcUID, svcName, testIdentity(userA, ""), "")
+	updated, err := s.UpdateStatus(req.ID, StatusApproved, UserIdentity{ID: "admin-user"})
 	if err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
@@ -199,10 +230,33 @@ func TestUpdateStatus_Approve_SetsFields(t *testing.T) {
 	}
 }
 
+func TestUpdateStatus_PersistsImmutableResolverIdentity(t *testing.T) {
+	s := newStore(t)
+	req, _ := s.Create(svcUID, svcName, testIdentity(userA, ""), "")
+	updated, err := s.UpdateStatus(req.ID, StatusApproved, UserIdentity{
+		ID:       "stable-admin-key",
+		Issuer:   "https://keycloak.example/realms/main",
+		Subject:  "admin-user-id",
+		Username: "admin",
+	})
+	if err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+	if updated.ResolvedBy != "stable-admin-key" {
+		t.Errorf("expected stable resolver key, got %q", updated.ResolvedBy)
+	}
+	if updated.ResolvedByIssuer != "https://keycloak.example/realms/main" || updated.ResolvedBySubject != "admin-user-id" {
+		t.Errorf("expected resolver issuer/subject, got issuer=%q subject=%q", updated.ResolvedByIssuer, updated.ResolvedBySubject)
+	}
+	if updated.ResolvedByUsername != "admin" {
+		t.Errorf("expected resolver display username, got %q", updated.ResolvedByUsername)
+	}
+}
+
 func TestUpdateStatus_Deny_SetsFields(t *testing.T) {
 	s := newStore(t)
-	req, _ := s.Create(svcUID, svcName, userA, "", "")
-	updated, err := s.UpdateStatus(req.ID, StatusDenied, "admin-user")
+	req, _ := s.Create(svcUID, svcName, testIdentity(userA, ""), "")
+	updated, err := s.UpdateStatus(req.ID, StatusDenied, UserIdentity{ID: "admin-user"})
 	if err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
@@ -213,7 +267,7 @@ func TestUpdateStatus_Deny_SetsFields(t *testing.T) {
 
 func TestUpdateStatus_NotFound_ReturnsError(t *testing.T) {
 	s := newStore(t)
-	_, err := s.UpdateStatus("does-not-exist", StatusApproved, "admin")
+	_, err := s.UpdateStatus("does-not-exist", StatusApproved, UserIdentity{ID: "admin"})
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
@@ -225,8 +279,8 @@ func TestUpdateStatus_PersistedAcrossTwoClients(t *testing.T) {
 	rdb1 := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb1.Close() })
 	s1 := NewStore(rdb1)
-	req, _ := s1.Create(svcUID, svcName, userA, "", "")
-	_, _ = s1.UpdateStatus(req.ID, StatusApproved, "admin")
+	req, _ := s1.Create(svcUID, svcName, testIdentity(userA, ""), "")
+	_, _ = s1.UpdateStatus(req.ID, StatusApproved, UserIdentity{ID: "admin"})
 
 	rdb2 := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb2.Close() })
@@ -259,7 +313,7 @@ func TestCreate_RedisDown_ReturnsError(t *testing.T) {
 
 	mr.SetError("server error")
 
-	_, err := s.Create(svcUID, svcName, userA, "alice@example.com", "please")
+	_, err := s.Create(svcUID, svcName, testIdentity(userA, "alice@example.com"), "please")
 	if err == nil {
 		t.Error("expected error when Redis is unavailable, got nil")
 	}

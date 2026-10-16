@@ -15,12 +15,19 @@ import (
 	webkeycloak "github.com/nebari-dev/nebari-landing/internal/keycloak"
 	"github.com/nebari-dev/nebari-landing/internal/notifications"
 	"github.com/nebari-dev/nebari-landing/internal/pins"
+	"github.com/nebari-dev/nebari-landing/internal/useridentity"
 	wshub "github.com/nebari-dev/nebari-landing/internal/websocket"
 	"github.com/nebari-dev/nebari-landing/internal/wsticket"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 var log = ctrl.Log.WithName("api")
+
+const (
+	authDisabledIdentityIssuer  = "nebari-landing:auth-disabled"
+	authDisabledIdentitySubject = "_anonymous"
+	injectedClaimsIssuer        = "nebari-landing:claims-extractor"
+)
 
 // Handler handles HTTP requests for the landing page API
 type Handler struct {
@@ -459,22 +466,80 @@ type CallerIdentityResponse struct {
 	Groups        []string `json:"groups,omitempty"`
 }
 
+type callerIdentity struct {
+	ID       string
+	Issuer   string
+	Subject  string
+	Username string
+	Email    string
+}
+
+func identityFromClaims(claims *auth.Claims) (callerIdentity, bool) {
+	if claims == nil || claims.Issuer == "" || claims.Subject == "" {
+		return callerIdentity{}, false
+	}
+	id := stableUserID(claims.Issuer, claims.Subject)
+	if id == "" {
+		return callerIdentity{}, false
+	}
+	return callerIdentity{
+		ID:       id,
+		Issuer:   claims.Issuer,
+		Subject:  claims.Subject,
+		Username: claims.PreferredUsername,
+		Email:    claims.Email,
+	}, true
+}
+
+func stableUserID(issuer, subject string) string {
+	if issuer == "" || subject == "" {
+		return ""
+	}
+	if issuer == authDisabledIdentityIssuer && subject == authDisabledIdentitySubject {
+		return authDisabledIdentitySubject
+	}
+	return useridentity.StableID(issuer, subject)
+}
+
+func accessRequestIdentity(identity callerIdentity) accessrequests.UserIdentity {
+	return accessrequests.UserIdentity{
+		ID:       identity.ID,
+		Issuer:   identity.Issuer,
+		Subject:  identity.Subject,
+		Username: identity.Username,
+		Email:    identity.Email,
+	}
+}
+
+func ensureInjectedClaimsIdentity(claims *auth.Claims) *auth.Claims {
+	if claims == nil {
+		return nil
+	}
+	if claims.Subject == "" {
+		claims.Subject = claims.PreferredUsername
+	}
+	if claims.Issuer == "" {
+		claims.Issuer = injectedClaimsIssuer
+	}
+	if claims.PreferredUsername == "" {
+		claims.PreferredUsername = claims.Subject
+	}
+	return claims
+}
+
 // callerPinnedUIDs returns the set of UIDs pinned by the authenticated caller.
 // Returns an empty map when pins are not configured or the caller is not authenticated.
 func (h *Handler) callerPinnedUIDs(claims *auth.Claims, authenticated bool) map[string]bool {
 	if h.pinStore == nil || !authenticated || claims == nil {
 		return map[string]bool{}
 	}
-	username := claims.PreferredUsername
-	if username == "" {
-		username = claims.Subject
-	}
-	if username == "" {
+	identity, ok := identityFromClaims(claims)
+	if !ok {
 		return map[string]bool{}
 	}
-	uids, err := h.pinStore.Get(username)
+	uids, err := h.pinStore.Get(identity.ID)
 	if err != nil {
-		log.Error(err, "Failed to read pins for caller", "user", username)
+		log.Error(err, "Failed to read pins for caller", "subject", identity.Subject)
 		return map[string]bool{}
 	}
 	m := make(map[string]bool, len(uids))
@@ -647,16 +712,16 @@ func (h *Handler) handleRequestAccess(w http.ResponseWriter, r *http.Request, se
 		}
 	}
 
-	username := claims.PreferredUsername
-	if username == "" {
-		username = claims.Subject
+	identity, ok := identityFromClaims(claims)
+	if !ok {
+		http.Error(w, "JWT missing identity claims (iss and sub)", http.StatusUnauthorized)
+		return
 	}
 
 	req, err := h.accessRequestStore.Create(
 		service.UID,
 		service.Name,
-		username,
-		claims.Email,
+		accessRequestIdentity(identity),
 		body.Message,
 	)
 	if err != nil {
@@ -664,12 +729,12 @@ func (h *Handler) handleRequestAccess(w http.ResponseWriter, r *http.Request, se
 			http.Error(w, "A pending access request already exists for this service", http.StatusConflict)
 			return
 		}
-		log.Error(err, "Failed to create access request", "user", username, "serviceUID", service.UID)
+		log.Error(err, "Failed to create access request", "subject", identity.Subject, "serviceUID", service.UID)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	log.Info("Access request created", "id", req.ID, "user", username, "service", service.Name)
+	log.Info("Access request created", "id", req.ID, "subject", identity.Subject, "service", service.Name)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	if err := json.NewEncoder(w).Encode(req); err != nil {
@@ -722,8 +787,10 @@ func (h *Handler) handleGetNotifications(w http.ResponseWriter, r *http.Request)
 		}
 
 		var readSet map[string]bool
-		if authenticated && claims != nil && claims.PreferredUsername != "" {
-			readSet, _ = h.notificationStore.ReadSet(claims.PreferredUsername)
+		if authenticated && claims != nil {
+			if identity, ok := identityFromClaims(claims); ok {
+				readSet, _ = h.notificationStore.ReadSet(identity.ID)
+			}
 		}
 		if readSet == nil {
 			readSet = map[string]bool{}
@@ -809,14 +876,18 @@ func (h *Handler) handleNotificationSub(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	userID := claims.PreferredUsername
+	identity, ok := identityFromClaims(claims)
+	if !ok {
+		http.Error(w, "JWT missing identity claims (iss and sub)", http.StatusUnauthorized)
+		return
+	}
 
-	if err := h.notificationStore.MarkRead(userID, notifID); err != nil {
+	if err := h.notificationStore.MarkRead(identity.ID, notifID); err != nil {
 		if errors.Is(err, notifications.ErrNotFound) {
 			http.Error(w, "Notification not found", http.StatusNotFound)
 			return
 		}
-		log.Error(err, "Failed to mark notification as read", "user", userID, "notifID", notifID)
+		log.Error(err, "Failed to mark notification as read", "subject", identity.Subject, "notifID", notifID)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -934,9 +1005,10 @@ func (h *Handler) handleAdminAccessRequestSub(w http.ResponseWriter, r *http.Req
 	}
 	id, action := parts[0], parts[1]
 
-	adminUser := claims.PreferredUsername
-	if adminUser == "" {
-		adminUser = claims.Subject
+	adminIdentity, ok := identityFromClaims(claims)
+	if !ok {
+		http.Error(w, "JWT missing identity claims (iss and sub)", http.StatusUnauthorized)
+		return
 	}
 
 	var status accessrequests.Status
@@ -958,7 +1030,7 @@ func (h *Handler) handleAdminAccessRequestSub(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	updated, err := h.accessRequestStore.UpdateStatus(id, status, adminUser)
+	updated, err := h.accessRequestStore.UpdateStatus(id, status, accessRequestIdentity(adminIdentity))
 	if err != nil {
 		if errors.Is(err, accessrequests.ErrNotFound) {
 			http.Error(w, "Access request not found", http.StatusNotFound)
@@ -975,7 +1047,7 @@ func (h *Handler) handleAdminAccessRequestSub(w http.ResponseWriter, r *http.Req
 	if status == accessrequests.StatusApproved {
 		h.applyKeycloakGroupMembership(r.Context(), updated)
 	}
-	log.Info("Access request updated", "id", id, "status", status, "by", adminUser)
+	log.Info("Access request updated", "id", id, "status", status, "bySubject", adminIdentity.Subject)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(updated); err != nil {
 		log.Error(err, "Failed to encode access request")
@@ -1146,6 +1218,9 @@ func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, er
 	// Test/debug hook: use the injected extractor when present.
 	if h.claimsExtractor != nil {
 		claims, ok := h.claimsExtractor(r)
+		if ok {
+			claims = ensureInjectedClaimsIdentity(claims)
+		}
 		return claims, ok, nil
 	}
 
@@ -1349,9 +1424,14 @@ func (h *Handler) handleGetPins(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	uids, err := h.pinStore.Get(claims.PreferredUsername)
+	identity, ok := identityFromClaims(claims)
+	if !ok {
+		http.Error(w, "JWT missing identity claims (iss and sub)", http.StatusUnauthorized)
+		return
+	}
+	uids, err := h.pinStore.Get(identity.ID)
 	if err != nil {
-		log.Error(err, "Failed to read pins", "user", claims.PreferredUsername)
+		log.Error(err, "Failed to read pins", "subject", identity.Subject)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -1393,6 +1473,11 @@ func (h *Handler) handlePinByUID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	identity, ok := identityFromClaims(claims)
+	if !ok {
+		http.Error(w, "JWT missing identity claims (iss and sub)", http.StatusUnauthorized)
+		return
+	}
 	uid := strings.TrimPrefix(r.URL.Path, "/api/v1/pins/")
 	if uid == "" {
 		http.Error(w, "UID is required: /api/v1/pins/{uid}", http.StatusBadRequest)
@@ -1400,15 +1485,15 @@ func (h *Handler) handlePinByUID(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodPut:
-		if err := h.pinStore.Pin(claims.PreferredUsername, uid); err != nil {
-			log.Error(err, "Failed to pin service", "user", claims.PreferredUsername, "uid", uid)
+		if err := h.pinStore.Pin(identity.ID, uid); err != nil {
+			log.Error(err, "Failed to pin service", "subject", identity.Subject, "uid", uid)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	case http.MethodDelete:
-		if err := h.pinStore.Unpin(claims.PreferredUsername, uid); err != nil {
-			log.Error(err, "Failed to unpin service", "user", claims.PreferredUsername, "uid", uid)
+		if err := h.pinStore.Unpin(identity.ID, uid); err != nil {
+			log.Error(err, "Failed to unpin service", "subject", identity.Subject, "uid", uid)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -1430,16 +1515,21 @@ func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.Cla
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return nil, false
 		}
-		if claims.PreferredUsername == "" {
-			claims.PreferredUsername = claims.Subject
+		claims = ensureInjectedClaimsIdentity(claims)
+		if claims == nil || claims.Issuer == "" || claims.Subject == "" {
+			http.Error(w, "JWT missing identity claims (iss and sub)", http.StatusUnauthorized)
+			return nil, false
 		}
 		return claims, true
 	}
 
 	if !h.enableAuth || h.jwtValidator == nil {
-		// Auth disabled globally — return a synthetic claims with empty username
-		// so that pin operations still work in dev/test mode (all stored under "").
-		return &auth.Claims{PreferredUsername: "_anonymous"}, true
+		// Auth disabled globally - return a synthetic stable identity so dev/test
+		// pin and read-state operations still share the same local caller.
+		claims := &auth.Claims{PreferredUsername: authDisabledIdentitySubject}
+		claims.Issuer = authDisabledIdentityIssuer
+		claims.Subject = authDisabledIdentitySubject
+		return claims, true
 	}
 	claims, ok, err := h.extractAndValidateJWT(r)
 	if errors.Is(err, auth.ErrNotReady) {
@@ -1450,13 +1540,8 @@ func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.Cla
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return nil, false
 	}
-	// Identify the user by preferred_username; fall back to the JWT Subject (sub)
-	// for Keycloak configurations that omit preferred_username from access tokens.
-	if claims.PreferredUsername == "" {
-		claims.PreferredUsername = claims.Subject
-	}
-	if claims.PreferredUsername == "" {
-		http.Error(w, "JWT missing user identity claim (preferred_username or sub)", http.StatusUnauthorized)
+	if claims.Issuer == "" || claims.Subject == "" {
+		http.Error(w, "JWT missing identity claims (iss and sub)", http.StatusUnauthorized)
 		return nil, false
 	}
 	return claims, true

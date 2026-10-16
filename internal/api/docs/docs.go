@@ -27,7 +27,19 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "resolvedBy": {
-                        "description": "ResolvedBy is the admin username who approved or denied the request.",
+                        "description": "ResolvedBy is the stable issuer+subject identity key of the admin who approved or denied the request.",
+                        "type": "string"
+                    },
+                    "resolvedByIssuer": {
+                        "description": "ResolvedByIssuer is the immutable JWT issuer of the resolving admin.",
+                        "type": "string"
+                    },
+                    "resolvedBySubject": {
+                        "description": "ResolvedBySubject is the immutable JWT subject of the resolving admin.",
+                        "type": "string"
+                    },
+                    "resolvedByUsername": {
+                        "description": "ResolvedByUsername is mutable display metadata from the resolving admin's preferred_username.",
                         "type": "string"
                     },
                     "serviceName": {
@@ -46,7 +58,19 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "userID": {
-                        "description": "UserID is the caller's preferred_username (or JWT sub fallback).",
+                        "description": "UserID is the caller's stable issuer+subject identity key.",
+                        "type": "string"
+                    },
+                    "userIssuer": {
+                        "description": "UserIssuer is the immutable JWT issuer recorded at request time.",
+                        "type": "string"
+                    },
+                    "userSubject": {
+                        "description": "UserSubject is the immutable JWT subject recorded at request time.",
+                        "type": "string"
+                    },
+                    "username": {
+                        "description": "Username is mutable display metadata from preferred_username.",
                         "type": "string"
                     }
                 },

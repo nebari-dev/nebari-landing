@@ -166,6 +166,55 @@ func TestHandleNotificationSub_MarkRead_Returns204(t *testing.T) {
 	}
 }
 
+func TestNotificationReadStateUsesStableSubjectNotUsername(t *testing.T) {
+	store := newNotifStore(t)
+	n, err := store.Create("", "Hello", "World")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	claims := claimsWithIdentity("https://keycloak.example/realms/main", "subject-1", "alice")
+	h := newNotifHandlerWithClaims(cache.NewServiceCache(), store,
+		func(_ *http.Request) (*auth.Claims, bool) { return claims, true })
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/notifications/"+n.ID+"/read", nil)
+	rr := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("mark read: expected 204, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	claims = claimsWithIdentity("https://keycloak.example/realms/main", "subject-1", "alice-renamed")
+	rr = doGet(t, h.Routes(), "/api/v1/notifications")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("renamed user: expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var renamed struct {
+		Notifications []NotificationItem `json:"notifications"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&renamed); err != nil {
+		t.Fatal(err)
+	}
+	if len(renamed.Notifications) != 1 || !renamed.Notifications[0].Read {
+		t.Fatalf("renamed subject should keep read state, got %+v", renamed.Notifications)
+	}
+
+	claims = claimsWithIdentity("https://keycloak.example/realms/main", "subject-2", "alice")
+	rr = doGet(t, h.Routes(), "/api/v1/notifications")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("reused username: expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var reused struct {
+		Notifications []NotificationItem `json:"notifications"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&reused); err != nil {
+		t.Fatal(err)
+	}
+	if len(reused.Notifications) != 1 || reused.Notifications[0].Read {
+		t.Fatalf("reused username must not inherit read state, got %+v", reused.Notifications)
+	}
+}
+
 // --- POST /api/v1/admin/notifications ---
 
 func TestHandleAdminCreateNotification_NoStore_Returns501(t *testing.T) {

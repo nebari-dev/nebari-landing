@@ -6,7 +6,7 @@
 //
 // Data model:
 //
-//	key: nebari:pins:{username}  (Redis Set of service UIDs)
+//	key: nebari:pins:{userID}  (Redis Set of service UIDs)
 //
 // Operations are idempotent by nature of Redis Set semantics —
 // SADD and SREM are both no-ops when the element is already present/absent.
@@ -35,12 +35,12 @@ func NewPinStore(rdb *redis.Client) *PinStore {
 // Close is a no-op; the Redis client lifetime is managed by the caller.
 func (s *PinStore) Close() error { return nil }
 
-// Get returns the list of pinned UIDs for username.
+// Get returns the list of pinned UIDs for userID.
 // Returns an empty slice when the user has no pins stored yet.
-func (s *PinStore) Get(username string) ([]string, error) {
-	uids, err := s.rdb.SMembers(context.Background(), pinKey(username)).Result()
+func (s *PinStore) Get(userID string) ([]string, error) {
+	uids, err := s.rdb.SMembers(context.Background(), pinKey(userID)).Result()
 	if err != nil {
-		return nil, fmt.Errorf("pins.Get %q: %w", username, err)
+		return nil, fmt.Errorf("pins.Get %q: %w", userID, err)
 	}
 	if uids == nil {
 		uids = []string{}
@@ -48,22 +48,22 @@ func (s *PinStore) Get(username string) ([]string, error) {
 	return uids, nil
 }
 
-// Pin adds uid to username's pinned set (idempotent).
-func (s *PinStore) Pin(username, uid string) error {
-	if err := s.rdb.SAdd(context.Background(), pinKey(username), uid).Err(); err != nil {
-		return fmt.Errorf("pins.Pin %q → %q: %w", username, uid, err)
+// Pin adds uid to userID's pinned set (idempotent).
+func (s *PinStore) Pin(userID, uid string) error {
+	if err := s.rdb.SAdd(context.Background(), pinKey(userID), uid).Err(); err != nil {
+		return fmt.Errorf("pins.Pin %q → %q: %w", userID, uid, err)
 	}
 	return nil
 }
 
-// Unpin removes uid from username's pinned set (idempotent).
-func (s *PinStore) Unpin(username, uid string) error {
-	if err := s.rdb.SRem(context.Background(), pinKey(username), uid).Err(); err != nil {
-		return fmt.Errorf("pins.Unpin %q → %q: %w", username, uid, err)
+// Unpin removes uid from userID's pinned set (idempotent).
+func (s *PinStore) Unpin(userID, uid string) error {
+	if err := s.rdb.SRem(context.Background(), pinKey(userID), uid).Err(); err != nil {
+		return fmt.Errorf("pins.Unpin %q → %q: %w", userID, uid, err)
 	}
 	return nil
 }
 
-func pinKey(username string) string {
-	return keyPrefix + username
+func pinKey(userID string) string {
+	return keyPrefix + userID
 }
