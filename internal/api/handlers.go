@@ -22,6 +22,8 @@ import (
 
 var log = ctrl.Log.WithName("api")
 
+var errInvalidBearerCredentials = errors.New("invalid bearer credentials")
+
 // Handler handles HTTP requests for the landing page API
 type Handler struct {
 	cache              *cache.ServiceCache
@@ -450,7 +452,7 @@ type NotificationItem struct {
 
 // CallerIdentityResponse is the response format for GET /api/v1/caller-identity.
 // It reflects the identity of the caller as decoded from the JWT, or an
-// unauthenticated sentinel when no valid token is present.
+// unauthenticated sentinel when no token is present.
 type CallerIdentityResponse struct {
 	Authenticated bool     `json:"authenticated"`
 	Username      string   `json:"username,omitempty"`
@@ -492,6 +494,7 @@ func (h *Handler) callerPinnedUIDs(claims *auth.Claims, authenticated bool) map[
 //	@Tags			services
 //	@Produce		json
 //	@Success		200	{object}	ServiceResponse
+//	@Failure		401	{string}	string	"Unauthorized"
 //	@Failure		405	{string}	string	"Method not allowed"
 //	@Security		BearerAuth
 //	@Router			/services [get]
@@ -502,8 +505,8 @@ func (h *Handler) handleGetServices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims, authenticated, err := h.extractAndValidateJWT(r)
-	if errors.Is(err, auth.ErrNotReady) {
-		writeAuthWarmupResponse(w)
+	if err != nil {
+		writeAuthErrorResponse(w, err)
 		return
 	}
 	pinnedUIDs := h.callerPinnedUIDs(claims, authenticated)
@@ -557,6 +560,7 @@ func (h *Handler) handleServicesSub(w http.ResponseWriter, r *http.Request) {
 //	@Param			id	path		string	true	"Service UID"
 //	@Success		200	{object}	ServiceView
 //	@Failure		400	{string}	string	"Service ID is required"
+//	@Failure		401	{string}	string	"Unauthorized"
 //	@Failure		403	{string}	string	"Forbidden"
 //	@Failure		404	{string}	string	"Service not found"
 //	@Failure		405	{string}	string	"Method not allowed"
@@ -568,15 +572,15 @@ func (h *Handler) handleGetServiceByUID(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	service := h.cache.Get(serviceID)
-	if service == nil {
-		http.Error(w, "Service not found", http.StatusNotFound)
+	claims, authenticated, err := h.extractAndValidateJWT(r)
+	if err != nil {
+		writeAuthErrorResponse(w, err)
 		return
 	}
 
-	claims, authenticated, err := h.extractAndValidateJWT(r)
-	if errors.Is(err, auth.ErrNotReady) {
-		writeAuthWarmupResponse(w)
+	service := h.cache.Get(serviceID)
+	if service == nil {
+		http.Error(w, "Service not found", http.StatusNotFound)
 		return
 	}
 	if !h.canAccessService(service, authenticated, claims) {
@@ -1134,14 +1138,12 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 // extractAndValidateJWT returns the parsed claims for the request, a boolean
 // indicating whether validation succeeded, and an error.
 //
-// The error is non-nil only when the caller presented credentials but the JWT
-// validator's initial JWKS fetch has not yet completed (auth.ErrNotReady). All
-// other failure modes — missing header, malformed scheme, bad signature, wrong
-// issuer — return (nil, false, nil) so the caller can treat the request as
-// anonymous. Callers that gate behavior on auth (returning a 401/403/private
-// data) should check the error first and emit 503 + Retry-After via
-// writeAuthWarmupResponse so clients distinguish "auth offline" from "your
-// token is bad" (401) or "your stuff disappeared" (silent anonymous).
+// The error is non-nil only when the caller presented credentials that could
+// not be validated. auth.ErrNotReady means the JWT validator's initial JWKS
+// fetch has not yet completed and should be surfaced as 503 + Retry-After.
+// All other credential failures should be surfaced as 401. A missing
+// Authorization header still returns (nil, false, nil) so public endpoints can
+// serve anonymous callers.
 func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, error) {
 	// Test/debug hook: use the injected extractor when present.
 	if h.claimsExtractor != nil {
@@ -1170,7 +1172,7 @@ func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, er
 	if len(parts) != 2 || parts[0] != "Bearer" {
 		log.Info("Invalid Authorization header format",
 			"scheme", parts[0], "path", r.URL.Path)
-		return nil, false, nil
+		return nil, false, errInvalidBearerCredentials
 	}
 
 	tokenString := parts[1]
@@ -1185,8 +1187,8 @@ func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, er
 		log.Info("JWT validation failed",
 			"error", err.Error(),
 			"path", r.URL.Path,
-			"hint", "check KEYCLOAK_ISSUER_URL matches the 'iss' claim in the token")
-		return nil, false, nil
+			"hint", "check KEYCLOAK_ISSUER_URL, KEYCLOAK_AUDIENCE, and KEYCLOAK_AUTHORIZED_PARTY match the token claims")
+		return nil, false, errInvalidBearerCredentials
 	}
 
 	if h.debugMode {
@@ -1205,6 +1207,14 @@ func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, er
 func writeAuthWarmupResponse(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", "5")
 	http.Error(w, "JWT validator not ready; Keycloak may still be initializing", http.StatusServiceUnavailable)
+}
+
+func writeAuthErrorResponse(w http.ResponseWriter, err error) {
+	if errors.Is(err, auth.ErrNotReady) {
+		writeAuthWarmupResponse(w)
+		return
+	}
+	http.Error(w, "Unauthorized", http.StatusUnauthorized)
 }
 
 // canAccessService is the JWT-claims-flavored entry point used by the REST
@@ -1268,13 +1278,14 @@ func hasRequiredGroups(userGroups, requiredGroups []string) bool {
 
 // handleCallerIdentity serves GET /api/v1/caller-identity.
 // Returns the identity of the caller as decoded from the JWT.
-// When no valid token is present, returns {"authenticated": false}.
+// When no token is present, returns {"authenticated": false}.
 //
 //	@Summary		Get the caller's identity
-//	@Description	Echoes the resolved JWT claims for the caller. Returns {"authenticated": false} when no valid token is present.
+//	@Description	Echoes the resolved JWT claims for the caller. Returns {"authenticated": false} when no token is present.
 //	@Tags			identity
 //	@Produce		json
 //	@Success		200	{object}	CallerIdentityResponse
+//	@Failure		401	{string}	string	"Unauthorized"
 //	@Failure		405	{string}	string	"Method not allowed"
 //	@Security		BearerAuth
 //	@Router			/caller-identity [get]
@@ -1285,8 +1296,8 @@ func (h *Handler) handleCallerIdentity(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims, authenticated, err := h.extractAndValidateJWT(r)
-	if errors.Is(err, auth.ErrNotReady) {
-		writeAuthWarmupResponse(w)
+	if err != nil {
+		writeAuthErrorResponse(w, err)
 		return
 	}
 
@@ -1442,8 +1453,8 @@ func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.Cla
 		return &auth.Claims{PreferredUsername: "_anonymous"}, true
 	}
 	claims, ok, err := h.extractAndValidateJWT(r)
-	if errors.Is(err, auth.ErrNotReady) {
-		writeAuthWarmupResponse(w)
+	if err != nil {
+		writeAuthErrorResponse(w, err)
 		return nil, false
 	}
 	if !ok {

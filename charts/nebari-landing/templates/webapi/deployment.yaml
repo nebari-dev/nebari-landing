@@ -1,3 +1,5 @@
+{{- $frontendClientID := default (printf "%s-%s-spa" .Release.Namespace (include "nebari-landing.fullname" .)) .Values.frontend.keycloak.clientId -}}
+{{- $authorizedParty := default $frontendClientID .Values.webapi.keycloak.authorizedParty -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -65,6 +67,10 @@ spec:
               value: {{ .Values.webapi.keycloak.url | quote }}
             - name: KEYCLOAK_REALM
               value: {{ .Values.webapi.keycloak.realm | quote }}
+            - name: KEYCLOAK_AUDIENCE
+              value: {{ .Values.webapi.keycloak.audience | quote }}
+            - name: KEYCLOAK_AUTHORIZED_PARTY
+              value: {{ $authorizedParty | quote }}
             {{- if .Values.webapi.keycloak.issuerUrl }}
             - name: KEYCLOAK_ISSUER_URL
               value: {{ .Values.webapi.keycloak.issuerUrl | quote }}

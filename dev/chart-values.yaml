@@ -29,6 +29,9 @@ webapi:
     # Issuer URL that Keycloak stamps in JWTs (matches KC_HOSTNAME_URL in values.yaml)
     issuerUrl: "http://localhost:8180"
     realm: "nebari"
+    # SPA access tokens must be bound to this API audience and frontend client.
+    audience: "nebari-landingpage"
+    authorizedParty: "nebari-frontend-spa"
     enableAuth: true
     adminGroup: "admin"
     adminSecretName: "nebari-realm-admin-credentials"

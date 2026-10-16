@@ -25,6 +25,8 @@ import (
 
 const testKID = "test-key-id"
 const testRealm = "nebari"
+const testAudience = "nebari-landingpage"
+const testAuthorizedParty = "nebari-frontend-spa"
 
 func generateTestKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
@@ -51,15 +53,7 @@ func eToBytes(e int) []byte {
 func startJWKSServer(t *testing.T, key *rsa.PrivateKey) *httptest.Server {
 	t.Helper()
 	jwks := map[string]interface{}{
-		"keys": []map[string]interface{}{
-			{
-				"kty": "RSA",
-				"kid": testKID,
-				"use": "sig",
-				"n":   encodeBase64URL(key.N),
-				"e":   base64.RawURLEncoding.EncodeToString(eToBytes(key.E)),
-			},
-		},
+		"keys": []map[string]interface{}{jwkForKey(testKID, key)},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -69,18 +63,43 @@ func startJWKSServer(t *testing.T, key *rsa.PrivateKey) *httptest.Server {
 	return srv
 }
 
+func jwkForKey(kid string, key *rsa.PrivateKey) map[string]interface{} {
+	return map[string]interface{}{
+		"kty": "RSA",
+		"kid": kid,
+		"use": "sig",
+		"n":   encodeBase64URL(key.N),
+		"e":   base64.RawURLEncoding.EncodeToString(eToBytes(key.E)),
+	}
+}
+
+func boundClaims() *Claims {
+	return &Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Audience: jwt.ClaimStrings{testAudience},
+		},
+		TokenType:       accessTokenType,
+		AuthorizedParty: testAuthorizedParty,
+	}
+}
+
 func signJWT(t *testing.T, key *rsa.PrivateKey, issuer string, exp time.Time, extra *Claims) string {
+	t.Helper()
+	return signJWTWithKID(t, key, testKID, issuer, exp, extra)
+}
+
+func signJWTWithKID(t *testing.T, key *rsa.PrivateKey, kid, issuer string, exp time.Time, extra *Claims) string {
 	t.Helper()
 	if extra == nil {
 		extra = &Claims{}
 	}
-	extra.RegisteredClaims = jwt.RegisteredClaims{
-		Issuer:    issuer,
-		ExpiresAt: jwt.NewNumericDate(exp),
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
-	}
+	registered := extra.RegisteredClaims
+	registered.Issuer = issuer
+	registered.ExpiresAt = jwt.NewNumericDate(exp)
+	registered.IssuedAt = jwt.NewNumericDate(time.Now())
+	extra.RegisteredClaims = registered
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, extra)
-	tok.Header["kid"] = testKID
+	tok.Header["kid"] = kid
 	s, err := tok.SignedString(key)
 	if err != nil {
 		t.Fatalf("sign: %v", err)
@@ -94,6 +113,7 @@ func signJWT(t *testing.T, key *rsa.PrivateKey, issuer string, exp time.Time, ex
 func newValidator(t *testing.T, srv *httptest.Server) *JWTValidator {
 	t.Helper()
 	v := NewJWTValidator(srv.URL, testRealm)
+	v.SetExpectedTokenBinding(testAudience, testAuthorizedParty)
 	t.Cleanup(v.Stop)
 	waitReady(t, v, 2*time.Second)
 	return v
@@ -217,12 +237,11 @@ func TestValidateToken_Valid(t *testing.T) {
 	v := newValidator(t, srv)
 
 	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
-	claims := &Claims{
-		PreferredUsername: "jdoe",
-		Email:             "jdoe@example.com",
-		Name:              "John Doe",
-		Groups:            []string{"admin", "data-science"},
-	}
+	claims := boundClaims()
+	claims.PreferredUsername = "jdoe"
+	claims.Email = "jdoe@example.com"
+	claims.Name = "John Doe"
+	claims.Groups = []string{"admin", "data-science"}
 	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
 
 	got, err := v.ValidateToken(tokenStr)
@@ -246,7 +265,7 @@ func TestValidateToken_Expired(t *testing.T) {
 	v := newValidator(t, srv)
 
 	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
-	tokenStr := signJWT(t, key, issuer, time.Now().Add(-time.Hour), nil)
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(-time.Hour), boundClaims())
 
 	_, err := v.ValidateToken(tokenStr)
 	if err == nil {
@@ -259,7 +278,7 @@ func TestValidateToken_WrongIssuer(t *testing.T) {
 	srv := startJWKSServer(t, key)
 	v := newValidator(t, srv)
 
-	tokenStr := signJWT(t, key, "https://wrong-issuer.example.com/realms/other", time.Now().Add(time.Hour), nil)
+	tokenStr := signJWT(t, key, "https://wrong-issuer.example.com/realms/other", time.Now().Add(time.Hour), boundClaims())
 
 	_, err := v.ValidateToken(tokenStr)
 	if err == nil {
@@ -273,9 +292,10 @@ func TestValidateToken_UnknownKID(t *testing.T) {
 	v := newValidator(t, srv)
 
 	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
-	claims := &Claims{}
+	claims := boundClaims()
 	claims.RegisteredClaims = jwt.RegisteredClaims{
 		Issuer:    issuer,
+		Audience:  jwt.ClaimStrings{testAudience},
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	}
@@ -297,7 +317,7 @@ func TestValidateToken_Tampered(t *testing.T) {
 	v := newValidator(t, srv)
 
 	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
-	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), nil)
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), boundClaims())
 
 	tampered := tokenStr[:len(tokenStr)-5] + "xxxxx"
 	_, err := v.ValidateToken(tampered)
@@ -312,9 +332,10 @@ func TestValidateToken_WrongAlgorithm(t *testing.T) {
 	v := newValidator(t, srv)
 
 	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
-	claims := &Claims{}
+	claims := boundClaims()
 	claims.RegisteredClaims = jwt.RegisteredClaims{
 		Issuer:    issuer,
+		Audience:  jwt.ClaimStrings{testAudience},
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -329,14 +350,205 @@ func TestValidateToken_WrongAlgorithm(t *testing.T) {
 	}
 }
 
+func TestValidateToken_MissingExpectedAudienceConfig(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := NewJWTValidator(srv.URL, testRealm)
+	v.SetExpectedTokenBinding("", testAuthorizedParty)
+	t.Cleanup(v.Stop)
+	waitReady(t, v, 2*time.Second)
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), boundClaims())
+
+	_, err := v.ValidateToken(tokenStr)
+	if err == nil {
+		t.Error("expected error when expected audience is not configured")
+	}
+}
+
+func TestValidateToken_MissingExpectedAuthorizedPartyConfig(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := NewJWTValidator(srv.URL, testRealm)
+	v.SetExpectedTokenBinding(testAudience, "")
+	t.Cleanup(v.Stop)
+	waitReady(t, v, 2*time.Second)
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), boundClaims())
+
+	_, err := v.ValidateToken(tokenStr)
+	if err == nil {
+		t.Error("expected error when expected authorized party is not configured")
+	}
+}
+
+func TestValidateToken_MissingAudience(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	claims := boundClaims()
+	claims.Audience = nil
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
+
+	_, err := v.ValidateToken(tokenStr)
+	if err == nil {
+		t.Error("expected error for missing audience")
+	}
+}
+
+func TestValidateToken_WrongAudience(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	claims := boundClaims()
+	claims.Audience = jwt.ClaimStrings{"account", "other-api"}
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
+
+	_, err := v.ValidateToken(tokenStr)
+	if err == nil {
+		t.Error("expected error for wrong audience")
+	}
+}
+
+func TestValidateToken_MissingAuthorizedParty(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	claims := boundClaims()
+	claims.AuthorizedParty = ""
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
+
+	_, err := v.ValidateToken(tokenStr)
+	if err == nil {
+		t.Error("expected error for missing authorized party")
+	}
+}
+
+func TestValidateToken_MultipleAudiencesWithAuthorizedParty(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	claims := boundClaims()
+	claims.Audience = jwt.ClaimStrings{testAudience, "account"}
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
+
+	if _, err := v.ValidateToken(tokenStr); err != nil {
+		t.Fatalf("expected multi-audience token with valid azp to pass: %v", err)
+	}
+}
+
+func TestValidateToken_MultipleAudiencesMissingAuthorizedParty(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	claims := boundClaims()
+	claims.Audience = jwt.ClaimStrings{testAudience, "account"}
+	claims.AuthorizedParty = ""
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
+
+	_, err := v.ValidateToken(tokenStr)
+	if err == nil {
+		t.Error("expected error for multi-audience token without azp")
+	}
+}
+
+func TestValidateToken_WrongAuthorizedParty(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	claims := boundClaims()
+	claims.AuthorizedParty = "other-client"
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
+
+	_, err := v.ValidateToken(tokenStr)
+	if err == nil {
+		t.Error("expected error for wrong authorized party")
+	}
+}
+
+func TestValidateToken_RejectsIDTokenType(t *testing.T) {
+	key := generateTestKey(t)
+	srv := startJWKSServer(t, key)
+	v := newValidator(t, srv)
+
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+	claims := boundClaims()
+	claims.TokenType = "ID"
+	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
+
+	_, err := v.ValidateToken(tokenStr)
+	if err == nil {
+		t.Error("expected error for non-access token type")
+	}
+}
+
+func TestValidateToken_KeyRotationRefreshesUnknownKID(t *testing.T) {
+	key1 := generateTestKey(t)
+	key2 := generateTestKey(t)
+
+	currentKID := testKID
+	currentKey := key1
+	var keysMu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keysMu.Lock()
+		kid := currentKID
+		key := currentKey
+		keysMu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"keys": []map[string]interface{}{jwkForKey(kid, key)},
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	v := newValidator(t, srv)
+	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
+
+	token1 := signJWTWithKID(t, key1, testKID, issuer, time.Now().Add(time.Hour), boundClaims())
+	if _, err := v.ValidateToken(token1); err != nil {
+		t.Fatalf("expected initial key token to validate: %v", err)
+	}
+
+	const rotatedKID = "rotated-key-id"
+	keysMu.Lock()
+	currentKID = rotatedKID
+	currentKey = key2
+	keysMu.Unlock()
+
+	token2 := signJWTWithKID(t, key2, rotatedKID, issuer, time.Now().Add(time.Hour), boundClaims())
+	if _, err := v.ValidateToken(token2); err != nil {
+		t.Fatalf("expected rotated key token to validate after refresh: %v", err)
+	}
+}
+
 // --- Claims struct ---
 
 func TestClaims_JSON_RoundTrip(t *testing.T) {
 	c := Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Audience: jwt.ClaimStrings{testAudience},
+		},
 		Email:             "user@example.com",
 		Name:              "Test User",
 		PreferredUsername: "testuser",
 		Groups:            []string{"group-a", "group-b"},
+		TokenType:         accessTokenType,
+		AuthorizedParty:   testAuthorizedParty,
 	}
 	data, err := json.Marshal(c)
 	if err != nil {
@@ -346,7 +558,10 @@ func TestClaims_JSON_RoundTrip(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Email != c.Email || got.PreferredUsername != c.PreferredUsername {
+	if got.Email != c.Email ||
+		got.PreferredUsername != c.PreferredUsername ||
+		got.TokenType != c.TokenType ||
+		got.AuthorizedParty != c.AuthorizedParty {
 		t.Errorf("round-trip mismatch: got %+v, want %+v", got, c)
 	}
 	if len(got.Groups) != 2 {
@@ -564,7 +779,8 @@ func TestValidateToken_MissingPreferredUsername_ReturnsEmptyString(t *testing.T)
 	v := newValidator(t, srv)
 
 	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
-	claims := &Claims{Email: "user@example.com"}
+	claims := boundClaims()
+	claims.Email = "user@example.com"
 	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
 
 	got, err := v.ValidateToken(tokenStr)
@@ -585,7 +801,8 @@ func TestValidateToken_MissingEmail_ReturnsEmptyString(t *testing.T) {
 	v := newValidator(t, srv)
 
 	issuer := fmt.Sprintf("%s/realms/%s", srv.URL, testRealm)
-	claims := &Claims{PreferredUsername: "jdoe"}
+	claims := boundClaims()
+	claims.PreferredUsername = "jdoe"
 	tokenStr := signJWT(t, key, issuer, time.Now().Add(time.Hour), claims)
 
 	got, err := v.ValidateToken(tokenStr)
