@@ -105,6 +105,25 @@ func (groupsPolicy) CanAccessService(svc *landingcache.ServiceInfo, p wshub.Prin
 	return false
 }
 
+// TestNewHub_SubscribedOnReturn pins the startup contract: Redis Pub/Sub drops
+// messages published before the SUBSCRIBE is processed, so NewHub must not
+// return until the subscription is in place. Every publish-then-read test in
+// this file relies on it.
+func TestNewHub_SubscribedOnReturn(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	wshub.NewHub(ctx, rdb)
+
+	// Channel name mirrors the unexported redisPubSubChannel in hub.go.
+	if n := mr.PubSubNumSub("nebari:events")["nebari:events"]; n != 1 {
+		t.Fatalf("expected 1 subscriber on nebari:events when NewHub returns, got %d", n)
+	}
+}
+
 func TestNewHub_StartsEmpty(t *testing.T) {
 	h := newTestHub(t)
 	if h.ClientCount() != 0 {
@@ -118,17 +137,10 @@ func TestHub_ClientConnectsAndDisconnects(t *testing.T) {
 
 	conn := dialWS(t, srv)
 
-	// Give ServeWS goroutine time to register the client.
-	time.Sleep(20 * time.Millisecond)
-	if h.ClientCount() != 1 {
-		t.Errorf("expected 1 client after connect, got %d", h.ClientCount())
-	}
+	waitForClients(t, h, 1)
 
 	_ = conn.Close()
-	time.Sleep(50 * time.Millisecond)
-	if h.ClientCount() != 0 {
-		t.Errorf("expected 0 clients after disconnect, got %d", h.ClientCount())
-	}
+	waitForClients(t, h, 0)
 }
 
 func TestHub_BroadcastDeliveredToClient(t *testing.T) {
@@ -137,7 +149,7 @@ func TestHub_BroadcastDeliveredToClient(t *testing.T) {
 
 	conn := dialWS(t, srv)
 	defer func() { _ = conn.Close() }()
-	time.Sleep(20 * time.Millisecond)
+	waitForClients(t, h, 1)
 
 	svc := &landingcache.ServiceInfo{Name: "grafana", Namespace: "monitoring"}
 	h.Publish("added", svc)
@@ -169,7 +181,7 @@ func publishAndReadType(t *testing.T, input string) wshub.EventType {
 	srv := newServer(t, h)
 	conn := dialWS(t, srv)
 	t.Cleanup(func() { _ = conn.Close() })
-	time.Sleep(20 * time.Millisecond)
+	waitForClients(t, h, 1)
 
 	h.Publish(input, &landingcache.ServiceInfo{Name: "svc"})
 
@@ -217,11 +229,7 @@ func TestHub_BroadcastToMultipleClients(t *testing.T) {
 	conn2 := dialWS(t, srv)
 	defer func() { _ = conn1.Close() }()
 	defer func() { _ = conn2.Close() }()
-	time.Sleep(30 * time.Millisecond)
-
-	if h.ClientCount() != 2 {
-		t.Fatalf("expected 2 clients, got %d", h.ClientCount())
-	}
+	waitForClients(t, h, 2)
 
 	svc := &landingcache.ServiceInfo{Name: "multi"}
 	h.Publish("modified", svc)
@@ -254,7 +262,7 @@ func TestHub_BroadcastPayload_ServiceEvent_HasCorrectSchema(t *testing.T) {
 
 	conn := dialWS(t, srv)
 	defer func() { _ = conn.Close() }()
-	time.Sleep(20 * time.Millisecond)
+	waitForClients(t, h, 1)
 
 	svc := &landingcache.ServiceInfo{Name: "jupyter", Namespace: "default", UID: "abc-123"}
 	h.Publish("added", svc)
@@ -295,7 +303,7 @@ func TestHub_BroadcastPayload_NotificationEvent_HasCorrectSchema(t *testing.T) {
 
 	conn := dialWS(t, srv)
 	defer func() { _ = conn.Close() }()
-	time.Sleep(20 * time.Millisecond)
+	waitForClients(t, h, 1)
 
 	n := &notifications.Notification{ID: "notif-42", Title: "Test", Message: "Body"}
 	h.PublishNotification(n)
@@ -331,7 +339,7 @@ func TestHub_ClientDisconnectMidBroadcast_NoDeadlock(t *testing.T) {
 	srv := newServer(t, h)
 
 	conn := dialWS(t, srv)
-	time.Sleep(20 * time.Millisecond)
+	waitForClients(t, h, 1)
 
 	_ = conn.Close()
 	time.Sleep(10 * time.Millisecond)
@@ -347,10 +355,7 @@ func TestHub_ClientDisconnectMidBroadcast_NoDeadlock(t *testing.T) {
 		t.Fatal("Publish blocked or deadlocked after client disconnect")
 	}
 
-	time.Sleep(50 * time.Millisecond)
-	if h.ClientCount() != 0 {
-		t.Errorf("expected 0 clients after disconnect, got %d", h.ClientCount())
-	}
+	waitForClients(t, h, 0)
 }
 
 func TestHub_PublishNotification_DeliveredToClient(t *testing.T) {
@@ -359,7 +364,7 @@ func TestHub_PublishNotification_DeliveredToClient(t *testing.T) {
 
 	conn := dialWS(t, srv)
 	defer func() { _ = conn.Close() }()
-	time.Sleep(20 * time.Millisecond)
+	waitForClients(t, h, 1)
 
 	n := &notifications.Notification{
 		ID:      "notif-123",
@@ -564,7 +569,7 @@ func TestHub_BroadcastService_NilPolicy_AllowsAll(t *testing.T) {
 		time.Time{})
 	conn := dialWS(t, srv)
 	defer func() { _ = conn.Close() }()
-	time.Sleep(20 * time.Millisecond)
+	waitForClients(t, h, 1)
 
 	// Private service the principal would normally fail the filter on.
 	svc := &landingcache.ServiceInfo{
@@ -592,7 +597,7 @@ func TestHub_BroadcastNotification_BypassesPolicy(t *testing.T) {
 		time.Time{})
 	conn := dialWS(t, srv)
 	defer func() { _ = conn.Close() }()
-	time.Sleep(20 * time.Millisecond)
+	waitForClients(t, h, 1)
 
 	h.PublishNotification(&notifications.Notification{ID: "n1", Title: "hi", Message: "."})
 

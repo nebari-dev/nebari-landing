@@ -70,6 +70,10 @@ const redisPubSubChannel = "nebari:events"
 // the session.
 const writeTimeout = 10 * time.Second
 
+// subscribeTimeout bounds how long NewHub waits for Redis to confirm the
+// event-channel subscription before carrying on without it.
+const subscribeTimeout = 5 * time.Second
+
 var upgrader = websocket.Upgrader{
 	// Allow all origins — CORS is handled at the Envoy Gateway level.
 	CheckOrigin: func(r *http.Request) bool { return true },
@@ -147,9 +151,16 @@ type Hub struct {
 	nilPolicyWarn sync.Once
 }
 
-// NewHub creates a Hub backed by the given Redis client and starts the
-// background subscription goroutine. The provided context controls the
-// subscription lifetime — cancel it to stop the goroutine cleanly.
+// NewHub creates a Hub backed by the given Redis client, subscribes it to the
+// event channel, and starts the background goroutine that dispatches events.
+// The provided context controls the subscription lifetime — cancel it to stop
+// the goroutine cleanly.
+//
+// NewHub returns only after Redis has confirmed the subscription, or after
+// subscribeTimeout plus the client's handshake read timeout. Redis Pub/Sub
+// does not buffer: a message published before the SUBSCRIBE is processed is
+// dropped, so returning earlier would let a caller that publishes right away
+// lose its first events.
 //
 // The hub starts without an access policy. Call SetAccessPolicy after the
 // handler that implements ServiceAccessPolicy is constructed.
@@ -158,7 +169,22 @@ func NewHub(ctx context.Context, rdb *redis.Client) *Hub {
 		rdb:     rdb,
 		clients: make(map[*client]struct{}),
 	}
-	go h.subscribe(ctx)
+	confirmCtx, cancel := context.WithTimeout(ctx, subscribeTimeout)
+	defer cancel()
+	pubsub := rdb.Subscribe(confirmCtx, redisPubSubChannel)
+	if _, err := pubsub.Receive(confirmCtx); redis.IsPermissionError(err) {
+		// go-redis does not retry error replies, so this replica gets no
+		// events until it restarts with a user allowed on the channel.
+		log.Error(err, "WebSocket: Redis refused SUBSCRIBE; real-time events disabled (check ACL channel permissions)",
+			"channel", redisPubSubChannel)
+	} else if err != nil {
+		// Not fatal: go-redis reconnects and resubscribes after connection
+		// errors and timeouts, and events published in the meantime are lost
+		// exactly as they would be during any later reconnect.
+		log.Info("WebSocket: Redis subscription not confirmed, continuing",
+			"error", err.Error())
+	}
+	go h.subscribe(ctx, pubsub)
 	return h
 }
 
@@ -175,8 +201,7 @@ func (h *Hub) SetAccessPolicy(p ServiceAccessPolicy) {
 
 // subscribe blocks, receiving messages from the Redis Pub/Sub channel and
 // dispatching them to the appropriate broadcast path.
-func (h *Hub) subscribe(ctx context.Context) {
-	pubsub := h.rdb.Subscribe(ctx, redisPubSubChannel)
+func (h *Hub) subscribe(ctx context.Context, pubsub *redis.PubSub) {
 	defer func() { _ = pubsub.Close() }()
 	ch := pubsub.Channel()
 	for {
