@@ -172,9 +172,9 @@ One line: pass `handler.CanAccessService` into `NewHub`.
   claims marshaled in come back out.
 - `internal/websocket/hub_test.go`: update existing tests for the new
   `NewHub` and `ServeWS` signatures; add a focused test:
-  - Two clients connect: client A has `groups=["admin"]`, client B has
-    `groups=["data-science"]`.
-  - A private service with `requiredGroups=["admin"]` is published.
+  - Two clients connect: client A has `groups=["/admin"]`, client B has
+    `groups=["/data-science"]`.
+  - A private service with `requiredGroups=["/admin"]` is published.
   - Assert client A receives the frame; client B does not.
 - `internal/api/ws_ticket_test.go` and `ws_auth_test.go`: update for
   the propagated-claims signature; add a regression covering "browser

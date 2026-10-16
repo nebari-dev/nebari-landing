@@ -19,9 +19,13 @@ Traffic routing (Envoy Gateway HTTPRoute):
 
 Pre-requisites to verify before using:
   1. Keycloak OIDC client in realm {{ .Values.webapi.keycloak.realm }}:
-     • Public SPA (keycloak-js PKCE): "{{ default (printf "%s-%s-spa" .Release.Namespace (include "nebari-landing.fullname" .)) .Values.frontend.keycloak.clientId }}"
+     • Public SPA (keycloak-js PKCE): "{{ include "nebari-landing.spaClientID" . }}"
        redirect URI: {{ if .Values.httpRoute.tls }}https{{ else }}http{{ end }}://{{ .Values.httpRoute.hostname }}/*
      Auto-provisioned by the nebari-operator when nebariApp.enabled=true (spaClient.enabled=true).
+     • Landing admin role: "{{ .Values.webapi.keycloak.adminRole }}" on client
+       "{{ default (include "nebari-landing.spaClientID" .) .Values.webapi.keycloak.adminClientId }}"
+       auto-created by the webapi when Keycloak admin credentials are configured.
+       Assign it to users or groups that may call /api/v1/admin/*.
 
   2. Keycloak admin secret "{{ .Values.webapi.keycloak.adminSecretName }}" exists in
      namespace "{{ .Values.webapi.keycloak.adminSecretNamespace }}" with keys: username, password

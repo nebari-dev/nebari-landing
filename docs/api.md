@@ -86,7 +86,7 @@ directly on the upgrade. The `/ws` endpoint accepts either mechanism.
 
 List access requests (admin)
 
-Returns access requests across the cluster. Admin-only — caller's JWT must include the configured admin group.
+Returns access requests across the cluster. Admin-only — caller's JWT must include the configured admin client role.
 
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/admin/access-requests \

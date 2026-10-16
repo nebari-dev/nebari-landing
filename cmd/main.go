@@ -82,7 +82,8 @@ func main() {
 		enableAuth     bool
 		debugMode      bool
 		healthInterval int
-		adminGroup     string
+		adminRole      string
+		adminClientID  string
 		redisAddr      string
 		redisUsername  string
 		redisPassword  string
@@ -108,8 +109,10 @@ func main() {
 		"Enable JWT authentication and authorization (env: ENABLE_AUTH)")
 	flag.IntVar(&healthInterval, "health-interval", envInt("HEALTH_INTERVAL", 30),
 		"Health check interval in seconds (env: HEALTH_INTERVAL)")
-	flag.StringVar(&adminGroup, "admin-group", envStr("ADMIN_GROUP", "admin"),
-		"Keycloak group whose members may access admin endpoints (env: ADMIN_GROUP)")
+	flag.StringVar(&adminRole, "admin-role", envStr("ADMIN_ROLE", "nebari-landing-admin"),
+		"Keycloak client role whose bearers may access admin endpoints (env: ADMIN_ROLE)")
+	flag.StringVar(&adminClientID, "admin-client-id", envStr("ADMIN_CLIENT_ID", ""),
+		"Keycloak client ID that owns ADMIN_ROLE; empty uses the token azp claim (env: ADMIN_CLIENT_ID)")
 	flag.StringVar(&redisAddr, "redis-addr", envStr("REDIS_ADDR", "localhost:6379"),
 		"Redis server address host:port (env: REDIS_ADDR)")
 	flag.StringVar(&redisUsername, "redis-username", os.Getenv("REDIS_USERNAME"),
@@ -282,18 +285,20 @@ func main() {
 	// store record; it just skips the Keycloak group-membership step and warns.
 	var keycloakAdminClient *webkeycloak.Client
 	if kc, err := webkeycloak.NewFromEnvWithK8sClient(ctx, k8sClient); err != nil {
-		setupLog.Info("Keycloak admin client not configured — group membership will not be updated on approval",
+		setupLog.Info("Keycloak admin client not configured — admin role provisioning, group membership updates, and duplicate group-leaf audit are disabled",
 			"hint", "set KEYCLOAK_ADMIN_SECRET_NAME or KEYCLOAK_ADMIN_USERNAME/PASSWORD")
 	} else {
 		keycloakAdminClient = kc
 		setupLog.Info("Keycloak admin client configured",
 			"url", os.Getenv("KEYCLOAK_URL"),
 			"realm", os.Getenv("KEYCLOAK_REALM"))
+		ensureKeycloakAdminRole(keycloakAdminClient, adminClientID, adminRole)
+		auditKeycloakGroupLeafCollisions(keycloakAdminClient)
 	}
 
 	handlerOpts := []api.HandlerOption{
 		api.WithAccessRequestStore(accessRequestStore),
-		api.WithAdminGroup(adminGroup),
+		api.WithAdminRole(adminClientID, adminRole),
 		api.WithNotificationStore(notificationStore),
 		api.WithKeycloakAdminClient(keycloakAdminClient),
 		api.WithAllowedOrigins(splitOrigins(allowedOrigins)),
@@ -351,6 +356,62 @@ func main() {
 	}
 
 	setupLog.Info("Server stopped")
+}
+
+func ensureKeycloakAdminRole(kc *webkeycloak.Client, clientID, roleName string) {
+	if kc == nil {
+		return
+	}
+	if strings.TrimSpace(clientID) == "" || strings.TrimSpace(roleName) == "" {
+		setupLog.Info("Skipping Keycloak admin role provisioning; ADMIN_CLIENT_ID and ADMIN_ROLE must both be set",
+			"clientID", clientID, "role", roleName)
+		return
+	}
+
+	go func() {
+		const maxAttempts = 12
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			err := kc.EnsureClientRole(ctx, clientID, roleName)
+			cancel()
+			if err == nil {
+				setupLog.Info("Keycloak landing admin role is ready", "clientID", clientID, "role", roleName)
+				return
+			}
+			if attempt == maxAttempts {
+				setupLog.Info("Keycloak landing admin role was not ensured; assign or create it manually, then restart webapi if needed",
+					"clientID", clientID, "role", roleName, "error", err.Error())
+				return
+			}
+			setupLog.Info("Keycloak landing admin role ensure failed; retrying",
+				"clientID", clientID, "role", roleName, "attempt", attempt, "maxAttempts", maxAttempts, "error", err.Error())
+			time.Sleep(5 * time.Second)
+		}
+	}()
+}
+
+func auditKeycloakGroupLeafCollisions(kc *webkeycloak.Client) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		collisions, err := kc.DuplicateGroupLeafNames(ctx)
+		if err != nil {
+			setupLog.Info("Keycloak group leaf-name audit failed",
+				"error", err.Error(),
+				"hint", "full group paths are still required for landing authorization")
+			return
+		}
+		if len(collisions) == 0 {
+			setupLog.Info("Keycloak group leaf-name audit found no duplicate leaf names")
+			return
+		}
+		for _, collision := range collisions {
+			setupLog.Info("Duplicate Keycloak group leaf name detected; migrate service auth.groups to explicit full paths",
+				"leaf", collision.Leaf,
+				"paths", strings.Join(collision.Paths, ","))
+		}
+	}()
 }
 
 // envStr returns the value of the named environment variable, or def if unset/empty.
