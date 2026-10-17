@@ -9,7 +9,7 @@
     "id": "keycloak",
     "priority": 90,
     "requiredGroups": [
-      "/keycloak-admins"
+      "/nebari-admins"
     ],
     "url": "https://keycloak.example.com/admin/nebari/console/",
     "visibility": "private"

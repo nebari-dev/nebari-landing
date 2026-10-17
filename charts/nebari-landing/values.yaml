@@ -152,9 +152,10 @@ webapi:
     landingPage:
       enabled: false
       # Full Keycloak group paths (leading slash): the realm's groups mapper
-      # emits paths, and the webapi matches them exactly. The group must
-      # already exist in the realm.
-      requiredGroups: ["/keycloak-admins"]
+      # emits paths, and the webapi matches them exactly. The default is the
+      # platform admin group NIC plans for its admin tiles; it must already
+      # exist in the realm.
+      requiredGroups: ["/nebari-admins"]
       displayName: "Keycloak"
       description: "Identity and access administration"
       # Icon URL. Leave empty to use the default service icon.

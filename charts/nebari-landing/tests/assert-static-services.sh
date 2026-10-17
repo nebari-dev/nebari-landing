@@ -99,6 +99,6 @@ expect_render_error 'must not define id "keycloak"' "${toggle[@]}" \
 expect_render_error "requiredGroups must be a non-empty list" "${toggle[@]}" \
   --set 'webapi.keycloak.landingPage.requiredGroups=null'
 expect_render_error "requiredGroups must be a non-empty list" "${toggle[@]}" \
-  --set webapi.keycloak.landingPage.requiredGroups=/keycloak-admins
+  --set webapi.keycloak.landingPage.requiredGroups=/nebari-admins
 
 echo "static services render assertions passed"

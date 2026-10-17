@@ -148,7 +148,7 @@ func TestHandleGetPins_FiltersServicesCallerCannotAccess(t *testing.T) {
 			Enabled:        true,
 			DisplayName:    "Keycloak",
 			Visibility:     "private",
-			RequiredGroups: []string{"/keycloak-admins"},
+			RequiredGroups: []string{"/nebari-admins"},
 			ExternalURL:    "https://keycloak.example.com/admin/nebari/console/",
 		},
 	})
@@ -159,7 +159,7 @@ func TestHandleGetPins_FiltersServicesCallerCannotAccess(t *testing.T) {
 		wantNames []string
 	}{
 		{"non-member sees only the public pin", []string{"/users"}, []string{"grafana"}},
-		{"member sees both pins", []string{"/keycloak-admins"}, []string{"grafana", "keycloak"}},
+		{"member sees both pins", []string{"/nebari-admins"}, []string{"grafana", "keycloak"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

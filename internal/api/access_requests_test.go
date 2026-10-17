@@ -69,7 +69,7 @@ func TestHandleRequestAccess_ServiceNotFound(t *testing.T) {
 
 func TestHandleRequestAccess_StaticService_Returns403(t *testing.T) {
 	// Approving a request grants the service's requiredGroups in Keycloak, so a
-	// static entry (e.g. the Keycloak admin console gated on /keycloak-admins)
+	// static entry (e.g. the Keycloak admin console gated on /nebari-admins)
 	// must never accept one.
 	sc := cache.NewServiceCache()
 	sc.Add(&sdapp.App{
@@ -80,7 +80,7 @@ func TestHandleRequestAccess_StaticService_Returns403(t *testing.T) {
 			Enabled:        true,
 			DisplayName:    "Keycloak",
 			Visibility:     "private",
-			RequiredGroups: []string{"/keycloak-admins"},
+			RequiredGroups: []string{"/nebari-admins"},
 			ExternalURL:    "https://keycloak.example.com/admin/nebari/console/",
 		},
 	})
@@ -133,7 +133,7 @@ func TestApplyKeycloakGroupMembership_StaticService_SkipsGrant(t *testing.T) {
 					Enabled:        true,
 					DisplayName:    "Keycloak",
 					Visibility:     "private",
-					RequiredGroups: []string{"/keycloak-admins"},
+					RequiredGroups: []string{"/nebari-admins"},
 					ExternalURL:    "https://keycloak.example.com/admin/nebari/console/",
 				},
 			})

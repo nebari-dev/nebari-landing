@@ -236,12 +236,15 @@ webapi:
   keycloak:
     landingPage:
       enabled: true
-      requiredGroups: ["/keycloak-admins"]
+      requiredGroups: ["/nebari-admins"]
 ```
 
 The card URL is built from `frontend.keycloak.url` and `frontend.keycloak.realm`, and the health probe from
 `webapi.keycloak.url` and the same realm (no probe when it is empty). `requiredGroups` must be a non-empty list.
-On NIC, the chart version NIC deploys must include this setting, and the group must exist in the realm.
+On NIC, the chart version NIC deploys must include this setting, and the group must exist in the realm. The default,
+`/nebari-admins`, is the platform admin group NIC plans for its admin tiles
+([nebari-infrastructure-core#435](https://github.com/nebari-dev/nebari-infrastructure-core/issues/435)); until NIC's
+realm setup creates it, create it in the realm yourself.
 
 Other services that do their own auth go in `webapi.staticServices`, a map keyed by id so that separate value files
 (for example NIC overlays) add entries instead of replacing each other's (see the example in `values.yaml`):
@@ -260,8 +263,8 @@ A few things to keep in mind:
 - **Discovery only.** `visibility` and `requiredGroups` decide who sees the card. The target must still enforce its
   own access, which Keycloak does for its admin console.
 - **Group values must match the token's `groups` claim exactly.** On NIC the realm's groups mapper emits full paths
-  such as `/keycloak-admins`. The local dev realm (`dev/keycloak/`) sets `full.path=false` on the SPA client, so
-  there the claim holds bare names (`keycloak-admins`). The group must already exist in the realm.
+  such as `/nebari-admins`. The local dev realm (`dev/keycloak/`) sets `full.path=false` on the SPA client, so
+  there the claim holds bare names (`nebari-admins`). The group must already exist in the realm.
 - **No access requests.** Approving a request adds the user to the service's `requiredGroups`, so static entries
   reject access requests with `403` rather than turning an approval into a privilege grant.
 

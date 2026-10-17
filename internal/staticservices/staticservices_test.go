@@ -24,7 +24,7 @@ const keycloakJSON = `[{
 	"category": "Platform",
 	"priority": 90,
 	"visibility": "private",
-	"requiredGroups": ["/keycloak-admins"],
+	"requiredGroups": ["/nebari-admins"],
 	"healthCheck": {
 		"url": "http://keycloak-keycloakx-http.keycloak.svc:8080/realms/nebari",
 		"intervalSeconds": 15,
@@ -63,7 +63,7 @@ func TestParse_ChartOutput(t *testing.T) {
 	if s.ID != "keycloak" || s.Visibility != "private" {
 		t.Fatalf("unexpected service: %+v", s)
 	}
-	if len(s.RequiredGroups) != 1 || s.RequiredGroups[0] != "/keycloak-admins" {
+	if len(s.RequiredGroups) != 1 || s.RequiredGroups[0] != "/nebari-admins" {
 		t.Fatalf("requiredGroups = %v", s.RequiredGroups)
 	}
 	if s.HealthCheck == nil || s.HealthCheck.URL != "http://keycloak.keycloak.svc:8080/realms/nebari" {
@@ -134,7 +134,7 @@ func TestApp_PopulatesCacheEntry(t *testing.T) {
 	if got.URL != "https://keycloak.example.com/admin/nebari/console/" {
 		t.Errorf("URL = %q", got.URL)
 	}
-	if got.Visibility != "private" || len(got.RequiredGroups) != 1 || got.RequiredGroups[0] != "/keycloak-admins" {
+	if got.Visibility != "private" || len(got.RequiredGroups) != 1 || got.RequiredGroups[0] != "/nebari-admins" {
 		t.Errorf("visibility/requiredGroups = %q/%v", got.Visibility, got.RequiredGroups)
 	}
 	if got.Priority != 90 || got.Category != "Platform" || got.DisplayName != "Keycloak" ||
