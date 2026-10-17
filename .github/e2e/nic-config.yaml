@@ -1,0 +1,18 @@
+# NIC config for the e2e workflow (.github/workflows/e2e.yml), deployed by
+# nebari-dev/deploy-nebari-action: a local kind cluster with the foundational
+# apps (Argo CD, Keycloak, Envoy Gateway, nebari-operator, this landing page).
+#
+# repository.local makes NIC create the gitops repository on the runner at
+# ~/.nic/gitops/<project_name> and mount it into the cluster. The workflow
+# commits its webapi image override there, so keep project_name in sync with
+# GITOPS_DIR and CLUSTER_NAME in the workflow.
+project_name: nebari-landing-e2e
+domain: nebari.local
+certificate:
+  type: selfsigned
+
+cluster:
+  local: {}
+
+repository:
+  local: {}

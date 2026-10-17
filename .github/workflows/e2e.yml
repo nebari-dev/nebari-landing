@@ -1,16 +1,19 @@
-# e2e — runs the Ginkgo end-to-end suite against a real Kubernetes cluster
-# bootstrapped by nebari-dev/action-nebari-sandbox (platform profile).
+# e2e — runs the Ginkgo end-to-end suite against a real Nebari platform
+# deployed by nebari-dev/deploy-nebari-action from .github/e2e/nic-config.yaml.
 #
-# What the platform profile provides:
-#   - k3d cluster with MetalLB, cert-manager, Envoy Gateway
+# What NIC deploys there:
+#   - a local kind cluster with MetalLB, cert-manager, Envoy Gateway
 #   - Keycloak (keycloakx chart, namespace: keycloak, svc: keycloak-keycloakx-http)
-#   - nebari realm pre-configured by NIC
-#   - ArgoCD managing all foundational apps
+#     with the nebari realm
+#   - nebari-operator (including the NebariApp CRD) and this landing page
+#   - Argo CD managing all foundational apps from a local gitops repository
 #
 # The workflow adds on top:
-#   - Builds the webapi Docker image and imports it into k3d
-#   - Installs the NebariApp CRD directly (deterministic, no ArgoCD sync wait)
+#   - Points the webapi at the image for this event (from Quay, or built on
+#     the runner and loaded into kind for fork PRs)
 #   - Runs the Ginkgo e2e suite with USE_EXISTING_CLUSTER=true
+#
+# The action destroys the cluster in its post step, also on failure.
 
 name: E2E tests
 
@@ -37,6 +40,10 @@ on:
         description: Build the webapi image on the runner instead of pulling it from Quay
         type: boolean
         default: false
+      nic_version:
+        description: NIC release (vX.Y.Z) or Git ref to deploy the platform with
+        type: string
+        default: v0.14.0
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -63,8 +70,8 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      # Unified Go cache — covers both e2e test modules and any Go build inside
-      # the sandbox action (NIC binary), so the sandbox step benefits too.
+      # Unified Go cache for the e2e test modules (and a NIC source build when
+      # nic_version names a Git ref instead of a release).
       - name: Cache Go modules
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -90,13 +97,13 @@ jobs:
       #      or internal/** path, webapi.yml is expected to build the tag —
       #      wait up to 10 min for the manifest to appear.
       #   3. Otherwise, webapi.yml will not run. Fall back to :latest
-      #      (the current main webapi), which is what the unmodified webapi
-      #      code in this PR/push would have used anyway.
+      #      (the latest release's webapi; webapi code in this PR/push is
+      #      unchanged from main, which release.yml last published).
       #   4. Pull requests from forks get no registry secrets, so webapi.yml
       #      builds their image but cannot push it, and step 2 would wait out
       #      its timeout. For those (and for workflow_dispatch with
       #      build_local_image) build the image on the runner and import it
-      #      into k3d once the sandbox is up.
+      #      into the kind nodes once the platform is up.
       - name: Resolve webapi image tag
         id: branch
         env:
@@ -185,40 +192,42 @@ jobs:
         run: docker build -t "quay.io/nebari/nebari-webapi:${TAG}" .
 
       # ── Kubernetes cluster + Nebari platform ─────────────────────────────────
-      # The image override below is applied via a Git commit to the local
-      # file:// gitops repo ArgoCD reads from, so ArgoCD's auto-sync converges
-      # on it as desired state — no cluster-side patch to revert, no need for
-      # an argocd-self-heal toggle. Stay on v2 while this workflow relies on
-      # the k3d/existing-cluster platform profile.
-      - name: Setup Nebari Sandbox
-        id: sandbox
-        uses: nebari-dev/action-nebari-sandbox@1369c908d942913f4cda8cb9009e36a355d830e0 # v2.3.0
+      # NIC also installs nebari-operator, so the NebariApp CRD matches the
+      # operator that reconciles it. The image override below is applied via a
+      # Git commit to the local gitops repo Argo CD reads from, so auto-sync
+      # converges on it as desired state, with no cluster-side patch to revert.
+      - name: Deploy Nebari
+        id: nebari
+        uses: nebari-dev/deploy-nebari-action@13484a5f9f42f8378b88d4426d3b0244522e347d # v0.3.0
         with:
-          profile: platform
-          cluster-name: nebari-e2e
+          config: .github/e2e/nic-config.yaml
+          nic-version: ${{ inputs.nic_version || 'v0.14.0' }}
 
       # The chart uses imagePullPolicy IfNotPresent, so the deployment runs the
-      # imported image once the override below points it at this tag.
-      - name: Import webapi image into k3d
+      # loaded image once the override below points it at this tag. Loaded
+      # with ctr on each kind node, so the step does not depend on a kind CLI
+      # (NIC creates the cluster with its embedded kind library).
+      - name: Load webapi image into kind
         if: steps.branch.outputs.build_local == 'true'
         env:
-          TAG: ${{ steps.branch.outputs.tag }}
-          CLUSTER: ${{ steps.sandbox.outputs.cluster-name }}
-        run: k3d image import "quay.io/nebari/nebari-webapi:${TAG}" -c "${CLUSTER}"
-
-      # ── NebariApp CRD ─────────────────────────────────────────────────────────
-      # Apply directly so the tests don't depend on ArgoCD sync timing.
-      - name: Install NebariApp CRD
+          IMAGE: quay.io/nebari/nebari-webapi:${{ steps.branch.outputs.tag }}
+          CLUSTER_NAME: nebari-landing-e2e
         run: |
-          kubectl apply -f \
-            https://raw.githubusercontent.com/nebari-dev/nebari-operator/main/config/crd/bases/reconcilers.nebari.dev_nebariapps.yaml
-          kubectl wait --for=condition=Established \
-            crd/nebariapps.reconcilers.nebari.dev \
-            --timeout=60s
+          set -euo pipefail
+          nodes=$(docker ps --filter "label=io.x-k8s.kind.cluster=${CLUSTER_NAME}" --format '{{.Names}}')
+          if [[ -z "$nodes" ]]; then
+            echo "✗ no kind nodes found for cluster ${CLUSTER_NAME}"
+            docker ps --format '{{.Names}}  {{.Labels}}'
+            exit 1
+          fi
+          for node in $nodes; do
+            echo "  loading ${IMAGE} into ${node}"
+            docker save "${IMAGE}" | docker exec -i "${node}" ctr --namespace=k8s.io images import -
+          done
 
       # ── Preflight: wait for the Keycloak ArgoCD app's PostSync hook ──────────
-      # The sandbox waits for the keycloak pod to be Ready, which only covers
-      # "the chart deployed". The nebari realm itself comes from a PostSync
+      # The deploy action waits for every Argo CD Application to be Healthy,
+      # which does not by itself say the realm hooks finished. The nebari realm itself comes from a PostSync
       # Job (NIC: pkg/argocd/templates/manifests/keycloak/realm-setup-job.yaml).
       # That Job carries argocd.argoproj.io/hook-delete-policy: HookSucceeded,
       # so ArgoCD deletes it the moment it succeeds — polling for the Job is
@@ -228,8 +237,7 @@ jobs:
       # ArgoCD only marks the operation Succeeded once all PostSync hooks have
       # finished, so reaching Synced + Succeeded means the realm is provisioned.
       #
-      # Drop this step once nebari-dev/action-nebari-sandbox#27 lands and the
-      # sandbox itself can wait for realm-readiness.
+      # Cheap when the realm is already up, so it stays as a guard.
       - name: Wait for Keycloak realm-setup (PostSync hook)
         run: |
           for i in $(seq 1 60); do
@@ -281,10 +289,12 @@ jobs:
       # cluster-side patches even with selfHeal off.
       - name: Override webapi image in GitOps source
         env:
-          GITOPS_DIR: ${{ steps.sandbox.outputs.gitops-dir }}
           NEW_TAG: ${{ steps.branch.outputs.tag }}
         run: |
           set -euo pipefail
+          # repository.local in .github/e2e/nic-config.yaml: NIC creates the
+          # gitops repository at ~/.nic/gitops/<project_name>.
+          GITOPS_DIR="${HOME}/.nic/gitops/nebari-landing-e2e"
           if [[ -z "${GITOPS_DIR}" || ! -d "${GITOPS_DIR}" ]]; then
             echo "✗ gitops-dir not set or not a directory: ${GITOPS_DIR:-<empty>}"
             exit 1
@@ -402,18 +412,6 @@ jobs:
             deployment/nebari-landing-webapi --timeout=5m
           echo "::endgroup::"
 
-      # ── Read nebari realm admin password ─────────────────────────────────────
-      # NIC creates nebari-realm-admin-credentials in the keycloak namespace
-      # with a randomly-generated password (separate from the master realm admin
-      # password output by the sandbox).  Read it here so the e2e tests can
-      # authenticate against the nebari realm.
-      - name: Read nebari realm admin password
-        run: |
-          PASS=$(kubectl -n keycloak get secret nebari-realm-admin-credentials \
-            -o jsonpath='{.data.password}' | base64 -d)
-          echo "::add-mask::${PASS}"
-          echo "NEBARI_REALM_ADMIN_PASSWORD=${PASS}" >> "$GITHUB_ENV"
-
       # ── Patch Keycloak for the e2e suite (TEMPORARY WORKAROUND) ──────────────
       # Enables directAccessGrantsEnabled on the nebari-landing OIDC client and
       # creates the realm fixtures (test-user + admin group) that the suite
@@ -428,10 +426,8 @@ jobs:
         env:
           # Cluster is already running — skip Kind creation and docker build.
           USE_EXISTING_CLUSTER: "true"
-          CLUSTER_TYPE: k3d
-          K3D_CLUSTER_NAME: ${{ steps.sandbox.outputs.cluster-name }}
           # Password for the 'admin' user in the nebari realm (not the master realm).
-          E2E_KEYCLOAK_ADMIN_PASSWORD: ${{ env.NEBARI_REALM_ADMIN_PASSWORD }}
+          E2E_KEYCLOAK_ADMIN_PASSWORD: ${{ steps.nebari.outputs.keycloak-realm-admin-password }}
           # Client secret for the operator-provisioned nebari-landing OIDC client.
           # Used by the e2e suite instead of admin-cli to acquire tokens with full
           # identity claims (sub, preferred_username, groups).
@@ -453,10 +449,3 @@ jobs:
           echo ""
           echo "=== ArgoCD applications ==="
           kubectl get applications -n argocd -o wide || true
-
-      # ── Cleanup ───────────────────────────────────────────────────────────────
-      - name: Cleanup
-        if: always()
-        run: |
-          k3d cluster delete ${{ steps.sandbox.outputs.cluster-name }}
-          docker network rm ${{ steps.sandbox.outputs.network-name }} 2>/dev/null || true
