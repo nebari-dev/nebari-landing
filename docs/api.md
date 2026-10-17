@@ -56,6 +56,58 @@ per WS connection.
 Non-browser clients can skip the ticket exchange and send the Bearer token
 directly on the upgrade. The `/ws` endpoint accepts either mechanism.
 
+## Access requests
+
+A user files a request with `POST /services/{id}/request_access`; an admin
+then decides it under `/admin/access-requests`. The allowed status changes
+are:
+
+| From | To | Endpoint |
+|------|----|----------|
+| `pending` | `approved` | `PUT /admin/access-requests/{id}/approve` |
+| `pending` | `denied` | `PUT /admin/access-requests/{id}/deny` |
+| `approved` | `revoked` | `PUT /admin/access-requests/{id}/revoke` or `DELETE /admin/access-requests/{id}` |
+
+Any other change (for example re-approving a revoked request, or denying one
+that is already approved) returns `409 Conflict`. Denied and revoked requests
+are final; the user files a new request instead.
+
+### What an approval grants
+
+An approval is a landing-only entitlement for one user and one service. Until
+its `expiresAt` (chart value `webapi.accessRequests.approvalTTL`, default
+`720h`), the service's card appears on that user's launchpad and its events
+reach their WebSocket session. That is all it does: the webapi never changes
+Keycloak groups, and nothing in front of the service consults the approval.
+
+The service itself may still require group membership. Apps that check the
+`groups` claim on their own (JupyterHub, Grafana, and others) will keep
+refusing a user who is not in the right group, and when the nebari-operator
+enforces `auth.groups` at the gateway, a non-member gets `403` there even with
+an approval. To give someone working access to such a service, add them to
+one of its groups in Keycloak; the card then shows through the normal
+group check.
+
+Static entries (`static-<id>` UIDs, configured on the webapi rather than
+discovered from a `NebariApp`) are the exception: requests for them return
+`403 Forbidden`, and an approval never makes one visible, so an access request
+cannot expose a card gated on an admin group such as the Keycloak console.
+
+### Upgrade note: requests filed before subject-keyed records
+
+Earlier releases keyed access requests by the caller's `preferred_username`.
+They are now keyed by the JWT `sub` claim, and approvals are looked up by
+`sub`. A request that was still pending when you upgraded is keyed by
+username, so approving it could never grant anything; the webapi refuses to
+approve such a request and returns `409 Conflict`. Deny it and ask the user
+to request access again (the new request is keyed by `sub` and can be
+approved). Before upgrading you can also resolve every pending request.
+
+Requests approved by earlier releases added the user to the service's
+Keycloak groups. This release does not track or remove those memberships;
+revoking an old approval only updates its record. Remove the group
+membership in Keycloak to take that access away.
+
 ---
 
 <!-- gendocs:api -->
@@ -64,7 +116,8 @@ directly on the upgrade. The `/ws` endpoint accepts either mechanism.
 | Method | Path | Summary |
 |--------|------|---------|
 | `GET` | [`/admin/access-requests`](#get-adminaccess-requests) | List access requests (admin) |
-| `PUT` | [`/admin/access-requests/{id}/{action}`](#put-adminaccess-requestsidaction) | Approve or deny an access request (admin) |
+| `DELETE` | [`/admin/access-requests/{id}`](#delete-adminaccess-requestsid) | Revoke an access request entitlement (admin) |
+| `PUT` | [`/admin/access-requests/{id}/{action}`](#put-adminaccess-requestsidaction) | Approve, deny, or revoke an access request (admin) |
 | `POST` | [`/admin/notifications`](#post-adminnotifications) | Create a notification (admin) |
 | `GET` | [`/caller-identity`](#get-caller-identity) | Get the caller's identity |
 | `GET` | [`/categories`](#get-categories) | List service categories |
@@ -95,11 +148,24 @@ curl -s -X GET http://localhost:8080/api/v1/admin/access-requests \
 
 ---
 
+### <a name="delete-adminaccess-requestsid"></a>`DELETE /admin/access-requests/{id}`
+
+Revoke an access request entitlement (admin)
+
+Revokes a previously approved landing-owned entitlement. The record is retained for audit, but it no longer grants service access. Only approved requests can be revoked; any other status returns 409.
+
+```sh
+curl -s -X DELETE http://localhost:8080/api/v1/admin/access-requests/{id} \
+  -H 'Authorization: Bearer $TOKEN'
+```
+
+---
+
 ### <a name="put-adminaccess-requestsidaction"></a>`PUT /admin/access-requests/{id}/{action}`
 
-Approve or deny an access request (admin)
+Approve, deny, or revoke an access request (admin)
 
-Action is encoded in the URL: PUT .../{id}/approve or .../{id}/deny. Approving also adds the user to the service's required Keycloak groups when a Keycloak admin client is configured.
+Action is encoded in the URL: PUT .../{id}/approve, .../{id}/deny, or .../{id}/revoke. Approving makes only the request's target service visible on the requester's launchpad until its expiresAt timestamp; it records the human approver and target owner, and never creates or mutates Keycloak groups, so the service itself may still require group membership and refuse the user. Only pending requests can be approved or denied, and only approved requests can be revoked; any other transition returns 409.
 
 ```sh
 curl -s -X PUT http://localhost:8080/api/v1/admin/access-requests/{id}/{action} \
@@ -235,7 +301,7 @@ curl -s -X DELETE http://localhost:8080/api/v1/pins/{uid} \
 
 List discoverable services
 
-Returns the union of public services plus any private services the caller may access based on their JWT groups.
+Returns the union of public services plus any private services the caller may access based on their JWT groups or approved service-scoped access requests.
 Anonymous callers see public services only; bearer-token callers additionally see private services they have access to. The "pinned" flag reflects the caller's own pin list (always false for anonymous).
 
 ```sh
@@ -249,7 +315,7 @@ curl -s -X GET http://localhost:8080/api/v1/services \
 
 Get a service by UID
 
-Returns the service if the caller may access it. Anonymous callers may only fetch public services; private services require a JWT whose groups intersect the service's required groups.
+Returns the service if the caller may access it. Anonymous callers may only fetch public services; private services require a JWT whose groups intersect the service's required groups or an approved access request for this service.
 
 ```sh
 curl -s -X GET http://localhost:8080/api/v1/services/{id} \
@@ -262,7 +328,7 @@ curl -s -X GET http://localhost:8080/api/v1/services/{id} \
 
 Request access to a private service
 
-Requires authentication. Creates a pending access request for the caller against the named service; an admin then approves or denies via /admin/access-requests/{id}/{approve|deny}.
+Requires authentication. Creates a pending access request for the caller against the named service; an admin then approves, denies, or revokes via /admin/access-requests. Approval makes only this service visible on the caller's launchpad until expiresAt; it does not change Keycloak groups, so the service itself may still require group membership and refuse the user. Static entries (static-<id> UIDs) reject requests with 403, so an approval can never expose their card.
 
 ```sh
 curl -s -X POST http://localhost:8080/api/v1/services/{id}/request_access \

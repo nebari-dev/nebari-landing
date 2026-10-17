@@ -160,14 +160,13 @@ func renderAPI(s *spec, ops []flatOp) string {
 	b.WriteString("|--------|------|---------|\n")
 	for _, o := range ops {
 		anchor := slugAnchor(o.method, o.path)
-		b.WriteString(fmt.Sprintf("| `%s` | [`%s`](#%s) | %s |\n",
-			o.method, o.path, anchor, o.op.Summary))
+		fmt.Fprintf(&b, "| `%s` | [`%s`](#%s) | %s |\n", o.method, o.path, anchor, o.op.Summary)
 	}
 
 	for _, o := range ops {
 		b.WriteString("\n---\n\n")
 		anchor := slugAnchor(o.method, o.path)
-		b.WriteString(fmt.Sprintf("### <a name=%q></a>`%s %s`\n\n", anchor, o.method, o.path))
+		fmt.Fprintf(&b, "### <a name=%q></a>`%s %s`\n\n", anchor, o.method, o.path)
 		if o.op.Summary != "" {
 			b.WriteString(o.op.Summary + "\n\n")
 		}
@@ -187,7 +186,7 @@ func curlExample(method, path, server string, withAuth bool) string {
 
 	var b bytes.Buffer
 	b.WriteString("```sh\n")
-	b.WriteString(fmt.Sprintf("curl -s -X %s %s%s", method, base, path))
+	fmt.Fprintf(&b, "curl -s -X %s %s%s", method, base, path)
 	if withAuth {
 		b.WriteString(" \\\n  -H 'Authorization: Bearer $TOKEN'")
 	}

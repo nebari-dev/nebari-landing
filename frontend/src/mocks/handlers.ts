@@ -44,6 +44,7 @@ const overrides = [
       id: `req-${store.accessRequests.length + 1}`,
       serviceUID: service.id,
       serviceName: service.name,
+      targetOwner: `mock/${service.id}`,
       userID: body.userId ?? "dev",
       userEmail: "dev@example.com",
       message: body.message ?? "",
@@ -51,6 +52,9 @@ const overrides = [
       requestedAt: new Date().toISOString(),
       resolvedAt: "",
       resolvedBy: "",
+      resolvedByName: "",
+      resolvedByEmail: "",
+      expiresAt: "",
     };
     store.accessRequests.push(req);
     return HttpResponse.json({ success: true, message: "Request submitted" });
@@ -93,18 +97,37 @@ const overrides = [
     const list = status
       ? store.accessRequests.filter((r) => r.status === status)
       : store.accessRequests;
-    return HttpResponse.json(list);
+    return HttpResponse.json({ accessRequests: list });
+  }),
+
+  http.delete("/api/v1/admin/access-requests/:id", ({ params }) => {
+    const req = store.accessRequests.find((r) => r.id === params.id);
+    if (!req) return new HttpResponse(null, { status: 404 });
+    req.status = "revoked";
+    req.resolvedAt = new Date().toISOString();
+    req.resolvedBy = "dev";
+    req.resolvedByName = "Dev User";
+    req.resolvedByEmail = "dev@example.com";
+    req.expiresAt = "";
+    return HttpResponse.json(req);
   }),
 
   http.put("/api/v1/admin/access-requests/:id/:action", ({ params }) => {
     const req = store.accessRequests.find((r) => r.id === params.id);
     if (!req) return new HttpResponse(null, { status: 404 });
-    if (params.action !== "approve" && params.action !== "deny") {
+    if (params.action !== "approve" && params.action !== "deny" && params.action !== "revoke") {
       return new HttpResponse(null, { status: 400 });
     }
-    req.status = params.action === "approve" ? "approved" : "denied";
+    req.status =
+      params.action === "approve" ? "approved" : params.action === "deny" ? "denied" : "revoked";
     req.resolvedAt = new Date().toISOString();
     req.resolvedBy = "dev";
+    req.resolvedByName = "Dev User";
+    req.resolvedByEmail = "dev@example.com";
+    req.expiresAt =
+      params.action === "approve"
+        ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()
+        : "";
     return HttpResponse.json(req);
   }),
 ];

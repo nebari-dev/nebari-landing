@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/redis/go-redis/v9"
 
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
@@ -326,4 +327,52 @@ func trimSpace(s string) string {
 		s = s[:len(s)-1]
 	}
 	return s
+}
+
+func TestHandleGetPins_IncludesServicesReachedThroughApproval(t *testing.T) {
+	// A pinned private service the caller reaches only through an approved
+	// access request must stay in the list, like it does in GET /services.
+	// The static entry's approval is ignored, so its pin stays hidden.
+	sc := cache.NewServiceCache()
+	addApp(sc, "uid-1", "grafana")
+	addPrivateService(sc, "svc-a", "private-a", []string{"team-a"})
+	addPrivateService(sc, "svc-b", "private-b", []string{"team-b"})
+	addStaticKeycloak(sc)
+
+	store := newARStore(t)
+	approveForTest(t, store, "svc-a", "private-a", "user-subject")
+	approveForTest(t, store, "static-keycloak", "keycloak", "user-subject")
+
+	ps := newPinStore(t)
+	h := NewHandler(sc, nil, true, nil, ps,
+		WithAccessRequestStore(store),
+		WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
+			return &auth.Claims{
+				PreferredUsername: "alice",
+				Groups:            []string{"/users"},
+				RegisteredClaims:  jwt.RegisteredClaims{Subject: "user-subject"},
+			}, true
+		}))
+	for _, uid := range []string{"uid-1", "svc-a", "svc-b", "static-keycloak"} {
+		if err := ps.Pin("alice", uid); err != nil {
+			t.Fatalf("pre-pin %s: %v", uid, err)
+		}
+	}
+
+	rr := doGet(t, h.Routes(), "/api/v1/pins")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp PinsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	var got []string
+	for _, p := range resp.Pins {
+		got = append(got, p.Name)
+	}
+	slices.Sort(got)
+	if want := []string{"grafana", "private-a"}; !slices.Equal(got, want) {
+		t.Errorf("Pins = %v, want %v", got, want)
+	}
 }

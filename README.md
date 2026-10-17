@@ -104,7 +104,7 @@ Release artifacts — the Go webapi binary (linux/darwin, amd64/arm64) and the p
 | **Service Discovery** | Automatically surfaces every `NebariApp` on the cluster — no manual registration required |
 | **Real-time Updates** | WebSocket hub pushes service changes and notifications to the browser instantly |
 | **SSO-Aware** | keycloak-js PKCE in the browser, JWT validation by the webapi — users land authenticated, admins see admin controls |
-| **Pins & Access Requests** | Users can pin favourite services and request access to restricted ones |
+| **Pins & Access Requests** | Users can pin favourite services and request access to restricted ones; an approval shows the service on their launchpad, but the service may still require group membership (see [docs/api.md](docs/api.md#access-requests)) |
 | **shadcn/ui + Tailwind** | Accessible UI primitives with theme tokens; no design-system runtime to ship |
 | **Runtime Branding** | Custom title, logo, favicon, CSS theme tokens, and classification banners — no image rebuild required |
 
@@ -265,8 +265,9 @@ A few things to keep in mind:
 - **Group values must match the token's `groups` claim exactly.** On NIC the realm's groups mapper emits full paths
   such as `/nebari-admins`. The local dev realm (`dev/keycloak/`) sets `full.path=false` on the SPA client, so
   there the claim holds bare names (`nebari-admins`). The group must already exist in the realm.
-- **No access requests.** Approving a request adds the user to the service's `requiredGroups`, so static entries
-  reject access requests with `403` rather than turning an approval into a privilege grant.
+- **No access requests.** An approved request shows the service's card on the requester's launchpad regardless of
+  `requiredGroups`. Static entries reject access requests with `403`, and the webapi ignores any approval for one,
+  so an approval can never expose a card such as the Keycloak admin console to someone outside `/nebari-admins`.
 
 
 ## Quick Start
@@ -369,7 +370,6 @@ npm run dev
   - `auth/` — JWT validation.
   - `cache/` — Service cache (backed by Redis).
   - `health/` — Health check endpoint.
-  - `keycloak/` — Keycloak client.
   - `notifications/` — Notification store.
   - `pins/` — Pin store.
   - `staticservices/` — Landing-page entries configured on the webapi instead of discovered from `NebariApp`s.

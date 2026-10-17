@@ -1407,7 +1407,7 @@ Visibility and group access for the landing page are **automatically computed fr
 
 For NebariApps, this ensures landing page visibility exactly matches service access control, eliminating configuration redundancy.
 
-Static entries (see [ConfigMap-Based Registration](#4-configmap-based-registration)) are the exception: their `visibility` and `requiredGroups` are set in chart values and only decide who sees the card. The target service enforces its own access, and the landing page rejects access requests for them, because approving one would add the user to the entry's `requiredGroups`.
+Static entries (see [ConfigMap-Based Registration](#4-configmap-based-registration)) are the exception: their `visibility` and `requiredGroups` are set in chart values and only decide who sees the card. The target service enforces its own access, and the landing page rejects access requests for them and ignores any approval for one, because an approval shows the card regardless of `requiredGroups` and would expose an admin-only entry such as the Keycloak console.
 
 **Group Validation Logic (in webapi):**
 ```go

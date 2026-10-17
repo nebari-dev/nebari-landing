@@ -16,7 +16,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/nebari-dev/nebari-landing/internal/accessrequests"
 	"github.com/nebari-dev/nebari-landing/internal/auth"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
 	"github.com/nebari-dev/nebari-landing/internal/notifications"
@@ -37,7 +36,7 @@ func newNotifHandler(sc *cache.ServiceCache, store *notifications.Store) *Handle
 	return NewHandler(sc, nil, false, nil, nil, WithNotificationStore(store))
 }
 
-// --- WithAdminGroup / WithNotificationStore / WithKeycloakAdminClient ---
+// --- WithAdminGroup / WithNotificationStore ---
 
 func TestWithAdminGroup_SetsField(t *testing.T) {
 	h := NewHandler(cache.NewServiceCache(), nil, false, nil, nil, WithAdminGroup("superusers"))
@@ -51,14 +50,6 @@ func TestWithNotificationStore_SetsField(t *testing.T) {
 	h := NewHandler(cache.NewServiceCache(), nil, false, nil, nil, WithNotificationStore(s))
 	if h.notificationStore != s {
 		t.Error("expected notificationStore to be set by WithNotificationStore")
-	}
-}
-
-func TestWithKeycloakAdminClient_NilAccepted(t *testing.T) {
-	// nil is a valid value; verify the option is applied without panic.
-	h := NewHandler(cache.NewServiceCache(), nil, false, nil, nil, WithKeycloakAdminClient(nil))
-	if h.keycloakClient != nil {
-		t.Error("expected keycloakClient to be nil")
 	}
 }
 
@@ -80,19 +71,6 @@ func TestHasRequiredGroups_UserMissingGroup_ReturnsFalse(t *testing.T) {
 	if hasRequiredGroups([]string{"devs"}, []string{"admins"}) {
 		t.Error("user is missing required group — expected false")
 	}
-}
-
-// --- applyKeycloakGroupMembership ---
-
-func TestApplyKeycloakGroupMembership_NilClient_DoesNotPanic(t *testing.T) {
-	// When keycloakClient is nil the function must return immediately without panicking.
-	h := &Handler{cache: cache.NewServiceCache()}
-	req := &accessrequests.AccessRequest{
-		UserID:      "user1",
-		ServiceUID:  "svc1",
-		ServiceName: "my-service",
-	}
-	h.applyKeycloakGroupMembership(context.Background(), req)
 }
 
 // --- PUT /api/v1/notifications/{id}/read ---

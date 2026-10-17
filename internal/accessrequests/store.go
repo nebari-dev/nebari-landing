@@ -8,16 +8,18 @@
 //	  → Create() — status: pending; O(1) dedup via SET NX
 //
 //	GET  /api/v1/admin/access-requests          → ListAll() / ListPending()
-//	PUT  /api/v1/admin/access-requests/{id}/approve → UpdateStatus(id, Approved, by)
-//	PUT  /api/v1/admin/access-requests/{id}/deny    → UpdateStatus(id, Denied,   by)
+//	PUT    /api/v1/admin/access-requests/{id}/approve → Resolve(id, Approved, audit)
+//	PUT    /api/v1/admin/access-requests/{id}/deny    → Resolve(id, Denied,   audit)
+//	DELETE /api/v1/admin/access-requests/{id}         → Resolve(id, Revoked,  audit)
 //
 // Redis data model:
 //
 //	nebari:ar:{id}                Hash  — all AccessRequest fields
 //	nebari:ar:all                 Sorted Set — score=unix-ms, member=id
 //	nebari:ar:pending             Sorted Set — score=unix-ms, member=id (pending only)
-//	nebari:ar:user:{userID}       Sorted Set — score=unix-ms, member=id (per-user)
+//	nebari:ar:user:{userID}       Sorted Set — score=unix-ms, member=id (per-user subject)
 //	nebari:ar:dedup:{userID}:{svcUID}  String key (SET NX) — O(1) pending dedup
+//	nebari:ar:active:{userID}:{svcUID} String key (TTL) — current active entitlement ID
 package accessrequests
 
 import (
@@ -31,12 +33,34 @@ import (
 )
 
 const (
-	arHashPrefix  = "nebari:ar:"
-	arAllKey      = "nebari:ar:all"
-	arPendingKey  = "nebari:ar:pending"
-	arUserPrefix  = "nebari:ar:user:"
-	arDedupPrefix = "nebari:ar:dedup:"
+	arHashPrefix   = "nebari:ar:"
+	arAllKey       = "nebari:ar:all"
+	arPendingKey   = "nebari:ar:pending"
+	arUserPrefix   = "nebari:ar:user:"
+	arDedupPrefix  = "nebari:ar:dedup:"
+	arActivePrefix = "nebari:ar:active:"
 )
+
+// deleteIfMatchesScript deletes KEYS[1] only when it still holds ARGV[1]. It
+// is used for the active and dedup keys so an old request can never clear a
+// key that a newer request for the same user/service now owns.
+// recordVersionField marks records whose UserID is the caller's stable JWT
+// subject. Records without it were written before access requests switched
+// from preferred_username to sub; their UserID is a username, so approving
+// them would create an entitlement that no subject-keyed lookup ever finds.
+// Once no deployment still holds pending pre-switch records, the field and
+// the legacy check in Resolve can be removed.
+const (
+	recordVersionField   = "recordVersion"
+	recordVersionSubject = "2"
+)
+
+const deleteIfMatchesScript = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	return redis.call("DEL", KEYS[1])
+end
+return 0
+`
 
 // Status represents the lifecycle state of an AccessRequest.
 type Status string
@@ -45,6 +69,7 @@ const (
 	StatusPending  Status = "pending"
 	StatusApproved Status = "approved"
 	StatusDenied   Status = "denied"
+	StatusRevoked  Status = "revoked"
 )
 
 // AccessRequest records a user's request to access a private service.
@@ -55,7 +80,11 @@ type AccessRequest struct {
 	ServiceUID string `json:"serviceUID"`
 	// ServiceName is the human-readable name of the service at request time.
 	ServiceName string `json:"serviceName"`
-	// UserID is the caller's preferred_username (or JWT sub fallback).
+	// TargetOwner identifies the service owner/definition for audit. Today this
+	// is the target NebariApp namespace/name.
+	TargetOwner string `json:"targetOwner,omitempty"`
+	// UserID is the caller's stable JWT subject (or preferred_username fallback
+	// in development/test modes that do not provide sub).
 	UserID string `json:"userID"`
 	// UserEmail is included when present in the JWT claims.
 	UserEmail string `json:"userEmail,omitempty"`
@@ -65,10 +94,31 @@ type AccessRequest struct {
 	Status Status `json:"status"`
 	// RequestedAt is the UTC timestamp when the request was created.
 	RequestedAt time.Time `json:"requestedAt"`
-	// ResolvedAt is set when the request is approved or denied.
+	// ResolvedAt is set when the request is approved, denied, or revoked.
 	ResolvedAt *time.Time `json:"resolvedAt,omitempty"`
-	// ResolvedBy is the admin username who approved or denied the request.
+	// ResolvedBy is the stable user ID of the admin who approved, denied, or revoked the request.
 	ResolvedBy string `json:"resolvedBy,omitempty"`
+	// ResolvedByName is the display name of the admin when present in the JWT.
+	ResolvedByName string `json:"resolvedByName,omitempty"`
+	// ResolvedByEmail is the email of the admin when present in the JWT.
+	ResolvedByEmail string `json:"resolvedByEmail,omitempty"`
+	// ExpiresAt is set for approved landing-owned entitlements. Once this time
+	// passes, the approval no longer grants service access.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// legacyUserKey is true for records written before UserID switched from
+	// preferred_username to the JWT subject (no recordVersion field).
+	legacyUserKey bool
+}
+
+// Resolution records the admin action used to resolve or revoke an access
+// request. ExpiresAt is meaningful only when Status is StatusApproved.
+type Resolution struct {
+	Status          Status
+	ResolvedBy      string
+	ResolvedByName  string
+	ResolvedByEmail string
+	ExpiresAt       *time.Time
 }
 
 // Sentinel errors returned by Store operations.
@@ -77,8 +127,26 @@ var (
 	// exists for the same (userID, serviceUID) pair.
 	ErrDuplicatePending = errors.New("a pending access request already exists for this user and service")
 
+	// ErrActiveEntitlement is returned by Create when the same user already has
+	// an active approval for the same service.
+	ErrActiveEntitlement = errors.New("an active access entitlement already exists for this user and service")
+
 	// ErrNotFound is returned when a request ID does not exist in the store.
 	ErrNotFound = errors.New("access request not found")
+
+	// ErrInvalidStatus is returned when a resolution status is unsupported.
+	ErrInvalidStatus = errors.New("invalid access request status")
+
+	// ErrInvalidTransition is returned by Resolve when the request's current
+	// status does not allow the requested change. Only pending->approved,
+	// pending->denied, and approved->revoked are allowed.
+	ErrInvalidTransition = errors.New("access request status transition not allowed")
+
+	// ErrLegacyRequest is returned by Resolve when approving a request that
+	// was filed before UserID switched from preferred_username to the JWT
+	// subject. Such a request can still be denied; the user then files a new
+	// one, which is keyed by subject.
+	ErrLegacyRequest = errors.New("access request predates subject-keyed records and cannot be approved; deny it and ask the user to request access again")
 )
 
 // Store is a Redis-backed persistent store for AccessRequest records.
@@ -100,16 +168,28 @@ func (s *Store) Close() error { return nil }
 // Returns ErrDuplicatePending without writing if a pending request already
 // exists for the same (userID, serviceUID) pair — O(1) via SET NX.
 func (s *Store) Create(serviceUID, serviceName, userID, userEmail, message string) (*AccessRequest, error) {
+	return s.CreateWithOwner(serviceUID, serviceName, "", userID, userEmail, message)
+}
+
+// CreateWithOwner stores a new pending access request and records the target
+// owner identifier for audit.
+func (s *Store) CreateWithOwner(serviceUID, serviceName, targetOwner, userID, userEmail, message string) (*AccessRequest, error) {
 	ctx := context.Background()
 	req := &AccessRequest{
 		ID:          uuid.NewString(),
 		ServiceUID:  serviceUID,
 		ServiceName: serviceName,
+		TargetOwner: targetOwner,
 		UserID:      userID,
 		UserEmail:   userEmail,
 		Message:     message,
 		Status:      StatusPending,
 		RequestedAt: time.Now().UTC(),
+	}
+	if activeID, err := s.rdb.Get(ctx, arActiveKey(userID, serviceUID)).Result(); err == nil && activeID != "" {
+		return nil, ErrActiveEntitlement
+	} else if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("accessrequests.Create active entitlement: %w", err)
 	}
 	dedupKey := arDedupKey(userID, serviceUID)
 	// Atomic dedup: SET NX returns OK only if the key did not exist.
@@ -128,11 +208,13 @@ func (s *Store) Create(serviceUID, serviceName, userID, userEmail, message strin
 			"id", req.ID,
 			"serviceUID", req.ServiceUID,
 			"serviceName", req.ServiceName,
+			"targetOwner", req.TargetOwner,
 			"userID", req.UserID,
 			"userEmail", req.UserEmail,
 			"message", req.Message,
 			"status", string(req.Status),
 			"requestedAt", ts,
+			recordVersionField, recordVersionSubject,
 		)
 		z := redis.Z{Score: score, Member: req.ID}
 		pipe.ZAdd(ctx, arAllKey, z)
@@ -171,9 +253,76 @@ func (s *Store) ListPending() ([]*AccessRequest, error) {
 	return s.listFromIndex(arPendingKey)
 }
 
+// ListByStatus returns requests with the given status, newest first.
+func (s *Store) ListByStatus(status Status) ([]*AccessRequest, error) {
+	if status == StatusPending {
+		return s.ListPending()
+	}
+	all, err := s.ListAll()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*AccessRequest, 0, len(all))
+	for _, req := range all {
+		if req.Status == status {
+			out = append(out, req)
+		}
+	}
+	return out, nil
+}
+
 // ListForUser returns all requests submitted by userID, newest first.
 func (s *Store) ListForUser(userID string) ([]*AccessRequest, error) {
 	return s.listFromIndex(arUserKey(userID))
+}
+
+// ListActiveServiceUIDs returns service UIDs currently granted to userID by
+// approved, unexpired access requests.
+func (s *Store) ListActiveServiceUIDs(userID string, now time.Time) (map[string]struct{}, error) {
+	reqs, err := s.ListForUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	type candidate struct {
+		req *AccessRequest
+		cmd *redis.StringCmd
+	}
+	candidates := make([]candidate, 0, len(reqs))
+	for _, req := range reqs {
+		if !req.ActiveApproved(now) || req.ServiceUID == "" {
+			continue
+		}
+		candidates = append(candidates, candidate{req: req})
+	}
+	if len(candidates) == 0 {
+		return map[string]struct{}{}, nil
+	}
+
+	ctx := context.Background()
+	_, err = s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for i := range candidates {
+			candidates[i].cmd = pipe.Get(ctx, arActiveKey(candidates[i].req.UserID, candidates[i].req.ServiceUID))
+		}
+		return nil
+	})
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("accessrequests.ListActiveServiceUIDs active lookup: %w", err)
+	}
+
+	active := make(map[string]struct{})
+	for _, c := range candidates {
+		activeID, err := c.cmd.Result()
+		if errors.Is(err, redis.Nil) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("accessrequests.ListActiveServiceUIDs active result: %w", err)
+		}
+		if activeID == c.req.ID {
+			active[c.req.ServiceUID] = struct{}{}
+		}
+	}
+	return active, nil
 }
 
 func (s *Store) listFromIndex(indexKey string) ([]*AccessRequest, error) {
@@ -215,44 +364,133 @@ func (s *Store) listFromIndex(indexKey string) ([]*AccessRequest, error) {
 	return out, nil
 }
 
-// UpdateStatus transitions an access request to Approved or Denied and records
-// who performed the resolution. Returns the updated request.
+// resolveMaxAttempts bounds the optimistic-lock retries in Resolve. A retry
+// only happens when another writer touched the same record between our read
+// and our EXEC, so a handful of attempts is plenty.
+const resolveMaxAttempts = 3
+
+// allowedTransition reports whether an access request may move from one
+// status to another. Pending requests are decided once (approve or deny);
+// an approval can later be revoked. Everything else is terminal, so a stale
+// admin action cannot resurrect a denied, revoked, or superseded request.
+func allowedTransition(from, to Status) bool {
+	switch from {
+	case StatusPending:
+		return to == StatusApproved || to == StatusDenied
+	case StatusApproved:
+		return to == StatusRevoked
+	default:
+		return false
+	}
+}
+
+// Resolve transitions an access request to Approved, Denied, or Revoked and
+// records who performed the resolution. Returns the updated request.
+//
+// Only pending->approved, pending->denied, and approved->revoked are allowed;
+// any other transition returns ErrInvalidTransition without writing. The
+// status check and the write run in one WATCH/MULTI transaction so two admins
+// acting on the same request cannot both succeed.
+//
 // Returns ErrNotFound when the ID does not exist.
-func (s *Store) UpdateStatus(id string, status Status, resolvedBy string) (*AccessRequest, error) {
+func (s *Store) Resolve(id string, resolution Resolution) (*AccessRequest, error) {
+	if resolution.Status != StatusApproved && resolution.Status != StatusDenied && resolution.Status != StatusRevoked {
+		return nil, ErrInvalidStatus
+	}
 	ctx := context.Background()
-	// Fetch the full record so we can clean up the dedup key.
-	fields, err := s.rdb.HGetAll(ctx, arKey(id)).Result()
-	if err != nil {
-		return nil, fmt.Errorf("accessrequests.UpdateStatus get: %w", err)
-	}
-	if len(fields) == 0 {
-		return nil, ErrNotFound
-	}
-	req, err := arFromHash(fields)
-	if err != nil {
-		return nil, err
-	}
-	now := time.Now().UTC()
-	req.Status = status
-	req.ResolvedAt = &now
-	req.ResolvedBy = resolvedBy
-	resolvedAtStr := now.Format(time.RFC3339Nano)
-	_, err = s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.HSet(ctx, arKey(id),
-			"status", string(status),
-			"resolvedAt", resolvedAtStr,
-			"resolvedBy", resolvedBy,
-		)
-		// Remove from pending index; keep in all + user indexes.
-		pipe.ZRem(ctx, arPendingKey, id)
-		// Release the dedup lock so a future request can be created.
-		pipe.Del(ctx, arDedupKey(req.UserID, req.ServiceUID))
+	key := arKey(id)
+	var req *AccessRequest
+	txf := func(tx *redis.Tx) error {
+		fields, err := tx.HGetAll(ctx, key).Result()
+		if err != nil {
+			return fmt.Errorf("accessrequests.Resolve get: %w", err)
+		}
+		if len(fields) == 0 {
+			return ErrNotFound
+		}
+		req, err = arFromHash(fields)
+		if err != nil {
+			return err
+		}
+		if !allowedTransition(req.Status, resolution.Status) {
+			return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, req.Status, resolution.Status)
+		}
+		if req.legacyUserKey && resolution.Status == StatusApproved {
+			return ErrLegacyRequest
+		}
+		now := time.Now().UTC()
+		req.Status = resolution.Status
+		req.ResolvedAt = &now
+		req.ResolvedBy = resolution.ResolvedBy
+		req.ResolvedByName = resolution.ResolvedByName
+		req.ResolvedByEmail = resolution.ResolvedByEmail
+		req.ExpiresAt = nil
+		if resolution.Status == StatusApproved && resolution.ExpiresAt != nil {
+			exp := resolution.ExpiresAt.UTC()
+			req.ExpiresAt = &exp
+		}
+		resolvedAtStr := now.Format(time.RFC3339Nano)
+		activeKey := arActiveKey(req.UserID, req.ServiceUID)
+		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			pipe.HSet(ctx, key,
+				"status", string(resolution.Status),
+				"resolvedAt", resolvedAtStr,
+				"resolvedBy", resolution.ResolvedBy,
+				"resolvedByName", resolution.ResolvedByName,
+				"resolvedByEmail", resolution.ResolvedByEmail,
+			)
+			if req.ExpiresAt != nil {
+				pipe.HSet(ctx, key, "expiresAt", req.ExpiresAt.Format(time.RFC3339Nano))
+			} else {
+				pipe.HDel(ctx, key, "expiresAt")
+			}
+			if req.Status == StatusApproved && req.ExpiresAt != nil {
+				if ttl := req.ExpiresAt.Sub(now); ttl > 0 {
+					pipe.Set(ctx, activeKey, req.ID, ttl)
+				} else {
+					pipe.Eval(ctx, deleteIfMatchesScript, []string{activeKey}, req.ID)
+				}
+			} else {
+				// Resolving to denied/revoked clears this request's entitlement for
+				// the user/service pair. The compare prevents an old request from
+				// deleting a newer active approval for the same target.
+				pipe.Eval(ctx, deleteIfMatchesScript, []string{activeKey}, req.ID)
+			}
+			// Remove from pending index; keep in all + user indexes.
+			pipe.ZRem(ctx, arPendingKey, id)
+			// Release the dedup lock so a future request can be created, but only
+			// if it is still ours: once this request left pending, the key may
+			// already belong to a newer pending request for the same pair.
+			pipe.Eval(ctx, deleteIfMatchesScript, []string{arDedupKey(req.UserID, req.ServiceUID)}, req.ID)
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("accessrequests.Resolve write: %w", err)
+		}
 		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("accessrequests.UpdateStatus write: %w", err)
 	}
-	return req, nil
+
+	for attempt := 0; attempt < resolveMaxAttempts; attempt++ {
+		err := s.rdb.Watch(ctx, txf, key)
+		if err == nil {
+			return req, nil
+		}
+		if !errors.Is(err, redis.TxFailedErr) {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("accessrequests.Resolve: %w", redis.TxFailedErr)
+}
+
+// ActiveApproved reports whether this record currently grants service access.
+func (r *AccessRequest) ActiveApproved(now time.Time) bool {
+	if r == nil || r.Status != StatusApproved {
+		return false
+	}
+	if r.ExpiresAt == nil || !r.ExpiresAt.After(now) {
+		return false
+	}
+	return true
 }
 
 // --- helpers ---
@@ -261,6 +499,9 @@ func arKey(id string) string         { return arHashPrefix + id }
 func arUserKey(userID string) string { return arUserPrefix + userID }
 func arDedupKey(userID, svcUID string) string {
 	return arDedupPrefix + userID + ":" + svcUID
+}
+func arActiveKey(userID, svcUID string) string {
+	return arActivePrefix + userID + ":" + svcUID
 }
 
 func arFromHash(f map[string]string) (*AccessRequest, error) {
@@ -272,11 +513,15 @@ func arFromHash(f map[string]string) (*AccessRequest, error) {
 		ID:          f["id"],
 		ServiceUID:  f["serviceUID"],
 		ServiceName: f["serviceName"],
+		TargetOwner: f["targetOwner"],
 		UserID:      f["userID"],
 		UserEmail:   f["userEmail"],
 		Message:     f["message"],
 		Status:      Status(f["status"]),
 		RequestedAt: reqAt,
+		// Records written before the switch to subject-keyed UserIDs carry no
+		// recordVersion; see recordVersionField.
+		legacyUserKey: f[recordVersionField] == "",
 	}
 	if s := f["resolvedAt"]; s != "" {
 		t, err := time.Parse(time.RFC3339Nano, s)
@@ -286,5 +531,14 @@ func arFromHash(f map[string]string) (*AccessRequest, error) {
 		req.ResolvedAt = &t
 	}
 	req.ResolvedBy = f["resolvedBy"]
+	req.ResolvedByName = f["resolvedByName"]
+	req.ResolvedByEmail = f["resolvedByEmail"]
+	if s := f["expiresAt"]; s != "" {
+		t, err := time.Parse(time.RFC3339Nano, s)
+		if err != nil {
+			return nil, fmt.Errorf("parse expiresAt: %w", err)
+		}
+		req.ExpiresAt = &t
+	}
 	return req, nil
 }

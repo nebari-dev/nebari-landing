@@ -7,13 +7,17 @@ export type AccessRequest = {
   id: string;
   serviceUID: string;
   serviceName: string;
+  targetOwner: string;
   userID: string;
   userEmail: string;
   message: string;
-  status: "pending" | "approved" | "denied";
+  status: "pending" | "approved" | "denied" | "revoked";
   requestedAt: string;
   resolvedAt: string;
   resolvedBy: string;
+  resolvedByName: string;
+  resolvedByEmail: string;
+  expiresAt: string;
 };
 
 export const seedServices: Service[] = [
@@ -64,6 +68,7 @@ export const seedAccessRequests: AccessRequest[] = [
     id: "req-1",
     serviceUID: "svc-mlflow",
     serviceName: "MLflow",
+    targetOwner: "nebari-system/mlflow",
     userID: "alice",
     userEmail: "alice@example.com",
     message: "Need MLflow for the recsys experiments.",
@@ -71,6 +76,9 @@ export const seedAccessRequests: AccessRequest[] = [
     requestedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
     resolvedAt: "",
     resolvedBy: "",
+    resolvedByName: "",
+    resolvedByEmail: "",
+    expiresAt: "",
   },
 ];
 

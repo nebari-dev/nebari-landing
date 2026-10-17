@@ -45,24 +45,14 @@ spec:
                       value: http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080/realms/nebari
                     - name: KEYCLOAK_REALM
                       value: nebari
-                    # Keycloak admin credentials — same Secret + namespace as the operator.
-                    # The webapi service account holds a RoleBinding in the keycloak
-                    # namespace (see rbac.yaml) so it can read this secret directly
-                    # without copying or syncing it into nebari-system.
-                    - name: KEYCLOAK_ADMIN_SECRET_NAME
-                      value: nebari-realm-admin-credentials
-                    - name: KEYCLOAK_ADMIN_SECRET_NAMESPACE
-                      value: keycloak
                     # Admin access-control
                     - name: ADMIN_GROUP
                       value: admin
-                    # Persistent stores (bbolt)
-                    - name: ACCESS_REQUESTS_DB_PATH
-                      value: /data/access_requests.db
-                    - name: NOTIFICATIONS_DB_PATH
-                      value: /data/notifications.db
-                    - name: PINS_DB_PATH
-                      value: /data/pins.db
+                    # Landing-owned access-request entitlements
+                    - name: ACCESS_REQUEST_APPROVAL_TTL
+                      value: "720h"
+                    - name: ACCESS_REQUEST_REFRESH_INTERVAL
+                      value: "30s"
                     - name: REDIS_ADDR
                       value: "nebari-landing-redis-master.nebari-system.svc.cluster.local:6379"
                     - name: PORT
@@ -94,17 +84,11 @@ spec:
                       drop:
                       - ALL
                     readOnlyRootFilesystem: true
-                  volumeMounts:
-                      - name: pins-data
-                        mountPath: /data
             securityContext:
               runAsNonRoot: true
               runAsUser: 65532
               seccompProfile:
                 type: RuntimeDefault
-            volumes:
-                - name: pins-data
-                  emptyDir: {}
             terminationGracePeriodSeconds: 10
 ---
 # Source: nebari-operator/templates/webapi/service.yaml
@@ -179,42 +163,6 @@ roleRef:
     apiGroup: rbac.authorization.k8s.io
     kind: ClusterRole
     name: webapi-reader
-subjects:
-    - kind: ServiceAccount
-      name: webapi
-      namespace: nebari-system
----
-# Source: nebari-operator/templates/webapi/rbac.yaml
-# Role in the keycloak namespace so the webapi service account can read the
-# admin Secret there directly — no ExternalSecret sync or copy job needed.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-    labels:
-        app.kubernetes.io/managed-by: Helm
-        app.kubernetes.io/name: nebari-operator
-        app.kubernetes.io/component: webapi
-    name: webapi-keycloak-secret-reader
-    namespace: keycloak
-rules:
-    - apiGroups: [""]
-      resources: ["secrets"]
-      verbs: ["get"]
----
-# Source: nebari-operator/templates/webapi/rbac.yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-    labels:
-        app.kubernetes.io/managed-by: Helm
-        app.kubernetes.io/name: nebari-operator
-        app.kubernetes.io/component: webapi
-    name: webapi-keycloak-secret-reader
-    namespace: keycloak
-roleRef:
-    apiGroup: rbac.authorization.k8s.io
-    kind: Role
-    name: webapi-keycloak-secret-reader
 subjects:
     - kind: ServiceAccount
       name: webapi
