@@ -88,6 +88,16 @@ got=$(static_services -f "$tmp/a.yaml" -f "$tmp/b.yaml" -f "$tmp/c.yaml")
 jq -e '[.[].id] == ["argo"]' <<<"$got" >/dev/null \
   || fail "null entry not removed: $got"
 
+# The webapi probes the Keycloak card itself (static checks are trusted and
+# skip the probe runner), so its opt-in egress policy must allow the probe
+# target: the keycloakx pods on the port in webapi.keycloak.url.
+np=$(helm template nebari-landing "$chart" --namespace nebari-system "${toggle[@]}" \
+  --show-only templates/webapi/networkpolicy.yaml \
+  --set webapi.networkPolicy.enabled=true \
+  --set 'webapi.networkPolicy.egress.kubernetesAPI.cidrs={10.0.0.1/32}')
+grep -A12 'kubernetes.io/metadata.name: keycloak' <<<"$np" | grep -q 'port: 8080' \
+  || fail "webapi NetworkPolicy does not allow the Keycloak card probe on 8080: $np"
+
 # Misconfigurations fail at render time instead of crash-looping the webapi or
 # widening the card's audience.
 expect_render_error "frontend.keycloak.url is required" \

@@ -43,6 +43,11 @@ type App struct {
 	// ServicePort is spec.service.port — the port on the Kubernetes Service.
 	ServicePort int
 
+	// HealthCheckCrossNamespaceAllowed is true when the health-check target
+	// Service lives outside Namespace and that target namespace has explicitly
+	// granted this NebariApp namespace permission to reference the Service.
+	HealthCheckCrossNamespaceAllowed bool
+
 	// Static is true for entries loaded from the webapi's static-services
 	// configuration rather than from a NebariApp CR. Static entries are not
 	// reconciled from the cluster and do not accept access requests: access to
@@ -123,7 +128,8 @@ type HealthCheck struct {
 	// Port overrides the service port for the health probe. Useful when the
 	// target exposes health endpoints on a separate management port (e.g.
 	// Keycloak X exposes /health/ready on port 9000, not the main 8080).
-	// When 0, spec.service.port is used.
+	// The probe still targets the declared Service; protected ports are
+	// rejected. When 0, spec.service.port is used.
 	Port int
 
 	// URL is a complete probe URL that overrides the in-cluster address built
