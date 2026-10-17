@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
@@ -612,6 +613,32 @@ func TestHandleDebug_OnlyRegisteredWhenDebugModeEnabled(t *testing.T) {
 	}
 	if body.Auth.Enabled {
 		t.Error("expected auth.enabled=false")
+	}
+}
+
+func TestHandleDebug_IncludesJWTValidatorStatsAndCapsAuthorizationHeader(t *testing.T) {
+	h := NewHandler(cache.NewServiceCache(), &auth.JWTValidator{}, true, nil, nil, WithDebugMode())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/debug", nil)
+	req.Header.Set("Authorization", "Bearer "+strings.Repeat("a", maxAuthorizationHeaderBytes))
+	rr := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var body DebugResponse
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode debug response: %v", err)
+	}
+	if body.Auth.JWTValidator == nil {
+		t.Fatal("expected JWT validator stats in debug response")
+	}
+	if body.Auth.JWTValidator.Ready {
+		t.Error("expected zero-value validator to report ready=false")
+	}
+	if !strings.Contains(body.Auth.ValidationError, "authorization header exceeds maximum size") {
+		t.Errorf("expected oversized header validation error, got %q", body.Auth.ValidationError)
 	}
 }
 
