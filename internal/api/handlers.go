@@ -839,7 +839,7 @@ func (h *Handler) handleNotificationSub(w http.ResponseWriter, r *http.Request) 
 // isAdmin returns true when the caller's JWT groups contain h.adminGroup.
 func (h *Handler) isAdmin(claims *auth.Claims) bool {
 	for _, g := range claims.Groups {
-		if g == h.adminGroup {
+		if groupMatches(g, h.adminGroup) {
 			return true
 		}
 	}
@@ -1278,13 +1278,21 @@ func hasRequiredGroups(userGroups, requiredGroups []string) bool {
 
 	for _, required := range requiredGroups {
 		for _, userGroup := range userGroups {
-			if userGroup == required {
+			if groupMatches(userGroup, required) {
 				return true
 			}
 		}
 	}
 
 	return false
+}
+
+// groupMatches compares a JWT group claim against a configured group name,
+// ignoring a leading "/". nebari-operator >= v0.2.0 emits full Keycloak group
+// paths ("/admin") while NebariApps and ADMIN_GROUP use short names
+// ("admin"); older operators emit short names, so both forms must match.
+func groupMatches(claimGroup, want string) bool {
+	return strings.TrimPrefix(claimGroup, "/") == strings.TrimPrefix(want, "/")
 }
 
 // handleCallerIdentity serves GET /api/v1/caller-identity.
