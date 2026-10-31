@@ -82,6 +82,45 @@ func TestHasRequiredGroups_UserMissingGroup_ReturnsFalse(t *testing.T) {
 	}
 }
 
+func TestHasRequiredGroups_FullPathClaim_MatchesShortName(t *testing.T) {
+	// nebari-operator >= v0.2.0 emits full Keycloak group paths.
+	if !hasRequiredGroups([]string{"/devs", "/admins"}, []string{"admins"}) {
+		t.Error("full-path claim /admins should satisfy admins — expected true")
+	}
+}
+
+func TestHasRequiredGroups_ShortNameClaim_MatchesFullPath(t *testing.T) {
+	if !hasRequiredGroups([]string{"admins"}, []string{"/admins"}) {
+		t.Error("short-name claim admins should satisfy /admins — expected true")
+	}
+}
+
+func TestHasRequiredGroups_FullPathClaimMissingGroup_ReturnsFalse(t *testing.T) {
+	if hasRequiredGroups([]string{"/devs"}, []string{"admins"}) {
+		t.Error("user is missing required group — expected false")
+	}
+}
+
+// --- isAdmin ---
+
+func TestIsAdmin_MatchesShortAndFullPathClaims(t *testing.T) {
+	h := &Handler{adminGroup: "admin"}
+	cases := []struct {
+		groups []string
+		want   bool
+	}{
+		{[]string{"admin"}, true},
+		{[]string{"/admin"}, true},
+		{[]string{"/devs"}, false},
+		{nil, false},
+	}
+	for _, c := range cases {
+		if got := h.isAdmin(&auth.Claims{Groups: c.groups}); got != c.want {
+			t.Errorf("isAdmin(%v) = %v, want %v", c.groups, got, c.want)
+		}
+	}
+}
+
 // --- applyKeycloakGroupMembership ---
 
 func TestApplyKeycloakGroupMembership_NilClient_DoesNotPanic(t *testing.T) {
