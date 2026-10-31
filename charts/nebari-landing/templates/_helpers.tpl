@@ -60,6 +60,15 @@ app.kubernetes.io/component: webapi
 {{- end }}
 
 {{/*
+Selector labels for the isolated health-prober Deployment / Service.
+*/}}
+{{- define "nebari-landing.healthProber.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "nebari-landing.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: health-prober
+{{- end }}
+
+{{/*
 webapi ServiceAccount name.
 */}}
 {{- define "nebari-landing.webapi.serviceAccountName" -}}

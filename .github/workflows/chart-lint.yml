@@ -43,5 +43,19 @@ jobs:
           helm template nebari-landing charts/nebari-landing --namespace nebari-system \
             | ruby charts/nebari-landing/tests/assert-resource-defaults.rb
 
+      - name: Assert opt-in NetworkPolicy render
+        env:
+          EXPECT_NETWORK_POLICIES: webapi,health-prober
+          EXPECTED_WEBAPI_API_CIDR: 172.20.0.1/32
+        run: |
+          helm template nebari-landing charts/nebari-landing --namespace nebari-system \
+            --set webapi.networkPolicy.enabled=true \
+            --set webapi.healthProber.networkPolicy.enabled=true \
+            --set "webapi.networkPolicy.egress.kubernetesAPI.cidrs={${EXPECTED_WEBAPI_API_CIDR}}" \
+            | ruby charts/nebari-landing/tests/assert-resource-defaults.rb
+
+      - name: Assert unsafe values fail to render
+        run: charts/nebari-landing/tests/assert-render-failures.sh
+
       - name: Assert static services rendering
         run: charts/nebari-landing/tests/assert-static-services.sh

@@ -4,9 +4,11 @@
 package cache
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr/funcr"
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
 )
 
@@ -266,4 +268,586 @@ func TestGetByNamespacedName_NotFound(t *testing.T) {
 	if svc := c.GetByNamespacedName("ns", "missing"); svc != nil {
 		t.Errorf("expected nil, got %+v", svc)
 	}
+}
+
+func TestBuildHealthCheckConfig_UsesDeclaredSameNamespaceBackend(t *testing.T) {
+	c := NewServiceCache()
+	a := makeApp("uid-hc", "app", "team-a", "app.example.com", &sdapp.LandingPage{
+		Enabled: true,
+		HealthCheck: &sdapp.HealthCheck{
+			Enabled:         true,
+			Path:            "/ready?full=1",
+			IntervalSeconds: 60,
+			TimeoutSeconds:  7,
+		},
+	})
+	a.ServiceName = "app-backend"
+	a.ServicePort = 8080
+
+	c.Add(a)
+
+	svc := c.Get("uid-hc")
+	if svc == nil || svc.HealthCheckConfig == nil {
+		t.Fatalf("expected health check config, got %+v", svc)
+	}
+	if got, want := svc.HealthCheckConfig.ProbeURL, "http://app-backend.team-a:8080/ready?full=1"; got != want {
+		t.Errorf("ProbeURL = %q, want %q", got, want)
+	}
+}
+
+func TestBuildHealthCheckConfig_DeniesCrossNamespaceByDefault(t *testing.T) {
+	c := NewServiceCache()
+	a := makeApp("uid-cross", "app", "team-a", "app.example.com", &sdapp.LandingPage{
+		Enabled: true,
+		HealthCheck: &sdapp.HealthCheck{
+			Enabled: true,
+			Path:    "/ready",
+		},
+	})
+	a.ServiceName = "shared-api"
+	a.ServiceNamespace = "platform"
+	a.ServicePort = 8080
+
+	c.Add(a)
+
+	svc := c.Get("uid-cross")
+	if svc == nil {
+		t.Fatal("expected service in cache")
+	}
+	if svc.HealthCheckConfig != nil {
+		t.Fatalf("expected cross-namespace health check to be denied, got %+v", svc.HealthCheckConfig)
+	}
+}
+
+func TestBuildHealthCheckConfig_AllowsConsentedCrossNamespaceTarget(t *testing.T) {
+	c := NewServiceCache()
+	a := makeApp("uid-cross-ok", "app", "team-a", "app.example.com", &sdapp.LandingPage{
+		Enabled: true,
+		HealthCheck: &sdapp.HealthCheck{
+			Enabled: true,
+			Path:    "/ready",
+		},
+	})
+	a.ServiceName = "shared-api"
+	a.ServiceNamespace = "platform"
+	a.ServicePort = 8080
+	a.HealthCheckCrossNamespaceAllowed = true
+
+	c.Add(a)
+
+	svc := c.Get("uid-cross-ok")
+	if svc == nil || svc.HealthCheckConfig == nil {
+		t.Fatalf("expected health check config, got %+v", svc)
+	}
+	if got, want := svc.HealthCheckConfig.ProbeURL, "http://shared-api.platform:8080/ready"; got != want {
+		t.Errorf("ProbeURL = %q, want %q", got, want)
+	}
+}
+
+func TestBuildHealthCheckConfig_RejectsInvalidPath(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		path string
+	}{
+		{name: "relative", path: "ready"},
+		{name: "authority", path: "//metadata.internal/latest"},
+		{name: "bad escape", path: "/bad%zz"},
+		{name: "control character", path: "/bad\nheader"},
+		{name: "too long", path: "/" + strings.Repeat("a", maxHealthCheckPathLength)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewServiceCache()
+			c.Add(makeApp("uid-path", "app", "ns", "app.example.com", &sdapp.LandingPage{
+				Enabled: true,
+				HealthCheck: &sdapp.HealthCheck{
+					Enabled: true,
+					Path:    tt.path,
+				},
+			}))
+
+			svc := c.Get("uid-path")
+			if svc == nil {
+				t.Fatal("expected service in cache")
+			}
+			if svc.HealthCheckConfig != nil {
+				t.Fatalf("expected invalid path %q to disable health check, got %+v", tt.path, svc.HealthCheckConfig)
+			}
+		})
+	}
+}
+
+func TestBuildHealthCheckConfig_ClampsIntervalAndTimeout(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		interval     int
+		timeout      int
+		wantInterval int
+		wantTimeout  int
+	}{
+		{
+			name:         "defaults",
+			wantInterval: defaultHealthCheckIntervalSeconds,
+			wantTimeout:  defaultHealthCheckTimeoutSeconds,
+		},
+		{
+			name:         "minimum interval",
+			interval:     1,
+			timeout:      5,
+			wantInterval: minHealthCheckIntervalSeconds,
+			wantTimeout:  5,
+		},
+		{
+			name:         "maximum interval and timeout",
+			interval:     999,
+			timeout:      999,
+			wantInterval: maxHealthCheckIntervalSeconds,
+			wantTimeout:  maxHealthCheckTimeoutSeconds,
+		},
+		{
+			name:         "timeout cannot exceed interval",
+			interval:     10,
+			timeout:      30,
+			wantInterval: 10,
+			wantTimeout:  10,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewServiceCache()
+			c.Add(makeApp("uid-bounds", "app", "ns", "app.example.com", &sdapp.LandingPage{
+				Enabled: true,
+				HealthCheck: &sdapp.HealthCheck{
+					Enabled:         true,
+					Path:            "/ready",
+					IntervalSeconds: tt.interval,
+					TimeoutSeconds:  tt.timeout,
+				},
+			}))
+
+			svc := c.Get("uid-bounds")
+			if svc == nil || svc.HealthCheckConfig == nil {
+				t.Fatalf("expected health check config, got %+v", svc)
+			}
+			if got := svc.HealthCheckConfig.IntervalSeconds; got != tt.wantInterval {
+				t.Errorf("IntervalSeconds = %d, want %d", got, tt.wantInterval)
+			}
+			if got := svc.HealthCheckConfig.TimeoutSeconds; got != tt.wantTimeout {
+				t.Errorf("TimeoutSeconds = %d, want %d", got, tt.wantTimeout)
+			}
+		})
+	}
+}
+
+func TestBuildHealthCheckConfig_RejectsInvalidPort(t *testing.T) {
+	c := NewServiceCache()
+	c.Add(makeApp("uid-port", "app", "ns", "app.example.com", &sdapp.LandingPage{
+		Enabled: true,
+		HealthCheck: &sdapp.HealthCheck{
+			Enabled: true,
+			Path:    "/ready",
+			Port:    70000,
+		},
+	}))
+
+	svc := c.Get("uid-port")
+	if svc == nil {
+		t.Fatal("expected service in cache")
+	}
+	if svc.HealthCheckConfig != nil {
+		t.Fatalf("expected invalid port to disable health check, got %+v", svc.HealthCheckConfig)
+	}
+}
+
+func TestBuildHealthCheckConfig_RejectsInvalidServiceDNSName(t *testing.T) {
+	c := NewServiceCache()
+	a := makeApp("uid-service-name", "app", "ns", "app.example.com", &sdapp.LandingPage{
+		Enabled: true,
+		HealthCheck: &sdapp.HealthCheck{
+			Enabled: true,
+			Path:    "/ready",
+		},
+	})
+	a.ServiceName = "bad_name"
+	c.Add(a)
+
+	svc := c.Get("uid-service-name")
+	if svc == nil {
+		t.Fatal("expected service in cache")
+	}
+	if svc.HealthCheckConfig != nil {
+		t.Fatalf("expected invalid service name to disable health check, got %+v", svc.HealthCheckConfig)
+	}
+}
+
+func TestBuildHealthCheckConfig_RejectsInvalidServiceNamespace(t *testing.T) {
+	c := NewServiceCache()
+	a := makeApp("uid-service-namespace", "app", "ns", "app.example.com", &sdapp.LandingPage{
+		Enabled: true,
+		HealthCheck: &sdapp.HealthCheck{
+			Enabled: true,
+			Path:    "/ready",
+		},
+	})
+	a.ServiceNamespace = "bad_namespace"
+	a.HealthCheckCrossNamespaceAllowed = true
+	c.Add(a)
+
+	svc := c.Get("uid-service-namespace")
+	if svc == nil {
+		t.Fatal("expected service in cache")
+	}
+	if svc.HealthCheckConfig != nil {
+		t.Fatalf("expected invalid service namespace to disable health check, got %+v", svc.HealthCheckConfig)
+	}
+}
+
+func TestBuildHealthCheckConfig_RejectsProtectedTargets(t *testing.T) {
+	for _, tt := range []struct {
+		name             string
+		namespace        string
+		serviceName      string
+		servicePort      int
+		crossNamespaceOK bool
+	}{
+		{
+			name:             "system namespace",
+			namespace:        "kube-system",
+			serviceName:      "app-backend",
+			servicePort:      8080,
+			crossNamespaceOK: true,
+		},
+		{
+			name:             "identity namespace",
+			namespace:        "keycloak",
+			serviceName:      "app-backend",
+			servicePort:      8080,
+			crossNamespaceOK: true,
+		},
+		{
+			name:             "API server Service",
+			namespace:        "default",
+			serviceName:      "kubernetes",
+			servicePort:      443,
+			crossNamespaceOK: true,
+		},
+		{
+			name:             "system namespace suffix",
+			namespace:        "longhorn-system",
+			serviceName:      "longhorn-frontend",
+			servicePort:      80,
+			crossNamespaceOK: true,
+		},
+		{
+			name:        "database port",
+			namespace:   "team-a",
+			serviceName: "app-backend",
+			servicePort: 5432,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewServiceCache()
+			a := makeApp("uid-protected", "app", "team-a", "app.example.com", &sdapp.LandingPage{
+				Enabled: true,
+				HealthCheck: &sdapp.HealthCheck{
+					Enabled: true,
+					Path:    "/ready",
+				},
+			})
+			a.ServiceNamespace = tt.namespace
+			a.ServiceName = tt.serviceName
+			a.ServicePort = tt.servicePort
+			a.HealthCheckCrossNamespaceAllowed = tt.crossNamespaceOK
+
+			c.Add(a)
+
+			svc := c.Get("uid-protected")
+			if svc == nil {
+				t.Fatal("expected service in cache")
+			}
+			if svc.HealthCheckConfig != nil {
+				t.Fatalf("expected protected target to disable health check, got %+v", svc.HealthCheckConfig)
+			}
+		})
+	}
+}
+
+// healthCheckApp returns a same-namespace app with an enabled health check on
+// the given backend Service.
+func healthCheckApp(uid, serviceName string, servicePort, healthPort int) *sdapp.App {
+	a := makeApp(uid, "app", "team-a", "app.example.com", &sdapp.LandingPage{
+		Enabled: true,
+		HealthCheck: &sdapp.HealthCheck{
+			Enabled: true,
+			Path:    "/ready",
+			Port:    healthPort,
+		},
+	})
+	a.ServiceName = serviceName
+	a.ServicePort = servicePort
+	return a
+}
+
+// The NebariApp CRD documents healthCheck.port as overriding the service port
+// (e.g. Keycloak X's management port 9000), so it must keep working.
+func TestBuildHealthCheckConfig_HonoursHealthCheckPortOverride(t *testing.T) {
+	c := NewServiceCache()
+	c.Add(healthCheckApp("uid-port-override", "app-backend", 8080, 9000))
+
+	svc := c.Get("uid-port-override")
+	if svc == nil || svc.HealthCheckConfig == nil {
+		t.Fatalf("expected health check config, got %+v", svc)
+	}
+	if got, want := svc.HealthCheckConfig.ProbeURL, "http://app-backend.team-a:9000/ready"; got != want {
+		t.Errorf("ProbeURL = %q, want %q", got, want)
+	}
+}
+
+func TestBuildHealthCheckConfig_RejectsProtectedHealthCheckPortOverride(t *testing.T) {
+	cfg, reason := buildHealthCheckConfig(healthCheckApp("uid-port-protected", "app-backend", 8080, 5432))
+	if cfg != nil {
+		t.Fatalf("expected protected healthCheck.port to disable health check, got %+v", cfg)
+	}
+	if !strings.Contains(reason, "port 5432 is protected") {
+		t.Errorf("reason = %q, want it to name the protected port", reason)
+	}
+}
+
+// Service names are not pattern-matched: names that merely contain tokens
+// such as "kube", "dns", "redis" or "keycloak" are ordinary pack backends.
+func TestBuildHealthCheckConfig_AllowsServiceNamesWithInfrastructureTokens(t *testing.T) {
+	for _, serviceName := range []string{
+		"kube-prometheus-stack-grafana",
+		"external-dns-ui",
+		"redis-insight",
+		"keycloak-theme-preview",
+		"metadata-api",
+	} {
+		t.Run(serviceName, func(t *testing.T) {
+			cfg, reason := buildHealthCheckConfig(healthCheckApp("uid-"+serviceName, serviceName, 80, 0))
+			if cfg == nil {
+				t.Fatalf("expected health check config, dropped: %s", reason)
+			}
+		})
+	}
+}
+
+func TestBuildHealthCheckConfig_ReturnsDropReason(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		app  func() *sdapp.App
+		want string
+	}{
+		{
+			name: "invalid path",
+			app: func() *sdapp.App {
+				a := healthCheckApp("uid", "app-backend", 8080, 0)
+				a.LandingPage.HealthCheck.Path = "relative"
+				return a
+			},
+			want: "healthCheck.path",
+		},
+		{
+			name: "invalid service name",
+			app:  func() *sdapp.App { return healthCheckApp("uid", "bad_name", 8080, 0) },
+			want: "not a valid DNS-1035 label",
+		},
+		{
+			name: "port out of range",
+			app:  func() *sdapp.App { return healthCheckApp("uid", "app-backend", 8080, 70000) },
+			want: "outside 1-65535",
+		},
+		{
+			name: "invalid namespace",
+			app: func() *sdapp.App {
+				a := healthCheckApp("uid", "app-backend", 8080, 0)
+				a.ServiceNamespace = "bad_namespace"
+				a.HealthCheckCrossNamespaceAllowed = true
+				return a
+			},
+			want: "not a valid DNS-1123 label",
+		},
+		{
+			name: "cross-namespace without consent",
+			app: func() *sdapp.App {
+				a := healthCheckApp("uid", "app-backend", 8080, 0)
+				a.ServiceNamespace = "team-b"
+				return a
+			},
+			want: "no ReferenceGrant",
+		},
+		{
+			name: "protected namespace",
+			app: func() *sdapp.App {
+				a := healthCheckApp("uid", "app-backend", 8080, 0)
+				a.ServiceNamespace = "keycloak"
+				a.HealthCheckCrossNamespaceAllowed = true
+				return a
+			},
+			want: `namespace "keycloak" is protected`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, reason := buildHealthCheckConfig(tt.app())
+			if cfg != nil {
+				t.Fatalf("expected health check to be dropped, got %+v", cfg)
+			}
+			if !strings.Contains(reason, tt.want) {
+				t.Errorf("reason = %q, want it to contain %q", reason, tt.want)
+			}
+		})
+	}
+
+	if cfg, reason := buildHealthCheckConfig(makeApp("uid", "app", "team-a", "app.example.com", &sdapp.LandingPage{Enabled: true})); cfg != nil || reason != "" {
+		t.Errorf("unconfigured health check: got %+v / %q, want nil / empty reason", cfg, reason)
+	}
+}
+
+// A dropped health check is logged once per change of reason, not on every
+// watcher update of the same NebariApp.
+func TestAdd_LogsDroppedHealthCheckOncePerChange(t *testing.T) {
+	var lines []string
+	c := NewServiceCache()
+	c.log = funcr.New(func(_, args string) { lines = append(lines, args) }, funcr.Options{})
+
+	denied := healthCheckApp("uid-log", "app-backend", 8080, 0)
+	denied.ServiceNamespace = "team-b"
+	for i := 0; i < 3; i++ {
+		c.Add(denied)
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], "no ReferenceGrant") {
+		t.Fatalf("after repeated identical updates got logs %q, want one drop log", lines)
+	}
+
+	protected := healthCheckApp("uid-log", "app-backend", 8080, 6379)
+	c.Add(protected)
+	c.Add(protected)
+	if len(lines) != 2 || !strings.Contains(lines[1], "port 6379 is protected") {
+		t.Fatalf("after reason change got logs %q, want a second drop log", lines)
+	}
+
+	c.Add(healthCheckApp("uid-log", "app-backend", 8080, 0))
+	c.Add(healthCheckApp("uid-log", "app-backend", 8080, 0))
+	if len(lines) != 3 || !strings.Contains(lines[2], "enabled again") {
+		t.Fatalf("after fix got logs %q, want one re-enabled log", lines)
+	}
+
+	c.Add(protected)
+	c.Remove("uid-log")
+	c.Add(protected)
+	if len(lines) != 5 {
+		t.Fatalf("after remove and re-add got logs %q, want the drop logged again", lines)
+	}
+}
+
+func TestAdd_ResetsHealthWhenConfiguredHealthCheckBecomesInvalid(t *testing.T) {
+	c := NewServiceCache()
+	a := makeApp("uid-reset", "app", "ns", "app.example.com", &sdapp.LandingPage{
+		Enabled: true,
+		HealthCheck: &sdapp.HealthCheck{
+			Enabled: true,
+			Path:    "/ready",
+		},
+	})
+	c.Add(a)
+	now := time.Now()
+	c.UpdateHealth("uid-reset", &HealthStatus{Status: "healthy", LastCheck: &now})
+
+	a.ServiceNamespace = "other-ns"
+	c.Add(a)
+
+	svc := c.Get("uid-reset")
+	if svc == nil {
+		t.Fatal("expected service in cache")
+	}
+	if svc.HealthCheckConfig != nil {
+		t.Fatalf("expected denied health check config, got %+v", svc.HealthCheckConfig)
+	}
+	if svc.Health == nil || svc.Health.Status != "unknown" || svc.Health.LastCheck != nil {
+		t.Fatalf("expected health to reset to unknown, got %+v", svc.Health)
+	}
+}
+
+func TestAdd_ResetsHealthWhenHealthCheckIsRemoved(t *testing.T) {
+	c := NewServiceCache()
+	a := makeApp("uid-remove-health", "app", "ns", "app.example.com", &sdapp.LandingPage{
+		Enabled: true,
+		HealthCheck: &sdapp.HealthCheck{
+			Enabled: true,
+			Path:    "/ready",
+		},
+	})
+	c.Add(a)
+	now := time.Now()
+	c.UpdateHealth("uid-remove-health", &HealthStatus{Status: "healthy", LastCheck: &now})
+
+	a.LandingPage.HealthCheck = nil
+	c.Add(a)
+
+	svc := c.Get("uid-remove-health")
+	if svc == nil {
+		t.Fatal("expected service in cache")
+	}
+	if svc.HealthCheckConfig != nil {
+		t.Fatalf("expected removed health check config, got %+v", svc.HealthCheckConfig)
+	}
+	if svc.Health == nil || svc.Health.Status != "unknown" || svc.Health.LastCheck != nil {
+		t.Fatalf("expected health to reset to unknown, got %+v", svc.Health)
+	}
+}
+
+func TestBuildHealthCheckConfig_StaticURLIsTrusted(t *testing.T) {
+	a := &sdapp.App{
+		UID:    "static-keycloak",
+		Name:   "keycloak",
+		Static: true,
+		LandingPage: &sdapp.LandingPage{Enabled: true, HealthCheck: &sdapp.HealthCheck{
+			Enabled:         true,
+			URL:             "http://keycloak.keycloak.svc:8080/realms/nebari",
+			IntervalSeconds: 1,
+		}},
+	}
+	cfg, reason := buildHealthCheckConfig(a)
+	if cfg == nil {
+		t.Fatalf("expected a config for the static entry, dropped: %s", reason)
+	}
+	want := HealthCheckConfig{
+		ProbeURL:        "http://keycloak.keycloak.svc:8080/realms/nebari",
+		IntervalSeconds: minHealthCheckIntervalSeconds,
+		TimeoutSeconds:  defaultHealthCheckTimeoutSeconds,
+		Trusted:         true,
+	}
+	if *cfg != want {
+		t.Fatalf("config = %+v, want %+v", *cfg, want)
+	}
+}
+
+func TestBuildHealthCheckConfig_NebariAppConfigsAreUntrusted(t *testing.T) {
+	cfg, reason := buildHealthCheckConfig(untrustedHealthCheckApp())
+	if cfg == nil {
+		t.Fatalf("expected a config, dropped: %s", reason)
+	}
+	if cfg.Trusted {
+		t.Fatal("a NebariApp health check must not be trusted")
+	}
+}
+
+func TestBuildHealthCheckConfig_RejectsURLFromNebariApp(t *testing.T) {
+	a := untrustedHealthCheckApp()
+	a.LandingPage.HealthCheck.URL = "http://keycloak.keycloak.svc:8080/realms/nebari"
+	cfg, reason := buildHealthCheckConfig(a)
+	if cfg != nil {
+		t.Fatalf("expected a NebariApp-supplied probe URL to be dropped, got %+v", *cfg)
+	}
+	if !strings.Contains(reason, "static configuration") {
+		t.Fatalf("reason = %q, want it to name static configuration", reason)
+	}
+}
+
+func untrustedHealthCheckApp() *sdapp.App {
+	a := makeApp("uid-untrusted", "app", "team-a", "app.example.com", &sdapp.LandingPage{
+		Enabled:     true,
+		HealthCheck: &sdapp.HealthCheck{Enabled: true, Path: "/ready"},
+	})
+	a.ServiceName = "app-backend"
+	a.ServicePort = 8080
+	return a
 }
