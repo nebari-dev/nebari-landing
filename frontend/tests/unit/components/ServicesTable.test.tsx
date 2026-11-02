@@ -1,8 +1,9 @@
 import { renderWithProviders as render } from "@/test/render";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ServicesTable } from "@/components/ServiceTable";
+import { DEFAULT_SORT, type ServiceSort } from "@/lib/services";
 
 const services = [
   {
@@ -27,22 +28,41 @@ const services = [
   },
 ];
 
+function renderTable({
+  sort = DEFAULT_SORT,
+  onSortChange = vi.fn(),
+  onTogglePin = vi.fn(),
+}: {
+  sort?: ServiceSort;
+  onSortChange?: (sort: ServiceSort) => void;
+  onTogglePin?: (serviceId: string, nextPinned: boolean) => void;
+} = {}) {
+  return render(
+    <ServicesTable
+      services={services}
+      sort={sort}
+      onSortChange={onSortChange}
+      onTogglePin={onTogglePin}
+    />,
+  );
+}
+
 describe("ServicesTable", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it("renders the table headers", () => {
-    render(<ServicesTable services={services} onTogglePin={vi.fn()} />);
+    renderTable();
 
-    expect(screen.getByText("Service")).toBeInTheDocument();
-    expect(screen.getByText("Category")).toBeInTheDocument();
-    expect(screen.getByText("Status")).toBeInTheDocument();
-    expect(screen.getByText("Actions")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Pinned" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Service" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Category" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
   });
 
   it("renders the services and their categories", () => {
-    render(<ServicesTable services={services} onTogglePin={vi.fn()} />);
+    renderTable();
 
     expect(screen.getByText("JupyterHub")).toBeInTheDocument();
     expect(screen.getByText("Grafana")).toBeInTheDocument();
@@ -50,25 +70,38 @@ describe("ServicesTable", () => {
     expect(screen.getByText("observability")).toBeInTheDocument();
   });
 
-  it("renders clickable service rows", () => {
-    render(<ServicesTable services={services} onTogglePin={vi.fn()} />);
+  it("lists pinned services first", () => {
+    renderTable();
 
-    expect(
-      screen.getByRole("link", { name: /jupyterhub \(opens in a new tab\)/i }),
-    ).toBeInTheDocument();
+    const [, firstRow, secondRow] = screen.getAllByRole("row");
+    expect(firstRow).toHaveTextContent("Grafana");
+    expect(secondRow).toHaveTextContent("JupyterHub");
+  });
 
-    expect(
-      screen.getByRole("link", { name: /grafana \(opens in a new tab\)/i }),
-    ).toBeInTheDocument();
+  it("shows each service's description and status", () => {
+    renderTable();
+
+    const row = screen.getByRole("row", { name: /Grafana/ });
+    expect(within(row).getByText("Metrics dashboards")).toBeInTheDocument();
+    expect(within(row).getByText("Unhealthy")).toBeInTheDocument();
+  });
+
+  it("links each service name to the service in a new tab", () => {
+    renderTable();
+
+    const link = screen.getByRole("link", { name: "JupyterHub (opens in a new tab)" });
+    expect(link).toHaveAttribute("href", "https://example.com/jupyterhub");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(screen.queryByRole("link", { name: /^open /i })).not.toBeInTheDocument();
   });
 
   it("opens the service url when a row is clicked", async () => {
     const user = userEvent.setup();
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 
-    render(<ServicesTable services={services} onTogglePin={vi.fn()} />);
+    renderTable();
 
-    await user.click(screen.getByRole("link", { name: /jupyterhub \(opens in a new tab\)/i }));
+    await user.click(screen.getByText("Notebook platform"));
 
     expect(openSpy).toHaveBeenCalledWith(
       "https://example.com/jupyterhub",
@@ -77,25 +110,75 @@ describe("ServicesTable", () => {
     );
   });
 
+  it("does not open the service a second time when the name link is clicked", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderTable();
+
+    const link = screen.getByRole("link", { name: /JupyterHub/ });
+    link.addEventListener("click", (event) => event.preventDefault());
+    await user.click(link);
+
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
   it("calls onTogglePin when the pin button is clicked", async () => {
     const user = userEvent.setup();
     const onTogglePin = vi.fn();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 
-    render(<ServicesTable services={services} onTogglePin={onTogglePin} />);
+    renderTable({ onTogglePin });
 
     await user.click(screen.getByRole("button", { name: /^Pin service$/i }));
 
     expect(onTogglePin).toHaveBeenCalledWith("svc-1", true);
+    expect(openSpy).not.toHaveBeenCalled();
   });
 
   it("calls onTogglePin with false for a pinned service", async () => {
     const user = userEvent.setup();
     const onTogglePin = vi.fn();
 
-    render(<ServicesTable services={services} onTogglePin={onTogglePin} />);
+    renderTable({ onTogglePin });
 
     await user.click(screen.getByRole("button", { name: /^Unpin service$/i }));
 
     expect(onTogglePin).toHaveBeenCalledWith("svc-2", false);
+  });
+
+  it("marks the active sort column", () => {
+    renderTable({ sort: { key: "category", direction: "desc" } });
+
+    expect(screen.getByRole("columnheader", { name: "Category" })).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
+    expect(screen.getByRole("columnheader", { name: "Service" })).toHaveAttribute(
+      "aria-sort",
+      "none",
+    );
+  });
+
+  it("flips the direction when the active column header is clicked", async () => {
+    const user = userEvent.setup();
+    const onSortChange = vi.fn();
+
+    renderTable({ onSortChange });
+
+    await user.click(screen.getByRole("button", { name: "Service" }));
+
+    expect(onSortChange).toHaveBeenCalledWith({ key: "name", direction: "desc" });
+  });
+
+  it("sorts ascending by a newly chosen column", async () => {
+    const user = userEvent.setup();
+    const onSortChange = vi.fn();
+
+    renderTable({ sort: { key: "name", direction: "desc" }, onSortChange });
+
+    await user.click(screen.getByRole("button", { name: "Status" }));
+
+    expect(onSortChange).toHaveBeenCalledWith({ key: "status", direction: "asc" });
   });
 });

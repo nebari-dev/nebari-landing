@@ -28,7 +28,11 @@ export default function App() {
         logoSrcDark={config?.logoUrlDark || undefined}
       />
 
-      <Content services={services} onTogglePin={onTogglePin} />
+      <Content
+        services={services}
+        userName={user?.name.split(/\s+/)[0]}
+        onTogglePin={onTogglePin}
+      />
       <Banner position="bottom" config={config?.banners?.bottom} />
     </main>
   );

@@ -32,6 +32,12 @@ describe("ServiceGridCard", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
+  it("renders the service status", () => {
+    render(<ServiceGridCard service={baseService} onTogglePin={vi.fn()} />);
+
+    expect(screen.getByText("Healthy")).toBeInTheDocument();
+  });
+
   it("calls onTogglePin with the next pinned state", async () => {
     const user = userEvent.setup();
     const onTogglePin = vi.fn();
@@ -54,5 +60,11 @@ describe("ServiceGridCard", () => {
     await user.click(screen.getByRole("button", { name: /unpin service/i }));
 
     expect(onTogglePin).toHaveBeenCalledWith("svc-1", false);
+  });
+
+  it("renders without a pin control when pinning is not offered", () => {
+    render(<ServiceGridCard service={baseService} />);
+
+    expect(screen.queryByRole("button", { name: /pin service/i })).not.toBeInTheDocument();
   });
 });

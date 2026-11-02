@@ -1,5 +1,5 @@
 import { renderWithProviders as render } from "@/test/render";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ServicesAccordion } from "@/components/ServiceAccordion";
 
@@ -26,43 +26,43 @@ const services = [
   },
 ];
 
+function renderAccordion(pinnedServices = services.filter((service) => service.pinned)) {
+  return render(
+    <ServicesAccordion
+      pinnedServices={pinnedServices}
+      otherServices={services.filter((service) => !service.pinned)}
+      onTogglePin={vi.fn()}
+    />,
+  );
+}
+
 describe("ServicesAccordion", () => {
-  it("renders the pinned and all services sections", () => {
-    render(
-      <ServicesAccordion
-        pinnedServices={services.filter((service) => service.pinned)}
-        services={services}
-        onTogglePin={vi.fn()}
-      />,
-    );
+  it("renders the pinned and all services sections with their counts", () => {
+    renderAccordion();
 
-    expect(screen.getByText("Pinned services")).toBeInTheDocument();
-    expect(screen.getByText("All services")).toBeInTheDocument();
-    expect(screen.getByText("Quick access to your most-used tools")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pinned 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All services 1" })).toBeInTheDocument();
   });
 
-  it("renders pinned services in the pinned section by default", () => {
-    render(
-      <ServicesAccordion
-        pinnedServices={services.filter((service) => service.pinned)}
-        services={services}
-        onTogglePin={vi.fn()}
-      />,
-    );
+  it("renders pinned services as cards in the pinned section", () => {
+    renderAccordion();
 
-    expect(screen.getAllByText("JupyterHub")).toHaveLength(2);
+    const pinned = screen.getByRole("region", { name: /Pinned/ });
+    expect(within(pinned).getByText("JupyterHub")).toBeInTheDocument();
+    expect(within(pinned).queryByText("Grafana")).not.toBeInTheDocument();
   });
 
-  it("renders all services in the services section by default", () => {
-    render(
-      <ServicesAccordion
-        pinnedServices={services.filter((service) => service.pinned)}
-        services={services}
-        onTogglePin={vi.fn()}
-      />,
-    );
+  it("does not repeat pinned services in the all services section", () => {
+    renderAccordion();
 
-    expect(screen.getAllByText("JupyterHub")).toHaveLength(2);
-    expect(screen.getByText("Grafana")).toBeInTheDocument();
+    const all = screen.getByRole("region", { name: /All services/ });
+    expect(within(all).getByText("Grafana")).toBeInTheDocument();
+    expect(within(all).queryByText("JupyterHub")).not.toBeInTheDocument();
+  });
+
+  it("explains an empty pinned section", () => {
+    renderAccordion([]);
+
+    expect(screen.getByText("No pinned services yet.")).toBeInTheDocument();
   });
 });

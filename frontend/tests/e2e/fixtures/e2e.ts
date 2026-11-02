@@ -1,10 +1,14 @@
 import { test as base, expect } from "@playwright/test";
+import { type MockService, richerServices } from "./services";
 
 export const test = base.extend<{
+  /** Services served by the mocked API; override with `test.use({ services: [list, { scope: "test" }] })`. */
+  services: MockService[];
   mockApp: void;
 }>({
+  services: [richerServices, { option: true }],
   mockApp: [
-    async ({ context }, use) => {
+    async ({ context, services }, use) => {
       await context.addInitScript(() => {
         window.__PW_E2E_AUTH__ = {
           authenticated: true,
@@ -24,18 +28,7 @@ export const test = base.extend<{
           await route.fulfill({
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify([
-              {
-                id: "svc-1",
-                name: "JupyterHub",
-                status: "Healthy",
-                description: "Notebook platform",
-                category: ["Data Science"],
-                pinned: true,
-                image: "",
-                url: "https://example.com/jupyterhub",
-              },
-            ]),
+            body: JSON.stringify(services),
           });
         },
       );
