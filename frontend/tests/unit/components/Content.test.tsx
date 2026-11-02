@@ -1,8 +1,10 @@
 import { renderWithProviders as render } from "@/test/render";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Service } from "@/api/listServices";
 import { Content } from "@/components/Content";
+import type { ServicesStatus } from "@/hooks/useLaunchpadData";
 
 function makeServices(count: number): Service[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -16,9 +18,33 @@ function makeServices(count: number): Service[] {
   }));
 }
 
+function renderContent({
+  services = [],
+  status = "ready",
+  onRetry = vi.fn(),
+  userName,
+}: {
+  services?: Service[];
+  status?: ServicesStatus;
+  onRetry?: () => void;
+  userName?: string;
+}) {
+  return render(
+    <Content
+      services={services}
+      status={status}
+      onRetry={onRetry}
+      userName={userName}
+      onTogglePin={vi.fn()}
+    />,
+  );
+}
+
+const skeletonCards = () => document.querySelectorAll('[data-slot="card"][aria-hidden="true"]');
+
 describe("Content", () => {
   it("renders the simple layout for fewer than 6 services", () => {
-    render(<Content services={makeServices(5)} userName="Sam" onTogglePin={vi.fn()} />);
+    renderContent({ services: makeServices(5), userName: "Sam" });
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Welcome back, Sam");
     expect(screen.queryByRole("textbox", { name: "Search services" })).not.toBeInTheDocument();
@@ -30,8 +56,7 @@ describe("Content", () => {
   });
 
   it("keeps the API order in the simple layout", () => {
-    const services = makeServices(3).reverse();
-    render(<Content services={services} onTogglePin={vi.fn()} />);
+    renderContent({ services: makeServices(3).reverse() });
 
     expect(
       screen
@@ -45,7 +70,7 @@ describe("Content", () => {
   });
 
   it("renders the richer layout for 6 or more services", () => {
-    render(<Content services={makeServices(6)} onTogglePin={vi.fn()} />);
+    renderContent({ services: makeServices(6) });
 
     expect(screen.getByRole("textbox", { name: "Search services" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Filter by category" })).toBeInTheDocument();
@@ -53,5 +78,63 @@ describe("Content", () => {
     expect(screen.getByRole("group", { name: "View" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pinned 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All services 5" })).toBeInTheDocument();
+  });
+
+  it("shows the simple skeleton grid while loading on a first visit", () => {
+    renderContent({ status: "loading" });
+
+    expect(screen.getByRole("status")).toHaveTextContent("Loading services…");
+    expect(skeletonCards()).toHaveLength(5);
+    expect(screen.queryByRole("textbox", { name: "Search services" })).not.toBeInTheDocument();
+    expect(screen.queryByText("No services yet")).not.toBeInTheDocument();
+  });
+
+  it("shows the richer skeleton sections when the services last loaded in the richer layout", () => {
+    window.localStorage.setItem("launchpad:servicesLayout", "richer");
+    renderContent({ status: "loading" });
+
+    expect(screen.getByRole("textbox", { name: "Search services" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pinned" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All services" })).toBeInTheDocument();
+    expect(skeletonCards()).toHaveLength(8);
+  });
+
+  it("remembers which layout the services rendered in", () => {
+    const { unmount } = renderContent({ services: makeServices(6) });
+    expect(window.localStorage.getItem("launchpad:servicesLayout")).toBe("richer");
+    unmount();
+
+    renderContent({ services: makeServices(2) });
+    expect(window.localStorage.getItem("launchpad:servicesLayout")).toBe("simple");
+  });
+
+  it("does not remember a layout while loading or after an error", () => {
+    renderContent({ status: "loading" });
+    renderContent({ status: "error" });
+
+    expect(window.localStorage.getItem("launchpad:servicesLayout")).toBeNull();
+  });
+
+  it("explains an empty deployment", () => {
+    renderContent({ services: [] });
+
+    expect(screen.getByRole("heading", { name: "No services yet" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Your admin hasn't added any services to this deployment/),
+    ).toBeInTheDocument();
+  });
+
+  it("reports a failed request and retries on request", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    renderContent({ status: "error", onRetry });
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't load services");
+    expect(screen.queryByText("No services yet")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 });

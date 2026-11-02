@@ -1,6 +1,8 @@
 import { test as base, expect } from "@playwright/test";
 import { type MockService, richerServices } from "./services";
 
+export const SERVICES_URL = /^https?:\/\/[^/]+\/api\/v1\/services\/?(?:\?.*)?$/;
+
 export const test = base.extend<{
   /** Services served by the mocked API; override with `test.use({ services: [list, { scope: "test" }] })`. */
   services: MockService[];
@@ -22,16 +24,13 @@ export const test = base.extend<{
         };
       });
 
-      await context.route(
-        /^https?:\/\/[^/]+\/api\/v1\/services\/?(?:\?.*)?$/,
-        async (route) => {
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify(services),
-          });
-        },
-      );
+      await context.route(SERVICES_URL, async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(services),
+        });
+      });
 
       await context.route(
         /^https?:\/\/[^/]+\/api\/v1\/pins\/[^/?]+(?:\?.*)?$/,

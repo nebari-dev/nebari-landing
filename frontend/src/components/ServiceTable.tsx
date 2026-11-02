@@ -2,6 +2,7 @@ import type { Service } from "../api/listServices";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import type { ServiceSort, SortKey } from "../lib/services";
 import { ServiceTableRow } from "./ServiceTableRow";
+import { ServiceTableRowSkeleton } from "./ServiceTableRowSkeleton";
 import { SortableTableHead } from "./SortableTableHead";
 
 type ServicesTableProps = {
@@ -10,9 +11,17 @@ type ServicesTableProps = {
   sort: ServiceSort;
   onSortChange: (sort: ServiceSort) => void;
   onTogglePin?: (serviceId: string, nextPinned: boolean) => void;
+  /** Shows skeleton rows under the headers while the services load. */
+  loading?: boolean;
 };
 
-export function ServicesTable({ services, sort, onSortChange, onTogglePin }: ServicesTableProps) {
+export function ServicesTable({
+  services,
+  sort,
+  onSortChange,
+  onTogglePin,
+  loading = false,
+}: ServicesTableProps) {
   const orderedServices = [
     ...services.filter((service) => service.pinned),
     ...services.filter((service) => !service.pinned),
@@ -50,9 +59,13 @@ export function ServicesTable({ services, sort, onSortChange, onTogglePin }: Ser
       </TableHeader>
 
       <TableBody>
-        {orderedServices.map((service) => (
-          <ServiceTableRow key={service.id} service={service} onTogglePin={onTogglePin} />
-        ))}
+        {loading
+          ? Array.from({ length: 8 }, (_, index) => (
+              <ServiceTableRowSkeleton key={index} index={index} />
+            ))
+          : orderedServices.map((service) => (
+              <ServiceTableRow key={service.id} service={service} onTogglePin={onTogglePin} />
+            ))}
       </TableBody>
     </Table>
   );

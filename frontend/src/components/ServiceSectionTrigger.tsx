@@ -3,7 +3,8 @@ import { AccordionTrigger } from "./ui/accordion";
 
 type ServiceSectionTriggerProps = {
   title: string;
-  count: number;
+  /** Omitted while the services load. */
+  count?: number;
 };
 
 /** Accordion trigger with a section title and its service count. */
@@ -19,8 +20,13 @@ export function ServiceSectionTrigger({ title, count }: ServiceSectionTriggerPro
           strokeWidth={1.5}
           className="size-4 shrink-0 -rotate-90 text-muted-foreground-strong group-aria-expanded/accordion-trigger:rotate-0 motion-safe:transition-transform motion-safe:duration-(--duration-fast)"
         />
-        <span className="text-base font-medium text-foreground">{title}</span>{" "}
-        <span className="text-sm font-normal text-muted-foreground">{count}</span>
+        <span className="text-base font-medium text-foreground">{title}</span>
+        {count !== undefined && (
+          <>
+            {" "}
+            <span className="text-sm font-normal text-muted-foreground">{count}</span>
+          </>
+        )}
       </span>
     </AccordionTrigger>
   );

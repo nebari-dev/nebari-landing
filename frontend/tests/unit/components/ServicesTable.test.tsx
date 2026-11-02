@@ -82,8 +82,24 @@ describe("ServicesTable", () => {
     renderTable();
 
     const row = screen.getByRole("row", { name: /Grafana/ });
-    expect(within(row).getByText("Metrics dashboards")).toBeInTheDocument();
+    expect(within(row).getByText("Metrics dashboards")).toHaveAttribute(
+      "title",
+      "Metrics dashboards",
+    );
     expect(within(row).getByText("Unhealthy")).toBeInTheDocument();
+  });
+
+  it("renders skeleton rows under the headers while loading", () => {
+    render(
+      <ServicesTable services={[]} sort={DEFAULT_SORT} onSortChange={vi.fn()} loading />,
+    );
+
+    expect(screen.getByRole("columnheader", { name: "Service" })).toBeInTheDocument();
+    const bodyRows = document.querySelectorAll("tbody tr");
+    expect(bodyRows).toHaveLength(8);
+    for (const row of bodyRows) {
+      expect(row).toHaveAttribute("aria-hidden", "true");
+    }
   });
 
   it("links each service name to the service in a new tab", () => {

@@ -5,6 +5,7 @@ vi.mock("@/api/client", () => ({ apiFetch: vi.fn() }));
 vi.mock("@/api/listServices", () => ({ listServices: vi.fn().mockResolvedValue([]) }));
 
 import { apiFetch } from "@/api/client";
+import { listServices } from "@/api/listServices";
 import { useLaunchpadData } from "@/hooks/useLaunchpadData";
 
 class MockWebSocket {
@@ -33,6 +34,7 @@ class MockWebSocket {
 }
 
 const mockedApiFetch = vi.mocked(apiFetch);
+const mockedListServices = vi.mocked(listServices);
 
 beforeEach(() => {
   MockWebSocket.instances = [];
@@ -106,5 +108,61 @@ describe("useLaunchpadData ws-ticket exchange", () => {
 
     expect(renderCount).toBe(settledRenderCount);
     expect(result.current).not.toHaveProperty("notifications");
+  });
+});
+
+describe("useLaunchpadData services status", () => {
+  const service = {
+    id: "svc-1",
+    name: "JupyterHub",
+    status: "Healthy",
+    description: "",
+    category: [],
+    pinned: false,
+    url: "https://example.com/jupyterhub",
+  };
+
+  beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it("is loading until the services arrive, then ready", async () => {
+    mockedListServices.mockResolvedValueOnce([service]);
+
+    const { result } = renderHook(() => useLaunchpadData(null));
+
+    expect(result.current.status).toBe("loading");
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.services).toEqual([service]);
+  });
+
+  it("reports an error when the services never loaded, and recovers on retry", async () => {
+    mockedListServices.mockRejectedValueOnce(new Error("Response: 500"));
+
+    const { result } = renderHook(() => useLaunchpadData(null));
+
+    await waitFor(() => expect(result.current.status).toBe("error"));
+
+    mockedListServices.mockResolvedValueOnce([service]);
+    act(() => result.current.retry());
+
+    expect(result.current.status).toBe("loading");
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.services).toEqual([service]);
+  });
+
+  it("keeps the loaded services when a later refresh fails", async () => {
+    mockedListServices.mockResolvedValueOnce([service]);
+    const { result, rerender } = renderHook(({ user }) => useLaunchpadData(user), {
+      initialProps: { user: null as unknown },
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    mockedListServices.mockRejectedValueOnce(new Error("Response: 500"));
+    rerender({ user: { name: "alice" } });
+
+    await waitFor(() => expect(console.error).toHaveBeenCalledWith(expect.any(Error)));
+    expect(result.current.status).toBe("ready");
+    expect(result.current.services).toEqual([service]);
   });
 });

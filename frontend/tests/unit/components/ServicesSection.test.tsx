@@ -132,4 +132,50 @@ describe("ServicesSection", () => {
       "ascending",
     );
   });
+
+  it("explains a search with no results and clears it", async () => {
+    const user = userEvent.setup();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Search services" }), "kubeflow");
+
+    expect(screen.getByRole("status")).toHaveTextContent('No services match "kubeflow"');
+    expect(screen.queryByRole("button", { name: /^Pinned/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+
+    expect(screen.getByRole("textbox", { name: "Search services" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "All services 2" })).toBeInTheDocument();
+  });
+
+  it("shows the no-results state in the table view too", async () => {
+    const user = userEvent.setup();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Table" }));
+    await user.type(screen.getByRole("textbox", { name: "Search services" }), "kubeflow");
+
+    expect(screen.queryByRole("table", { name: "Services" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent('No services match "kubeflow"');
+  });
+
+  it("remembers the Grid / Table choice", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Table" }));
+    unmount();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Table" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("table", { name: "Services" })).toBeInTheDocument();
+  });
+
+  it("shows skeletons instead of the no-results state while loading", () => {
+    render(<ServicesSection services={[]} onTogglePin={vi.fn()} loading />);
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pinned" })).toBeInTheDocument();
+    expect(document.querySelectorAll('[data-slot="card"][aria-hidden="true"]')).toHaveLength(8);
+  });
 });

@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures/e2e";
+import { richerServices } from "./fixtures/services";
 
 test("pinning moves a service between the Pinned and All services sections", async ({
   page,
@@ -52,4 +53,29 @@ test("unpinned cards reveal the pin control on hover and keyboard focus", async 
   await page.keyboard.press("Tab");
   await expect(pinButton).toBeFocused();
   await expect(pinButton).toHaveCSS("opacity", "1");
+});
+
+test("every card and table row marks its name with a new-tab icon", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.locator('[data-slot="card-title"] + svg.lucide-external-link')).toHaveCount(
+    richerServices.length,
+  );
+  for (const service of richerServices) {
+    await expect(
+      page.getByRole("link", { name: `${service.name} (opens in a new tab)`, exact: true }),
+    ).toHaveCount(1);
+  }
+
+  await page.getByRole("button", { name: "Table" }).click();
+  const table = page.getByRole("table", { name: "Services" });
+
+  await expect(table.locator("tbody a + svg.lucide-external-link")).toHaveCount(
+    richerServices.length,
+  );
+  for (const service of richerServices) {
+    await expect(
+      table.getByRole("link", { name: `${service.name} (opens in a new tab)`, exact: true }),
+    ).toBeVisible();
+  }
 });

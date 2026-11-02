@@ -1,7 +1,8 @@
+import type { ServicesView } from "../lib/preferences";
 import { Button } from "./ui/button";
 import { ButtonGroup } from "./ui/button-group";
 
-export type ServicesView = "grid" | "table";
+export type { ServicesView };
 
 const VIEWS: { value: ServicesView; label: string }[] = [
   { value: "grid", label: "Grid" },

@@ -58,7 +58,10 @@ export function ServiceTableRow({ service, onTogglePin }: ServiceTableRowProps) 
                 className="size-3.5 shrink-0 text-muted-foreground-strong"
               />
             </div>
-            <div className="truncate text-muted-foreground group-hover/row:text-muted-foreground-strong">
+            <div
+              className="truncate text-muted-foreground group-hover/row:text-muted-foreground-strong"
+              title={service.description}
+            >
               {service.description}
             </div>
           </div>
