@@ -55,7 +55,8 @@ func handleProbeRunnerRequest(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(remoteProbeResponse{
-		Status:    result.status,
+		Status:    result.healthStatus().Status,
+		State:     result.state,
 		Message:   result.message,
 		CheckedAt: result.checkedAt,
 	}); err != nil {

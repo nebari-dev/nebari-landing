@@ -86,6 +86,8 @@ type ServiceInfo struct {
 	IconLight         string             `json:"iconLight,omitempty"`
 	IconDark          string             `json:"iconDark,omitempty"`
 	Category          string             `json:"category"`
+	Version           string             `json:"version,omitempty"`
+	DocsURL           string             `json:"docsUrl,omitempty"`
 	Priority          int                `json:"priority"`
 	Visibility        string             `json:"visibility"`
 	RequiredGroups    []string           `json:"requiredGroups,omitempty"`
@@ -129,8 +131,37 @@ type HealthCheckConfig struct {
 // HealthStatus represents the health status of a service
 type HealthStatus struct {
 	Status    string     `json:"status"` // healthy, unhealthy, unknown
+	State     string     `json:"state"`  // healthy, degraded, down, unknown
 	LastCheck *time.Time `json:"lastCheck,omitempty"`
 	Message   string     `json:"message,omitempty"`
+}
+
+// Health states reported in HealthStatus.State.
+const (
+	// HealthHealthy: the probe got a 2xx response.
+	HealthHealthy = "healthy"
+	// HealthDegraded: the service answered, but not with a 2xx.
+	HealthDegraded = "degraded"
+	// HealthDown: the probe could not reach the service.
+	HealthDown = "down"
+	// HealthUnknown: no probe result, or none that says anything about the service.
+	HealthUnknown = "unknown"
+)
+
+// NewHealthStatus returns the HealthStatus for state, with the matching
+// two-value Status: degraded and down are both "unhealthy". Unrecognised states
+// become unknown.
+func NewHealthStatus(state, message string, checkedAt *time.Time) *HealthStatus {
+	status := "unknown"
+	switch state {
+	case HealthHealthy:
+		status = "healthy"
+	case HealthDegraded, HealthDown:
+		status = "unhealthy"
+	default:
+		state = HealthUnknown
+	}
+	return &HealthStatus{Status: status, State: state, LastCheck: checkedAt, Message: message}
 }
 
 // ServiceCache maintains an in-memory cache of services
@@ -182,7 +213,7 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 
 	health := c.preserveHealthStatus(a.UID)
 	if c.shouldResetHealthStatus(a.UID, healthCheckConfig) {
-		health = &HealthStatus{Status: "unknown"}
+		health = NewHealthStatus(HealthUnknown, "", nil)
 	}
 
 	service := &ServiceInfo{
@@ -196,6 +227,8 @@ func (c *ServiceCache) Add(a *sdapp.App) {
 		IconLight:         lp.IconLight,
 		IconDark:          lp.IconDark,
 		Category:          lp.Category,
+		Version:           cleanVersion(lp.Version),
+		DocsURL:           cleanDocsURL(lp.DocsURL),
 		Priority:          priority,
 		Visibility:        visibility,
 		RequiredGroups:    lp.RequiredGroups,
@@ -345,14 +378,35 @@ func (c *ServiceCache) preserveHealthStatus(uid string) *HealthStatus {
 	if existing := c.services[uid]; existing != nil && existing.Health != nil {
 		return existing.Health
 	}
-	return &HealthStatus{
-		Status: "unknown",
-	}
+	return NewHealthStatus(HealthUnknown, "", nil)
 }
 
 func (c *ServiceCache) shouldResetHealthStatus(uid string, cfg *HealthCheckConfig) bool {
 	existing := c.services[uid]
 	return existing != nil && existing.HealthCheckConfig != nil && cfg == nil
+}
+
+// cleanVersion trims version and drops it when it is too long to show.
+func cleanVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if len(version) > sdapp.MaxVersionLength {
+		return ""
+	}
+	return version
+}
+
+// cleanDocsURL returns raw when it is an absolute http(s) URL of at most
+// MaxDocsURLLength characters, and "" otherwise.
+func cleanDocsURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > sdapp.MaxDocsURLLength {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return raw
 }
 
 func buildURL(a *sdapp.App) string {
