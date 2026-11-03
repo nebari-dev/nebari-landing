@@ -101,6 +101,9 @@ func TestParse_Errors(t *testing.T) {
 		{"public with groups", `[{"id":"a","url":"https://a.example.com","visibility":"public","requiredGroups":["/x"]}]`, "no effect"},
 		{"bad health url", `[{"id":"a","url":"https://a.example.com","healthCheck":{"url":"keycloak:8080"}}]`, "healthCheck.url"},
 		{"duplicate id", `[{"id":"a","url":"https://a.example.com"},{"id":"a","url":"https://b.example.com"}]`, "duplicate id"},
+		{"javascript docs url", `[{"id":"a","url":"https://a.example.com","docsUrl":"javascript:alert(1)"}]`, "docsUrl"},
+		{"relative docs url", `[{"id":"a","url":"https://a.example.com","docsUrl":"/docs"}]`, "docsUrl"},
+		{"oversized version", `[{"id":"a","url":"https://a.example.com","version":"` + strings.Repeat("1", 65) + `"}]`, "version must be"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -174,5 +177,28 @@ func TestApp_NoHealthCheck_DisplayNameFallsBackToID(t *testing.T) {
 	}
 	if got.DisplayName != "docs" {
 		t.Errorf("DisplayName = %q, want docs", got.DisplayName)
+	}
+}
+
+func TestApp_CarriesVersionAndDocsURL(t *testing.T) {
+	services, err := Parse([]byte(`[{
+		"id": "grafana",
+		"url": "https://grafana.example.com",
+		"version": "11.4.0",
+		"docsUrl": "https://grafana.com/docs/grafana/latest/"
+	}]`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	c := cache.NewServiceCache()
+	c.Add(services[0].App())
+
+	got := c.Get(UIDPrefix + "grafana")
+	if got == nil {
+		t.Fatal("expected static entry in cache")
+	}
+	if got.Version != "11.4.0" || got.DocsURL != "https://grafana.com/docs/grafana/latest/" {
+		t.Errorf("Version/DocsURL = %q/%q", got.Version, got.DocsURL)
 	}
 }

@@ -155,3 +155,67 @@ func referenceGrant(sourceNamespace, serviceName string) *unstructured.Unstructu
 		},
 	}}
 }
+
+func TestToAppReadsVersionAndDocsURL(t *testing.T) {
+	tests := []struct {
+		name        string
+		labels      map[string]string
+		spec        map[string]interface{}
+		status      map[string]interface{}
+		wantVersion string
+		wantDocsURL string
+	}{
+		{name: "absent"},
+		{
+			name:        "from spec.landingPage",
+			spec:        map[string]interface{}{"version": "1.2.3", "docsUrl": "https://docs.example.com/spec"},
+			wantVersion: "1.2.3",
+			wantDocsURL: "https://docs.example.com/spec",
+		},
+		{
+			name:        "status.serviceDiscovery wins over spec",
+			spec:        map[string]interface{}{"version": "1.2.3", "docsUrl": "https://docs.example.com/spec"},
+			status:      map[string]interface{}{"enabled": true, "version": "2.0.0", "docsUrl": "https://docs.example.com/status"},
+			wantVersion: "2.0.0",
+			wantDocsURL: "https://docs.example.com/status",
+		},
+		{
+			name:        "status is ignored until service discovery is enabled",
+			spec:        map[string]interface{}{"version": "1.2.3"},
+			status:      map[string]interface{}{"enabled": false, "version": "2.0.0"},
+			wantVersion: "1.2.3",
+		},
+		{
+			name:        "version falls back to the app.kubernetes.io/version label",
+			labels:      map[string]string{"app.kubernetes.io/version": "4.5.6"},
+			wantVersion: "4.5.6",
+		},
+		{
+			name:        "spec version wins over the label",
+			labels:      map[string]string{"app.kubernetes.io/version": "4.5.6"},
+			spec:        map[string]interface{}{"version": "1.2.3"},
+			wantVersion: "1.2.3",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := nebariApp("uid-meta", "app", "team-a", "app-backend", "team-a")
+			u.SetLabels(tt.labels)
+			for key, value := range tt.spec {
+				if err := unstructured.SetNestedField(u.Object, value, "spec", "landingPage", key); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.status != nil {
+				if err := unstructured.SetNestedMap(u.Object, tt.status, "status", "serviceDiscovery"); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			lp := toApp(u).LandingPage
+			if lp.Version != tt.wantVersion || lp.DocsURL != tt.wantDocsURL {
+				t.Errorf("Version/DocsURL = %q/%q, want %q/%q", lp.Version, lp.DocsURL, tt.wantVersion, tt.wantDocsURL)
+			}
+		})
+	}
+}
