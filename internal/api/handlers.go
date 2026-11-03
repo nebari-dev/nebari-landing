@@ -22,6 +22,10 @@ import (
 
 var log = ctrl.Log.WithName("api")
 
+// maxAuthorizationHeaderBytes caps the Authorization header before JWT
+// parsing. It matches auth's 64 KiB token cap plus the "Bearer " prefix.
+const maxAuthorizationHeaderBytes = 64*1024 + len("Bearer ")
+
 // Handler handles HTTP requests for the landing page API
 type Handler struct {
 	cache              *cache.ServiceCache
@@ -393,9 +397,12 @@ func (h *Handler) handleWSTicket(w http.ResponseWriter, r *http.Request) {
 
 // ServiceView is the client-facing representation of a service.
 type ServiceView struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Status      string   `json:"status"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Status is healthy, unhealthy, or unknown. Health splits unhealthy into degraded and down.
+	Status string `json:"status" enums:"healthy,unhealthy,unknown"`
+	// Health is the latest probe result: healthy, degraded (the service answered with a non-2xx), down (the probe could not reach it), or unknown.
+	Health      string   `json:"health" enums:"healthy,degraded,down,unknown"`
 	Description string   `json:"description"`
 	Category    []string `json:"category"`
 	Pinned      bool     `json:"pinned"`
@@ -403,6 +410,12 @@ type ServiceView struct {
 	ImageLight  string   `json:"imageLight,omitempty"`
 	ImageDark   string   `json:"imageDark,omitempty"`
 	URL         string   `json:"url"`
+	// Version of the service, when its NebariApp or static entry provides one.
+	Version string `json:"version,omitempty"`
+	// DocsURL links to the service's documentation, when provided. Always an absolute http(s) URL.
+	DocsURL string `json:"docsUrl,omitempty"`
+	// SessionCount is reserved for the signed-in user's running sessions on the service. Not provided yet.
+	SessionCount *int `json:"sessionCount,omitempty"`
 }
 
 // ServiceResponse is the response format for GET /api/v1/services.
@@ -417,8 +430,12 @@ func toServiceView(svc *cache.ServiceInfo, pinned bool) *ServiceView {
 		name = svc.Name
 	}
 	status := "unknown"
+	health := cache.HealthUnknown
 	if svc.Health != nil {
 		status = svc.Health.Status
+		if svc.Health.State != "" {
+			health = svc.Health.State
+		}
 	}
 	category := []string{}
 	if svc.Category != "" {
@@ -428,6 +445,7 @@ func toServiceView(svc *cache.ServiceInfo, pinned bool) *ServiceView {
 		ID:          svc.UID,
 		Name:        name,
 		Status:      status,
+		Health:      health,
 		Description: svc.Description,
 		Category:    category,
 		Pinned:      pinned,
@@ -435,6 +453,8 @@ func toServiceView(svc *cache.ServiceInfo, pinned bool) *ServiceView {
 		ImageLight:  svc.IconLight,
 		ImageDark:   svc.IconDark,
 		URL:         svc.URL,
+		Version:     svc.Version,
+		DocsURL:     svc.DocsURL,
 	}
 }
 
@@ -839,7 +859,7 @@ func (h *Handler) handleNotificationSub(w http.ResponseWriter, r *http.Request) 
 // isAdmin returns true when the caller's JWT groups contain h.adminGroup.
 func (h *Handler) isAdmin(claims *auth.Claims) bool {
 	for _, g := range claims.Groups {
-		if g == h.adminGroup {
+		if groupMatches(g, h.adminGroup) {
 			return true
 		}
 	}
@@ -1155,14 +1175,13 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 // extractAndValidateJWT returns the parsed claims for the request, a boolean
 // indicating whether validation succeeded, and an error.
 //
-// The error is non-nil only when the caller presented credentials but the JWT
-// validator's initial JWKS fetch has not yet completed (auth.ErrNotReady). All
-// other failure modes — missing header, malformed scheme, bad signature, wrong
-// issuer — return (nil, false, nil) so the caller can treat the request as
-// anonymous. Callers that gate behavior on auth (returning a 401/403/private
-// data) should check the error first and emit 503 + Retry-After via
-// writeAuthWarmupResponse so clients distinguish "auth offline" from "your
-// token is bad" (401) or "your stuff disappeared" (silent anonymous).
+// The ErrNotReady error is returned when the caller presented credentials but
+// the JWT validator's initial JWKS fetch has not yet completed. Other
+// validation failures are returned only for diagnostics; callers keep treating
+// them as unauthenticated by checking the authenticated boolean. Callers that
+// gate behavior on auth should check ErrNotReady first and emit 503 +
+// Retry-After via writeAuthWarmupResponse so clients distinguish "auth offline"
+// from "your token is bad" (401) or "your stuff disappeared" (silent anonymous).
 func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, error) {
 	// Test/debug hook: use the injected extractor when present.
 	if h.claimsExtractor != nil {
@@ -1186,12 +1205,17 @@ func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, er
 		}
 		return nil, false, nil
 	}
+	if len(authHeader) > maxAuthorizationHeaderBytes {
+		log.Info("Authorization header too large",
+			"bytes", len(authHeader), "maxBytes", maxAuthorizationHeaderBytes, "path", r.URL.Path)
+		return nil, false, fmt.Errorf("authorization header exceeds maximum size of %d bytes", maxAuthorizationHeaderBytes)
+	}
 
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || parts[0] != "Bearer" {
 		log.Info("Invalid Authorization header format",
 			"scheme", parts[0], "path", r.URL.Path)
-		return nil, false, nil
+		return nil, false, fmt.Errorf("authorization header is not in 'Bearer <token>' format")
 	}
 
 	tokenString := parts[1]
@@ -1207,7 +1231,7 @@ func (h *Handler) extractAndValidateJWT(r *http.Request) (*auth.Claims, bool, er
 			"error", err.Error(),
 			"path", r.URL.Path,
 			"hint", "check KEYCLOAK_ISSUER_URL matches the 'iss' claim in the token")
-		return nil, false, nil
+		return nil, false, err
 	}
 
 	if h.debugMode {
@@ -1278,13 +1302,21 @@ func hasRequiredGroups(userGroups, requiredGroups []string) bool {
 
 	for _, required := range requiredGroups {
 		for _, userGroup := range userGroups {
-			if userGroup == required {
+			if groupMatches(userGroup, required) {
 				return true
 			}
 		}
 	}
 
 	return false
+}
+
+// groupMatches compares a JWT group claim against a configured group name,
+// ignoring a leading "/". nebari-operator >= v0.2.0 emits full Keycloak group
+// paths ("/admin") while NebariApps and ADMIN_GROUP use short names
+// ("admin"); older operators emit short names, so both forms must match.
+func groupMatches(claimGroup, want string) bool {
+	return strings.TrimPrefix(claimGroup, "/") == strings.TrimPrefix(want, "/")
 }
 
 // handleCallerIdentity serves GET /api/v1/caller-identity.
@@ -1496,13 +1528,14 @@ type DebugRequestInfo struct {
 
 // DebugAuthInfo is the auth section of the debug response.
 type DebugAuthInfo struct {
-	Enabled             bool     `json:"enabled"`
-	ValidatorConfigured bool     `json:"validator_configured"`
-	Authenticated       bool     `json:"authenticated"`
-	Username            string   `json:"username,omitempty"`
-	Email               string   `json:"email,omitempty"`
-	Groups              []string `json:"groups,omitempty"`
-	ValidationError     string   `json:"validation_error,omitempty"`
+	Enabled             bool                 `json:"enabled"`
+	ValidatorConfigured bool                 `json:"validator_configured"`
+	Authenticated       bool                 `json:"authenticated"`
+	Username            string               `json:"username,omitempty"`
+	Email               string               `json:"email,omitempty"`
+	Groups              []string             `json:"groups,omitempty"`
+	ValidationError     string               `json:"validation_error,omitempty"`
+	JWTValidator        *auth.ValidatorStats `json:"jwt_validator,omitempty"`
 }
 
 // DebugServiceCounts is the service-cache section of the debug response.
@@ -1540,17 +1573,19 @@ func (h *Handler) handleDebug(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve auth state.
-	// When a claimsExtractor is configured (test / dev injection) or when the full
-	// JWT validator is available, extractAndValidateJWT already handles everything.
-	// For the debug response we also want to surface the validation *error* when
-	// the real validator is present, so we run the two paths in parallel. The
-	// ErrNotReady signal is intentionally discarded — debug should still serve
-	// during warmup so operators can see the reason in ValidationError below.
-	claims, authenticated, _ := h.extractAndValidateJWT(r)
+	// When a claimsExtractor is configured (test / dev injection) or when the
+	// full JWT validator is available, extractAndValidateJWT already handles
+	// everything. Debug surfaces validation errors instead of converting
+	// ErrNotReady to a 503 so operators can inspect auth during warmup.
+	claims, authenticated, validationErr := h.extractAndValidateJWT(r)
 
 	authInfo := DebugAuthInfo{
 		Enabled:             h.enableAuth,
 		ValidatorConfigured: h.jwtValidator != nil || h.claimsExtractor != nil,
+	}
+	if h.jwtValidator != nil {
+		stats := h.jwtValidator.Stats()
+		authInfo.JWTValidator = &stats
 	}
 
 	if authenticated && claims != nil {
@@ -1565,19 +1600,16 @@ func (h *Handler) handleDebug(w http.ResponseWriter, r *http.Request) {
 			authInfo.ValidationError = "auth is disabled (ENABLE_AUTH=false)"
 		case h.jwtValidator == nil && h.claimsExtractor == nil:
 			authInfo.ValidationError = "JWT validator not configured (KEYCLOAK_URL missing?)"
+		case validationErr != nil:
+			authInfo.ValidationError = validationErr.Error()
 		default:
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
 				authInfo.ValidationError = "no Authorization header present"
 			} else {
-				// Re-run validation to surface the actual error message.
 				parts := strings.Split(authHeader, " ")
 				if len(parts) != 2 || parts[0] != "Bearer" {
 					authInfo.ValidationError = "Authorization header is not in 'Bearer <token>' format"
-				} else if h.jwtValidator != nil {
-					if _, err := h.jwtValidator.ValidateToken(parts[1]); err != nil {
-						authInfo.ValidationError = err.Error()
-					}
 				}
 			}
 		}

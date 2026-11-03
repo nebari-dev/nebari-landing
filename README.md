@@ -267,6 +267,10 @@ A few things to keep in mind:
   there the claim holds bare names (`nebari-admins`). The group must already exist in the realm.
 - **No access requests.** Approving a request adds the user to the service's `requiredGroups`, so static entries
   reject access requests with `403` rather than turning an approval into a privilege grant.
+- **Health probes are trusted config.** A static `healthCheck.url` is set by the operator, not a `NebariApp` author,
+  so the webapi probes it directly: the `NebariApp` target rules (protected namespaces, `ReferenceGrant` consent) and
+  the isolated probe runner apply only to `NebariApp` health checks. With `webapi.networkPolicy.enabled`, the Keycloak
+  probe is covered by `egress.keycloak`; allow any other static probe target in `egress.additionalRules`.
 
 
 ## Quick Start
