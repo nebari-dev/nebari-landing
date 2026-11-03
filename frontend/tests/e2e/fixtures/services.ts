@@ -2,11 +2,15 @@ export type MockService = {
   id: string;
   name: string;
   status: string;
+  health?: "healthy" | "degraded" | "down" | "unknown";
   description: string;
   category: string[];
   pinned: boolean;
   image: string;
   url: string;
+  version?: string;
+  docsUrl?: string;
+  sessionCount?: number;
 };
 
 function mockService(
@@ -30,6 +34,7 @@ const jupyterHub = mockService({
   category: ["Data Science"],
   pinned: true,
   url: "https://example.com/jupyterhub",
+  sessionCount: 2,
 });
 
 /** Six services, the minimum for the richer layout, listed out of name order. */
@@ -46,6 +51,8 @@ export const richerServices: MockService[] = [
     name: "MLflow",
     description: "Experiment tracking and model registry",
     category: ["Machine Learning"],
+    status: "Unhealthy",
+    health: "degraded",
   }),
   mockService({
     id: "svc-grafana",
@@ -58,6 +65,8 @@ export const richerServices: MockService[] = [
     name: "Argo CD",
     description: "Deploys apps from Git",
     category: ["Platform"],
+    version: "v2.13.0",
+    docsUrl: "https://argo-cd.readthedocs.io/en/stable/",
   }),
   mockService({
     id: "svc-dask",
@@ -65,6 +74,7 @@ export const richerServices: MockService[] = [
     description: "Scalable Python compute",
     category: ["Data Science"],
     status: "Unhealthy",
+    health: "down",
   }),
 ];
 

@@ -9,6 +9,7 @@ type ServiceIconProps = {
   imageDark?: string;
   /** `card` is the rounded-square grid logo; `table` is the round row avatar. */
   variant?: "card" | "table";
+  className?: string;
 };
 
 function resolveIcon(
@@ -32,6 +33,7 @@ export function ServiceIcon({
   imageLight,
   imageDark,
   variant = "card",
+  className,
 }: ServiceIconProps) {
   const { isDarkMode } = useTheme();
   const resolvedUrl = resolveIcon({ image, imageLight, imageDark }, isDarkMode);
@@ -45,6 +47,7 @@ export function ServiceIcon({
         variant === "card" ? "rounded-md" : "rounded-full",
         !showImage && "bg-muted text-muted-foreground-strong",
         !showImage && variant === "table" && "border border-border",
+        className,
       )}
     >
       {showImage ? (

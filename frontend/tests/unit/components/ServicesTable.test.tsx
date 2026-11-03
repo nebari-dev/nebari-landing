@@ -59,6 +59,7 @@ describe("ServicesTable", () => {
     expect(screen.getByRole("columnheader", { name: "Service" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Category" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
   });
 
   it("renders the services and their categories", () => {
@@ -78,7 +79,7 @@ describe("ServicesTable", () => {
     expect(secondRow).toHaveTextContent("JupyterHub");
   });
 
-  it("shows each service's description and status", () => {
+  it("keeps the description of an unavailable service and flags it in the status column", () => {
     renderTable();
 
     const row = screen.getByRole("row", { name: /Grafana/ });
@@ -86,7 +87,7 @@ describe("ServicesTable", () => {
       "title",
       "Metrics dashboards",
     );
-    expect(within(row).getByText("Unhealthy")).toBeInTheDocument();
+    expect(within(row).getByText("Unavailable")).toBeInTheDocument();
   });
 
   it("renders skeleton rows under the headers while loading", () => {
@@ -109,6 +110,13 @@ describe("ServicesTable", () => {
     expect(link).toHaveAttribute("href", "https://example.com/jupyterhub");
     expect(link).toHaveAttribute("target", "_blank");
     expect(screen.queryByRole("link", { name: /^open /i })).not.toBeInTheDocument();
+  });
+
+  it("renders a Details action for every service", () => {
+    renderTable();
+
+    expect(screen.getByRole("button", { name: "JupyterHub details" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Grafana details" })).toBeInTheDocument();
   });
 
   it("opens the service url when a row is clicked", async () => {
@@ -135,6 +143,17 @@ describe("ServicesTable", () => {
     const link = screen.getByRole("link", { name: /JupyterHub/ });
     link.addEventListener("click", (event) => event.preventDefault());
     await user.click(link);
+
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not open the service when Details is clicked", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderTable();
+
+    await user.click(screen.getByRole("button", { name: "JupyterHub details" }));
 
     expect(openSpy).not.toHaveBeenCalled();
   });

@@ -10,6 +10,8 @@ type ServicesAccordionProps = {
   onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>;
   /** Shows skeleton cards, without counts, while the services load. */
   loading?: boolean;
+  /** Opens the details drawer for a service. */
+  onShowDetails?: (serviceId: string) => void;
 };
 
 /** Richer-layout grid view: collapsible Pinned and All services sections. */
@@ -18,6 +20,7 @@ export function ServicesAccordion({
   otherServices,
   onTogglePin,
   loading = false,
+  onShowDetails,
 }: ServicesAccordionProps) {
   return (
     <Accordion multiple defaultValue={["pinned-services", "all-services"]} className="gap-6">
@@ -29,6 +32,7 @@ export function ServicesAccordion({
             emptyMessage="No pinned services yet."
             onTogglePin={onTogglePin}
             skeletonCount={loading ? 2 : undefined}
+            onShowDetails={onShowDetails}
           />
         </AccordionContent>
       </AccordionItem>
@@ -44,6 +48,7 @@ export function ServicesAccordion({
             emptyMessage="No services found."
             onTogglePin={onTogglePin}
             skeletonCount={loading ? 6 : undefined}
+            onShowDetails={onShowDetails}
           />
         </AccordionContent>
       </AccordionItem>

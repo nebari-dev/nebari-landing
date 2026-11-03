@@ -69,6 +69,16 @@ describe("Content", () => {
     ]);
   });
 
+  it("opens the details drawer for the card whose Details was pressed", async () => {
+    const user = userEvent.setup();
+    renderContent({ services: makeServices(3) });
+
+    await user.click(screen.getByRole("button", { name: "Service 1 details" }));
+
+    const drawer = await screen.findByRole("dialog", { name: "Service 1" });
+    expect(drawer).toHaveAccessibleDescription("Description 1");
+  });
+
   it("renders the richer layout for 6 or more services", () => {
     renderContent({ services: makeServices(6) });
 

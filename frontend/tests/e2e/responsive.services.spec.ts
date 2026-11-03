@@ -65,6 +65,7 @@ test("table row controls stay reachable at every width", async ({ page }) => {
     for (const control of [
       row.getByRole("button", { name: "Unpin service" }),
       row.getByRole("link", { name: /Long Running Analytics Workspace/ }),
+      row.getByRole("button", { name: "Long Running Analytics Workspace details" }),
     ]) {
       await control.scrollIntoViewIfNeeded();
       await expect(control, `at ${width}px`).toBeInViewport();

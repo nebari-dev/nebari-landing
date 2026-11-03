@@ -81,6 +81,10 @@ const docTemplate = `{
                         "type": "array",
                         "uniqueItems": false
                     },
+                    "isAdmin": {
+                        "description": "IsAdmin reports whether the caller belongs to the configured admin group.",
+                        "type": "boolean"
+                    },
                     "name": {
                         "type": "string"
                     },

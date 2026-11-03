@@ -55,11 +55,14 @@ test("unpinned cards reveal the pin control on hover and keyboard focus", async 
   await expect(pinButton).toHaveCSS("opacity", "1");
 });
 
-test("every card and table row marks its name with a new-tab icon", async ({ page }) => {
+test("every available card and table row marks its name with a new-tab icon", async ({
+  page,
+}) => {
+  const available = richerServices.filter((service) => service.health !== "down");
   await page.goto("/");
 
   await expect(page.locator('[data-slot="card-title"] + svg.lucide-external-link')).toHaveCount(
-    richerServices.length,
+    available.length,
   );
   for (const service of richerServices) {
     await expect(
@@ -71,11 +74,31 @@ test("every card and table row marks its name with a new-tab icon", async ({ pag
   const table = page.getByRole("table", { name: "Services" });
 
   await expect(table.locator("tbody a + svg.lucide-external-link")).toHaveCount(
-    richerServices.length,
+    available.length,
   );
   for (const service of richerServices) {
     await expect(
       table.getByRole("link", { name: `${service.name} (opens in a new tab)`, exact: true }),
     ).toBeVisible();
   }
+});
+
+test("running sessions show on the card and the table row", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(
+    page
+      .getByRole("region", { name: /^Pinned/ })
+      .locator('[data-slot="card"]', { hasText: "JupyterHub" })
+      .getByText("2 sessions running"),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Table" }).click();
+
+  await expect(
+    page
+      .getByRole("table", { name: "Services" })
+      .getByRole("row", { name: /JupyterHub/ })
+      .getByText("2 sessions running"),
+  ).toBeVisible();
 });

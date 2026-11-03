@@ -6,11 +6,14 @@ export const SERVICES_URL = /^https?:\/\/[^/]+\/api\/v1\/services\/?(?:\?.*)?$/;
 export const test = base.extend<{
   /** Services served by the mocked API; override with `test.use({ services: [list, { scope: "test" }] })`. */
   services: MockService[];
+  /** Whether the mocked caller is in the admin group; override with `test.use({ isAdmin: true })`. */
+  isAdmin: boolean;
   mockApp: void;
 }>({
   services: [richerServices, { option: true }],
+  isAdmin: [false, { option: true }],
   mockApp: [
-    async ({ context, services }, use) => {
+    async ({ context, services, isAdmin }, use) => {
       await context.addInitScript(() => {
         window.__PW_E2E_AUTH__ = {
           authenticated: true,
@@ -46,6 +49,17 @@ export const test = base.extend<{
           }
 
           await route.fulfill({ status: 204, body: "" });
+        },
+      );
+
+      await context.route(
+        /^https?:\/\/[^/]+\/api\/v1\/caller-identity\/?(?:\?.*)?$/,
+        async (route) => {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ authenticated: true, username: "test.user", isAdmin }),
+          });
         },
       );
 

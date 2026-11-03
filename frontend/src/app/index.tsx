@@ -4,6 +4,7 @@ import { useUser } from "@/auth/user";
 import { Banner } from "../components/Banner";
 import { Content } from "../components/Content";
 import { Header } from "../components/Header";
+import { StatusViewProvider } from "../hooks/status-view";
 import { useTheme } from "../hooks/theme-provider";
 import { useLaunchpadData } from "../hooks/useLaunchpadData";
 import { getAppConfig } from "./config";
@@ -11,7 +12,7 @@ import { getAppConfig } from "./config";
 export default function App() {
   const { themeMode, isDarkMode, setThemeMode } = useTheme();
   const { user } = useUser();
-  const { services, status, retry, onTogglePin } = useLaunchpadData(user);
+  const { services, status, isAdmin, retry, onTogglePin } = useLaunchpadData(user);
 
   const config = getAppConfig();
 
@@ -28,13 +29,15 @@ export default function App() {
         logoSrcDark={config?.logoUrlDark || undefined}
       />
 
-      <Content
-        services={services}
-        status={status}
-        onRetry={retry}
-        userName={user?.name.split(/\s+/)[0]}
-        onTogglePin={onTogglePin}
-      />
+      <StatusViewProvider view={isAdmin ? "admin" : "user"}>
+        <Content
+          services={services}
+          status={status}
+          onRetry={retry}
+          userName={user?.name.split(/\s+/)[0]}
+          onTogglePin={onTogglePin}
+        />
+      </StatusViewProvider>
       <Banner position="bottom" config={config?.banners?.bottom} />
     </main>
   );

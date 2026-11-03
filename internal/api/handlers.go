@@ -477,6 +477,8 @@ type CallerIdentityResponse struct {
 	Email         string   `json:"email,omitempty"`
 	Name          string   `json:"name,omitempty"`
 	Groups        []string `json:"groups,omitempty"`
+	// IsAdmin reports whether the caller belongs to the configured admin group.
+	IsAdmin bool `json:"isAdmin"`
 }
 
 // callerPinnedUIDs returns the set of UIDs pinned by the authenticated caller.
@@ -1355,6 +1357,7 @@ func (h *Handler) handleCallerIdentity(w http.ResponseWriter, r *http.Request) {
 			Email:         claims.Email,
 			Name:          claims.Name,
 			Groups:        claims.Groups,
+			IsAdmin:       h.isAdmin(claims),
 		}
 	}
 

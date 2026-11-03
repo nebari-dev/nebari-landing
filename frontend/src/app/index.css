@@ -90,18 +90,6 @@
   /* App-defined: launchpad surfaces, derived from registry tokens. */
   --scrollbar-thumb: var(--border-strong);
   --table-row-hover-background: color-mix(in oklab, var(--muted) 50%, transparent);
-
-  --status-healthy-bg: var(--success);
-  --status-healthy-fg: var(--success-foreground);
-  --status-healthy-dot: var(--success-foreground);
-
-  --status-unhealthy-bg: var(--destructive);
-  --status-unhealthy-fg: var(--destructive-foreground);
-  --status-unhealthy-dot: var(--destructive-foreground);
-
-  --status-default-bg: var(--muted);
-  --status-default-fg: var(--muted-foreground-strong);
-  --status-default-dot: var(--muted-foreground-strong);
 }
 
 .dark {
@@ -175,10 +163,6 @@
   /* App-defined: launchpad surfaces, derived from registry tokens. */
   --scrollbar-thumb: var(--border);
   --table-row-hover-background: var(--muted);
-
-  --status-default-bg: var(--muted);
-  --status-default-fg: var(--muted-foreground);
-  --status-default-dot: var(--muted-foreground);
 }
 
 @theme inline {

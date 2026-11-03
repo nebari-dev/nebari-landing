@@ -1,17 +1,25 @@
 import { ExternalLink } from "lucide-react";
 import type { Service } from "../api/listServices";
+import { useStatusView } from "../hooks/status-view";
+import { cn } from "../lib/utils";
 import { CategoryBadge } from "./CategoryBadge";
 import { PinButton } from "./PinButton";
+import { ServiceDetailsButton } from "./ServiceDetailsButton";
 import { ServiceIcon } from "./ServiceIcon";
-import { StatusBadge } from "./StatusBadge";
+import { isUnavailable, StatusBadge } from "./StatusBadge";
 import { TableCell, TableRow } from "./ui/table";
 
 type ServiceTableRowProps = {
   service: Service;
   onTogglePin?: (serviceId: string, nextPinned: boolean) => void;
+  /** Opens the details drawer for a service. */
+  onShowDetails?: (serviceId: string) => void;
 };
 
-export function ServiceTableRow({ service, onTogglePin }: ServiceTableRowProps) {
+export function ServiceTableRow({ service, onTogglePin, onShowDetails }: ServiceTableRowProps) {
+  const view = useStatusView();
+  const unavailable = isUnavailable(service, view);
+
   const openService = () => {
     window.open(service.url, "_blank", "noopener,noreferrer");
   };
@@ -38,9 +46,10 @@ export function ServiceTableRow({ service, onTogglePin }: ServiceTableRowProps) 
             imageLight={service.imageLight}
             imageDark={service.imageDark}
             variant="table"
+            className={cn(unavailable && "opacity-50")}
           />
 
-          <div className="min-w-0 flex-1 text-sm leading-5">
+          <div className={cn("min-w-0 flex-1 text-sm leading-5", unavailable && "opacity-60")}>
             <div className="flex min-w-0 items-center gap-1.5">
               <a
                 href={service.url}
@@ -52,11 +61,13 @@ export function ServiceTableRow({ service, onTogglePin }: ServiceTableRowProps) 
               >
                 {service.name}
               </a>
-              <ExternalLink
-                aria-hidden="true"
-                strokeWidth={1.5}
-                className="size-3.5 shrink-0 text-muted-foreground-strong"
-              />
+              {!unavailable && (
+                <ExternalLink
+                  aria-hidden="true"
+                  strokeWidth={1.5}
+                  className="size-3.5 shrink-0 text-muted-foreground-strong"
+                />
+              )}
             </div>
             <div
               className="truncate text-muted-foreground group-hover/row:text-muted-foreground-strong"
@@ -74,6 +85,7 @@ export function ServiceTableRow({ service, onTogglePin }: ServiceTableRowProps) 
             <CategoryBadge
               key={item}
               category={item}
+              muted={unavailable}
               className="max-w-full whitespace-normal break-words"
             />
           ))}
@@ -81,7 +93,21 @@ export function ServiceTableRow({ service, onTogglePin }: ServiceTableRowProps) 
       </TableCell>
 
       <TableCell className="h-14 px-3">
-        <StatusBadge status={service.status} />
+        <StatusBadge
+          status={service.status}
+          health={service.health}
+          view={view}
+          sessionCount={service.sessionCount}
+        />
+      </TableCell>
+
+      <TableCell className="h-14 px-4 py-0">
+        <div className="flex justify-end">
+          <ServiceDetailsButton
+            serviceName={service.name}
+            onClick={() => onShowDetails?.(service.id)}
+          />
+        </div>
       </TableCell>
     </TableRow>
   );

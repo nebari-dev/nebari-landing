@@ -3,8 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/api/client", () => ({ apiFetch: vi.fn() }));
 vi.mock("@/api/listServices", () => ({ listServices: vi.fn().mockResolvedValue([]) }));
+vi.mock("@/api/getCallerIdentity", () => ({
+  getCallerIdentity: vi.fn().mockResolvedValue({ authenticated: true, isAdmin: false }),
+}));
 
 import { apiFetch } from "@/api/client";
+import { getCallerIdentity } from "@/api/getCallerIdentity";
 import { listServices } from "@/api/listServices";
 import { useLaunchpadData } from "@/hooks/useLaunchpadData";
 
@@ -35,6 +39,7 @@ class MockWebSocket {
 
 const mockedApiFetch = vi.mocked(apiFetch);
 const mockedListServices = vi.mocked(listServices);
+const mockedGetCallerIdentity = vi.mocked(getCallerIdentity);
 
 beforeEach(() => {
   MockWebSocket.instances = [];
@@ -164,5 +169,25 @@ describe("useLaunchpadData services status", () => {
     await waitFor(() => expect(console.error).toHaveBeenCalledWith(expect.any(Error)));
     expect(result.current.status).toBe("ready");
     expect(result.current.services).toEqual([service]);
+  });
+
+  it("reports whether the caller is an admin", async () => {
+    mockedGetCallerIdentity.mockResolvedValueOnce({ authenticated: true, isAdmin: true });
+    const user = { name: "alice" };
+
+    const { result } = renderHook(() => useLaunchpadData(user));
+
+    expect(result.current.isAdmin).toBe(false);
+    await waitFor(() => expect(result.current.isAdmin).toBe(true));
+  });
+
+  it("treats the caller as a regular user when the identity request fails", async () => {
+    mockedGetCallerIdentity.mockRejectedValueOnce(new Error("Response: 500"));
+    const user = { name: "alice" };
+
+    const { result } = renderHook(() => useLaunchpadData(user));
+
+    await waitFor(() => expect(console.error).toHaveBeenCalledWith(expect.any(Error)));
+    expect(result.current.isAdmin).toBe(false);
   });
 });

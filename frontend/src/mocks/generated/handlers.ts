@@ -40,6 +40,7 @@ export const generatedHandlers = [
       authenticated: false,
       email: "",
       groups: [],
+      isAdmin: false,
       name: "",
       username: "",
     }),

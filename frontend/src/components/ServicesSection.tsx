@@ -21,10 +21,17 @@ type ServicesSectionProps = {
   onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>;
   /** Shows skeletons in the current view while the services load. */
   loading?: boolean;
+  /** Opens the details drawer for a service. */
+  onShowDetails?: (serviceId: string) => void;
 };
 
 /** Richer layout: toolbar above either the sectioned grid or the table. */
-export function ServicesSection({ services, onTogglePin, loading = false }: ServicesSectionProps) {
+export function ServicesSection({
+  services,
+  onTogglePin,
+  onShowDetails,
+  loading = false,
+}: ServicesSectionProps) {
   const [query, setQuery] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [sort, setSort] = useState<ServiceSort>(DEFAULT_SORT);
@@ -85,6 +92,7 @@ export function ServicesSection({ services, onTogglePin, loading = false }: Serv
           otherServices={visibleServices.filter((service) => !service.pinned)}
           onTogglePin={onTogglePin}
           loading={loading}
+          onShowDetails={onShowDetails}
         />
       ) : (
         <ServicesTable
@@ -93,6 +101,7 @@ export function ServicesSection({ services, onTogglePin, loading = false }: Serv
           onSortChange={setSort}
           onTogglePin={onTogglePin}
           loading={loading}
+          onShowDetails={onShowDetails}
         />
       )}
     </div>

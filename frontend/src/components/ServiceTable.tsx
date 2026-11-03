@@ -13,6 +13,8 @@ type ServicesTableProps = {
   onTogglePin?: (serviceId: string, nextPinned: boolean) => void;
   /** Shows skeleton rows under the headers while the services load. */
   loading?: boolean;
+  /** Opens the details drawer for a service. */
+  onShowDetails?: (serviceId: string) => void;
 };
 
 export function ServicesTable({
@@ -21,6 +23,7 @@ export function ServicesTable({
   onSortChange,
   onTogglePin,
   loading = false,
+  onShowDetails,
 }: ServicesTableProps) {
   const orderedServices = [
     ...services.filter((service) => service.pinned),
@@ -45,6 +48,7 @@ export function ServicesTable({
         <col className="w-[42.5%]" />
         <col className="w-[18%]" />
         <col />
+        <col className="w-31" />
       </colgroup>
 
       <TableHeader className="[&_th]:bg-header">
@@ -55,6 +59,9 @@ export function ServicesTable({
           <SortableTableHead label="Service" sortKey="name" sort={sort} onSort={handleSort} />
           <SortableTableHead label="Category" sortKey="category" sort={sort} onSort={handleSort} />
           <SortableTableHead label="Status" sortKey="status" sort={sort} onSort={handleSort} />
+          <TableHead scope="col" className="px-4">
+            <span className="sr-only">Actions</span>
+          </TableHead>
         </TableRow>
       </TableHeader>
 
@@ -64,7 +71,12 @@ export function ServicesTable({
               <ServiceTableRowSkeleton key={index} index={index} />
             ))
           : orderedServices.map((service) => (
-              <ServiceTableRow key={service.id} service={service} onTogglePin={onTogglePin} />
+              <ServiceTableRow
+                key={service.id}
+                service={service}
+                onTogglePin={onTogglePin}
+                onShowDetails={onShowDetails}
+              />
             ))}
       </TableBody>
     </Table>

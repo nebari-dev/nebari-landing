@@ -92,6 +92,8 @@ test("service cards are reachable from the keyboard", async ({ page }) => {
   ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(pinnedSection.getByRole("button", { name: "Unpin service" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(pinnedSection.getByRole("button", { name: "JupyterHub details" })).toBeFocused();
 });
 
 test("header and accordion controls expose visible focus rings", async ({ page }) => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../api/client";
+import { getCallerIdentity } from "../api/getCallerIdentity";
 import { listServices, type Service } from "../api/listServices";
 import { mapService } from "../api/mapServices";
 import { deletePin, putPin } from "../api/pin";
@@ -35,6 +36,25 @@ export function useLaunchpadData(user: unknown) {
   }, [user, attempt]);
 
   const retry = useCallback(() => setAttempt((prev) => prev + 1), []);
+
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getCallerIdentity()
+      .then((identity) => {
+        if (!cancelled) setIsAdmin(identity.isAdmin === true);
+      })
+      .catch((err) => {
+        console.error(err);
+        if (!cancelled) setIsAdmin(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const onTogglePin = useCallback(async (serviceId: string, nextPinned: boolean) => {
     let previousPinned: boolean | undefined;
@@ -156,6 +176,7 @@ export function useLaunchpadData(user: unknown) {
   return {
     services,
     status,
+    isAdmin,
     retry,
     onTogglePin,
   };

@@ -1,20 +1,27 @@
 import { ExternalLink } from "lucide-react";
 import type { Service } from "../api/listServices";
+import { useStatusView } from "../hooks/status-view";
 import { cn } from "../lib/utils";
 import { CategoryBadge } from "./CategoryBadge";
 import { PinButton } from "./PinButton";
+import { ServiceDetailsButton } from "./ServiceDetailsButton";
 import { ServiceIcon } from "./ServiceIcon";
-import { StatusBadge } from "./StatusBadge";
+import { isUnavailable, StatusBadge } from "./StatusBadge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card";
 
 type ServiceGridCardProps = {
   service: Service;
   /** Omit to render the card without a pin control. */
   onTogglePin?: (serviceId: string, nextPinned: boolean) => void | Promise<void>;
+  /** Opens the details drawer for a service. */
+  onShowDetails?: (serviceId: string) => void;
 };
 
 /** Service card; the whole card opens the service in a new tab. */
-export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) {
+export function ServiceGridCard({ service, onTogglePin, onShowDetails }: ServiceGridCardProps) {
+  const view = useStatusView();
+  const unavailable = isUnavailable(service, view);
+
   return (
     <div className="group/service relative h-full rounded-md">
       <a
@@ -36,16 +43,24 @@ export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) 
             image={service.image}
             imageLight={service.imageLight}
             imageDark={service.imageDark}
+            className={cn(unavailable && "opacity-50")}
           />
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <CardTitle className="truncate text-sm font-medium leading-5 text-foreground">
+            <CardTitle
+              className={cn(
+                "truncate text-sm font-medium leading-5 text-foreground",
+                unavailable && "opacity-70",
+              )}
+            >
               {service.name}
             </CardTitle>
-            <ExternalLink
-              aria-hidden="true"
-              strokeWidth={1.5}
-              className="size-3.5 shrink-0 text-muted-foreground-strong"
-            />
+            {!unavailable && (
+              <ExternalLink
+                aria-hidden="true"
+                strokeWidth={1.5}
+                className="size-3.5 shrink-0 text-muted-foreground-strong"
+              />
+            )}
           </div>
           {onTogglePin && (
             <PinButton
@@ -63,18 +78,34 @@ export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) 
 
         <CardContent className="px-0">
           <CardDescription
-            className="line-clamp-2 h-10 text-muted-foreground-strong"
+            className={cn(
+              "line-clamp-2 h-10 text-muted-foreground-strong",
+              unavailable && "opacity-60",
+            )}
             title={service.description}
           >
             {service.description}
           </CardDescription>
         </CardContent>
 
-        <CardFooter className="mt-auto flex-wrap gap-2 px-0">
-          {service.category.map((item) => (
-            <CategoryBadge key={item} category={item} />
-          ))}
-          <StatusBadge status={service.status} />
+        <CardFooter className="mt-auto min-w-0 gap-2 px-0">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 overflow-hidden">
+            {service.category.map((item) => (
+              <CategoryBadge key={item} category={item} muted={unavailable} />
+            ))}
+            <StatusBadge
+              status={service.status}
+              health={service.health}
+              view={view}
+              sessionCount={service.sessionCount}
+            />
+          </div>
+          <ServiceDetailsButton
+            serviceName={service.name}
+            muted={unavailable}
+            className="relative z-20"
+            onClick={() => onShowDetails?.(service.id)}
+          />
         </CardFooter>
       </Card>
     </div>

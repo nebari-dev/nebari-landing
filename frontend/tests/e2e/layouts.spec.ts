@@ -29,6 +29,9 @@ test.describe("simple layout (fewer than 6 services)", () => {
     await expect
       .poll(() => cardNames(main))
       .toEqual(simpleServices.map((service) => service.name));
+    await expect(main.getByRole("button", { name: /details$/ })).toHaveCount(
+      simpleServices.length,
+    );
   });
 
   test("the whole card opens the service in a new tab", async ({ page }) => {

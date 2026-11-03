@@ -410,6 +410,39 @@ func TestHandleCallerIdentity_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestHandleCallerIdentity_ReportsAdminMembership(t *testing.T) {
+	tests := []struct {
+		name   string
+		groups []string
+		want   bool
+	}{
+		{"admin by short name", []string{"admin"}, true},
+		{"admin by full path", []string{"/users", "/admin"}, true},
+		{"regular user", []string{"/users"}, false},
+		{"no groups", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := NewHandler(cache.NewServiceCache(), nil, false, nil, nil,
+				WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
+					return &auth.Claims{PreferredUsername: "alice", Groups: tt.groups}, true
+				}),
+			)
+			rr := doGet(t, h.Routes(), "/api/v1/caller-identity")
+			if rr.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d", rr.Code)
+			}
+			var resp CallerIdentityResponse
+			if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+				t.Fatal(err)
+			}
+			if !resp.Authenticated || resp.IsAdmin != tt.want {
+				t.Errorf("Authenticated/IsAdmin = %v/%v, want true/%v", resp.Authenticated, resp.IsAdmin, tt.want)
+			}
+		})
+	}
+}
+
 // --- Auth header extraction ---
 
 func TestHandleGetServices_InvalidAuthHeader_TreatedAsUnauthenticated(t *testing.T) {

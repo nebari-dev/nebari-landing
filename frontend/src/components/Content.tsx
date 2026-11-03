@@ -5,6 +5,7 @@ import type { ServicesStatus } from "../hooks/useLaunchpadData";
 import { readServicesLayout, writeServicesLayout } from "../lib/preferences";
 import { usesRicherLayout } from "../lib/services";
 import { cn } from "../lib/utils";
+import { ServiceDetailsDrawer } from "./ServiceDetailsDrawer";
 import { ServicesEmptyState } from "./ServicesEmptyState";
 import { ServicesSection } from "./ServicesSection";
 import { SimpleServicesSection } from "./SimpleServicesSection";
@@ -28,6 +29,15 @@ export function Content({ services, status, onRetry, userName, onTogglePin }: Co
   useEffect(() => {
     if (status === "ready") writeServicesLayout(richer ? "richer" : "simple");
   }, [status, richer]);
+
+  const [detailsServiceId, setDetailsServiceId] = useState<string>();
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsService = services.find((service) => service.id === detailsServiceId);
+
+  const showDetails = (serviceId: string) => {
+    setDetailsServiceId(serviceId);
+    setDetailsOpen(true);
+  };
 
   return (
     <div className={cn("flex flex-col px-12 pt-8 pb-16", richer ? "gap-6" : "gap-8")}>
@@ -53,10 +63,20 @@ export function Content({ services, status, onRetry, userName, onTogglePin }: Co
           }
         />
       ) : richer ? (
-        <ServicesSection services={services} onTogglePin={onTogglePin} loading={loading} />
+        <ServicesSection
+          services={services}
+          onTogglePin={onTogglePin}
+          onShowDetails={showDetails}
+          loading={loading}
+        />
       ) : (
-        <SimpleServicesSection services={services} loading={loading} />
+        <SimpleServicesSection services={services} onShowDetails={showDetails} loading={loading} />
       )}
+      <ServiceDetailsDrawer
+        service={detailsService}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+      />
     </div>
   );
 }
