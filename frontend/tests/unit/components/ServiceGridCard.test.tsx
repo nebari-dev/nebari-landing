@@ -67,4 +67,19 @@ describe("ServiceGridCard", () => {
 
     expect(screen.queryByRole("button", { name: /pin service/i })).not.toBeInTheDocument();
   });
+
+  it("shows the first category and counts the rest", () => {
+    render(
+      <ServiceGridCard
+        service={{ ...baseService, category: ["ML", "Monitoring", "Platform"] }}
+        onTogglePin={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("ML")).toBeInTheDocument();
+    expect(screen.queryByText("Monitoring")).not.toBeInTheDocument();
+    expect(screen.getByText("+2")).toBeInTheDocument();
+    expect(screen.getByText("2 more categories: Monitoring, Platform")).toBeInTheDocument();
+  });
+
 });

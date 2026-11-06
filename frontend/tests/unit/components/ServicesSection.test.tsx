@@ -62,7 +62,42 @@ describe("ServicesSection", () => {
 
     expect(screen.getByText("JupyterHub")).toBeInTheDocument();
     expect(screen.queryByText("Grafana")).not.toBeInTheDocument();
-    expect(screen.getByText("No pinned services yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Pinned/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps category chips in menu order, collapses extras into +N, and reads all as All categories", async () => {
+    const user = userEvent.setup();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    const filter = screen.getByRole("combobox", { name: "Filter by category" });
+    await user.click(filter);
+    await user.click(await screen.findByRole("option", { name: "platform" }));
+    await user.click(screen.getByRole("option", { name: "data" }));
+
+    expect(
+      screen.getAllByRole("button", { name: /^Remove / }).map((b) => b.getAttribute("aria-label")),
+    ).toEqual(["Remove data", "Remove platform"]);
+
+    await user.click(screen.getByRole("option", { name: "observability" }));
+
+    expect(screen.queryAllByRole("button", { name: /^Remove / })).toHaveLength(0);
+    expect(screen.getByText("All categories")).toBeInTheDocument();
+  });
+
+  it("keeps uncategorized services visible when every category is selected", async () => {
+    const user = userEvent.setup();
+    const withUncategorized = [
+      ...services,
+      { ...services[0], id: "4", name: "Docs Portal", category: [], pinned: false },
+    ];
+    render(<ServicesSection services={withUncategorized} onTogglePin={vi.fn()} />);
+
+    await user.click(screen.getByRole("combobox", { name: "Filter by category" }));
+    for (const name of ["data", "observability", "platform"]) {
+      await user.click(await screen.findByRole("option", { name }));
+    }
+
+    expect(screen.getByText("Docs Portal")).toBeInTheDocument();
   });
 
   it("filters by the selected categories", async () => {

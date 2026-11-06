@@ -5,6 +5,7 @@ import {
   filterServices,
   getCategories,
   type ServiceSort,
+  selectsAllCategories,
   sortServices,
 } from "../lib/services";
 import { ServicesAccordion } from "./ServiceAccordion";
@@ -26,10 +27,12 @@ export function ServicesSection({ services, onTogglePin }: ServicesSectionProps)
 
   const categories = useMemo(() => getCategories(services), [services]);
 
-  const visibleServices = useMemo(
-    () => sortServices(filterServices(services, query, selectedCategories), sort),
-    [services, query, selectedCategories, sort],
-  );
+  const visibleServices = useMemo(() => {
+    const activeCategories = selectsAllCategories(categories, selectedCategories)
+      ? []
+      : selectedCategories;
+    return sortServices(filterServices(services, query, activeCategories), sort);
+  }, [services, categories, query, selectedCategories, sort]);
 
   return (
     <div className="flex flex-col gap-6">
