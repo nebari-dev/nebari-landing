@@ -1,9 +1,13 @@
 import { apiFetch } from "./client";
 
+/** Latest probe result; `degraded` and `down` both count as an unhealthy `status`. */
+export type HealthState = "healthy" | "degraded" | "down" | "unknown";
+
 export type Service = {
   id: string;
   name: string;
   status: string;
+  health?: HealthState;
   description: string;
   category: string[];
   pinned: boolean;
@@ -11,6 +15,11 @@ export type Service = {
   imageLight?: string;
   imageDark?: string;
   url: string;
+  version?: string;
+  /** Always an absolute http(s) URL. */
+  docsUrl?: string;
+  /** Reserved for the signed-in user's running sessions; the webapi does not send it yet. */
+  sessionCount?: number;
 };
 
 /**

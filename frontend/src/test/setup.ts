@@ -21,6 +21,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: "bypass" }));
 afterEach(() => {
   server.resetHandlers();
   resetStore();
+  window.localStorage.clear();
 });
 
 afterAll(() => server.close());

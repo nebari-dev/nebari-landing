@@ -8,8 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	sdapp "github.com/nebari-dev/nebari-landing/internal/app"
 	"github.com/nebari-dev/nebari-landing/internal/cache"
+	"github.com/nebari-dev/nebari-landing/internal/notifications"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestProbe_DeniesRedirect(t *testing.T) {
@@ -47,8 +50,8 @@ func TestProbe_DeniesRedirect(t *testing.T) {
 	if svc == nil || svc.Health == nil {
 		t.Fatalf("expected health status, got %+v", svc)
 	}
-	if svc.Health.Status != "unhealthy" {
-		t.Fatalf("health status = %q, want unhealthy", svc.Health.Status)
+	if svc.Health.Status != "unhealthy" || svc.Health.State != cache.HealthDegraded {
+		t.Fatalf("health = %q/%q, want unhealthy/degraded", svc.Health.Status, svc.Health.State)
 	}
 	if svc.Health.Message != "HTTP 302" {
 		t.Fatalf("health message = %q, want HTTP 302", svc.Health.Message)
@@ -122,7 +125,7 @@ type countingProbeRequester struct {
 
 func (r *countingProbeRequester) Probe(context.Context, string, *cache.HealthCheckConfig) probeResult {
 	r.called = true
-	return probeResult{status: "healthy", checkedAt: time.Now(), message: fmt.Sprintf("called=%v", r.called)}
+	return probeResult{state: "healthy", checkedAt: time.Now(), message: fmt.Sprintf("called=%v", r.called)}
 }
 
 // blockingProbeRequester parks every probe until release is closed, so a test
@@ -139,7 +142,7 @@ func newBlockingProbeRequester() *blockingProbeRequester {
 func (r *blockingProbeRequester) Probe(context.Context, string, *cache.HealthCheckConfig) probeResult {
 	r.started <- struct{}{}
 	<-r.release
-	return probeResult{status: "healthy", checkedAt: time.Now(), message: "HTTP 200"}
+	return probeResult{state: "healthy", checkedAt: time.Now(), message: "HTTP 200"}
 }
 
 func healthCheckedApp(uid, path string) *sdapp.App {
@@ -281,13 +284,49 @@ func TestRemoteProbeRequesterReportsRunnerFailuresAsUnknown(t *testing.T) {
 			wantMessage: "probe runner HTTP 500: boom",
 		},
 		{
-			name: "runner measured an unhealthy target",
+			name: "runner measured a degraded target",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"unhealthy","state":"degraded","message":"HTTP 503"}`))
+			},
+			wantStatus:  "degraded",
+			wantMessage: "HTTP 503",
+		},
+		{
+			name: "runner could not reach the target",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"unhealthy","state":"down","message":"probe error: connection refused"}`))
+			},
+			wantStatus:  "down",
+			wantMessage: "probe error: connection refused",
+		},
+		{
+			name: "runner from an earlier release reports only unhealthy",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(`{"status":"unhealthy","message":"HTTP 503"}`))
 			},
-			wantStatus:  "unhealthy",
+			wantStatus:  "down",
 			wantMessage: "HTTP 503",
+		},
+		{
+			name: "runner from an earlier release reports healthy",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"healthy","message":"HTTP 200"}`))
+			},
+			wantStatus:  "healthy",
+			wantMessage: "HTTP 200",
+		},
+		{
+			name: "runner sends an unrecognised state",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"unhealthy","state":"on-fire","message":"?"}`))
+			},
+			wantStatus:  "unknown",
+			wantMessage: "?",
 		},
 	}
 	for _, tt := range tests {
@@ -299,8 +338,8 @@ func TestRemoteProbeRequesterReportsRunnerFailuresAsUnknown(t *testing.T) {
 				t.Fatalf("newRemoteProbeRequester: %v", err)
 			}
 			got := requester.Probe(context.Background(), "uid", cfg)
-			if got.status != tt.wantStatus || got.message != tt.wantMessage {
-				t.Fatalf("Probe() = %q/%q, want %q/%q", got.status, got.message, tt.wantStatus, tt.wantMessage)
+			if got.state != tt.wantStatus || got.message != tt.wantMessage {
+				t.Fatalf("Probe() = %q/%q, want %q/%q", got.state, got.message, tt.wantStatus, tt.wantMessage)
 			}
 		})
 	}
@@ -316,7 +355,92 @@ func TestRemoteProbeRequesterReportsUnreachableRunnerAsUnknown(t *testing.T) {
 		t.Fatalf("newRemoteProbeRequester: %v", err)
 	}
 	got := requester.Probe(context.Background(), "uid", &cache.HealthCheckConfig{ProbeURL: "http://app-backend.team-a:8080/ready", TimeoutSeconds: 1})
-	if got.status != "unknown" {
-		t.Fatalf("status = %q (%s), want unknown", got.status, got.message)
+	if got.state != "unknown" {
+		t.Fatalf("status = %q (%s), want unknown", got.state, got.message)
+	}
+}
+
+func TestPerformProbeRequestClassifiesHealthState(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ok":
+			w.WriteHeader(http.StatusOK)
+		case "/unavailable":
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case "/limited":
+			w.WriteHeader(http.StatusTooManyRequests)
+		case "/redirect":
+			http.Redirect(w, r, "/ok", http.StatusFound)
+		case "/slow":
+			select {
+			case <-r.Context().Done():
+			case <-time.After(2 * time.Second):
+			}
+		}
+	}))
+	defer server.Close()
+
+	refused := httptest.NewServer(http.NotFoundHandler())
+	refusedURL := refused.URL
+	refused.Close()
+
+	tests := []struct {
+		name       string
+		url        string
+		wantState  string
+		wantStatus string
+	}{
+		{"2xx", server.URL + "/ok", cache.HealthHealthy, "healthy"},
+		{"5xx", server.URL + "/unavailable", cache.HealthDegraded, "unhealthy"},
+		{"429", server.URL + "/limited", cache.HealthDegraded, "unhealthy"},
+		{"redirect", server.URL + "/redirect", cache.HealthDegraded, "unhealthy"},
+		{"connection refused", refusedURL + "/ok", cache.HealthDown, "unhealthy"},
+		{"timeout", server.URL + "/slow", cache.HealthDown, "unhealthy"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := performProbeRequest(context.Background(), "uid", tt.url, newProbeHTTPClient(200*time.Millisecond))
+			status := got.healthStatus()
+			if got.state != tt.wantState || status.Status != tt.wantStatus {
+				t.Fatalf("probe = %q/%q (%s), want %q/%q", got.state, status.Status, got.message, tt.wantState, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func TestRecoveryNotificationAfterDegradedOrDown(t *testing.T) {
+	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer healthy.Close()
+
+	for _, previous := range []string{cache.HealthDegraded, cache.HealthDown} {
+		t.Run(previous, func(t *testing.T) {
+			rdb := redis.NewClient(&redis.Options{Addr: miniredis.RunT(t).Addr()})
+			store := notifications.NewStore(rdb, time.Hour)
+
+			serviceCache := cache.NewServiceCache()
+			serviceCache.Add(&sdapp.App{
+				UID:         "uid-recover",
+				Name:        "app",
+				Namespace:   "ns",
+				Hostname:    "app.example.com",
+				TLSEnabled:  true,
+				LandingPage: &sdapp.LandingPage{Enabled: true, DisplayName: "App", Visibility: "public"},
+			})
+			serviceCache.UpdateHealth("uid-recover", cache.NewHealthStatus(previous, "", nil))
+
+			checker := NewHealthChecker(serviceCache, time.Second)
+			checker.SetNotificationStore(store)
+			checker.probe(context.Background(), "uid-recover", healthy.URL, newProbeHTTPClient(time.Second))
+
+			list, err := store.List()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(list) != 1 || list[0].Title != "App is back online!" {
+				t.Fatalf("notifications = %+v, want one back-online notification", list)
+			}
+		})
 	}
 }

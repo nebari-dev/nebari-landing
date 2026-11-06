@@ -4,6 +4,7 @@
 package cache
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -850,4 +851,114 @@ func untrustedHealthCheckApp() *sdapp.App {
 	a.ServiceName = "app-backend"
 	a.ServicePort = 8080
 	return a
+}
+
+func TestNewHealthStatus_MapsStateToStatus(t *testing.T) {
+	tests := []struct {
+		state, wantState, wantStatus string
+	}{
+		{HealthHealthy, "healthy", "healthy"},
+		{HealthDegraded, "degraded", "unhealthy"},
+		{HealthDown, "down", "unhealthy"},
+		{HealthUnknown, "unknown", "unknown"},
+		{"", "unknown", "unknown"},
+		{"on-fire", "unknown", "unknown"},
+	}
+	for _, tt := range tests {
+		got := NewHealthStatus(tt.state, "msg", nil)
+		if got.State != tt.wantState || got.Status != tt.wantStatus || got.Message != "msg" {
+			t.Errorf("NewHealthStatus(%q) = %q/%q/%q, want %q/%q/msg",
+				tt.state, got.State, got.Status, got.Message, tt.wantState, tt.wantStatus)
+		}
+	}
+}
+
+func TestAdd_InitialHealthState_Unknown(t *testing.T) {
+	c := NewServiceCache()
+	c.Add(makeApp("uid-state", "app", "default", "app.example.com", &sdapp.LandingPage{Enabled: true}))
+
+	svc := c.Get("uid-state")
+	if svc == nil || svc.Health == nil {
+		t.Fatalf("expected health status, got %+v", svc)
+	}
+	if svc.Health.State != HealthUnknown || svc.Health.Status != "unknown" {
+		t.Errorf("health = %q/%q, want unknown/unknown", svc.Health.State, svc.Health.Status)
+	}
+}
+
+func TestAdd_StoresVersionAndDocsURL(t *testing.T) {
+	c := NewServiceCache()
+	c.Add(makeApp("uid-meta", "app", "default", "app.example.com", &sdapp.LandingPage{
+		Enabled: true,
+		Version: " 5.2.1 ",
+		DocsURL: "https://docs.example.com/app",
+	}))
+
+	svc := c.Get("uid-meta")
+	if svc == nil {
+		t.Fatal("expected service in cache")
+	}
+	if svc.Version != "5.2.1" {
+		t.Errorf("Version = %q, want 5.2.1", svc.Version)
+	}
+	if svc.DocsURL != "https://docs.example.com/app" {
+		t.Errorf("DocsURL = %q", svc.DocsURL)
+	}
+}
+
+func TestAdd_DropsUnsafeOrOversizedMetadata(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		docsURL string
+	}{
+		{"javascript docs url", "", "javascript:alert(1)"},
+		{"data docs url", "", "data:text/html,<script>alert(1)</script>"},
+		{"relative docs url", "", "/docs"},
+		{"ftp docs url", "", "ftp://docs.example.com"},
+		{"docs url without host", "", "https://"},
+		{"oversized docs url", "", "https://docs.example.com/" + strings.Repeat("a", sdapp.MaxDocsURLLength)},
+		{"oversized version", strings.Repeat("1", sdapp.MaxVersionLength+1), ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewServiceCache()
+			c.Add(makeApp("uid-bad", "app", "default", "app.example.com", &sdapp.LandingPage{
+				Enabled: true,
+				Version: tt.version,
+				DocsURL: tt.docsURL,
+			}))
+			svc := c.Get("uid-bad")
+			if svc == nil {
+				t.Fatal("expected the service to stay listed")
+			}
+			if svc.Version != "" || svc.DocsURL != "" {
+				t.Errorf("Version/DocsURL = %q/%q, want both empty", svc.Version, svc.DocsURL)
+			}
+		})
+	}
+}
+
+func TestServiceInfoJSON_HealthStateAndOptionalMetadata(t *testing.T) {
+	c := NewServiceCache()
+	c.Add(makeApp("uid-json", "app", "default", "app.example.com", &sdapp.LandingPage{Enabled: true}))
+	c.UpdateHealth("uid-json", NewHealthStatus(HealthDown, "probe error", nil))
+
+	data, err := json.Marshal(c.Get("uid-json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	health, _ := got["health"].(map[string]any)
+	if health["status"] != "unhealthy" || health["state"] != "down" {
+		t.Errorf("health = %v, want status unhealthy and state down", health)
+	}
+	for _, key := range []string{"version", "docsUrl"} {
+		if _, ok := got[key]; ok {
+			t.Errorf("expected %q to be omitted when empty", key)
+		}
+	}
 }
