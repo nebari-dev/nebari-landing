@@ -72,3 +72,8 @@ export function filterServices(
 export function getCategories(services: Service[]): string[] {
   return [...new Set(services.flatMap((service) => service.category))].sort(collator.compare);
 }
+
+/** True when the selection covers every category, so it filters nothing. */
+export function selectsAllCategories(categories: string[], selected: string[]): boolean {
+  return categories.length > 1 && categories.every((category) => selected.includes(category));
+}

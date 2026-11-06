@@ -12,8 +12,7 @@ test("pinning moves a service between the Pinned and All services sections", asy
 
   await pinnedSection.getByRole("button", { name: "Unpin service" }).click();
 
-  await expect(page.getByRole("button", { name: "Pinned 0" })).toBeVisible();
-  await expect(page.getByText("No pinned services yet.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Pinned/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "All services 6" })).toBeVisible();
 
   await jupyterInAll.getByRole("button", { name: "Pin service" }).click();
@@ -101,4 +100,49 @@ test("running sessions show on the card and the table row", async ({ page }) => 
       .getByRole("row", { name: /JupyterHub/ })
       .getByText("2 sessions running"),
   ).toBeVisible();
+});
+
+test("unpinned table rows reveal the pin control on hover", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Table" }).click();
+
+  const table = page.getByRole("table", { name: "Services" });
+  const grafanaRow = table.getByRole("row", { name: /Grafana/ });
+  const pinButton = grafanaRow.getByRole("button", { name: "Pin service" });
+
+  await expect(pinButton).toHaveCSS("opacity", "0");
+  await expect(
+    table.getByRole("row", { name: /JupyterHub/ }).getByRole("button", { name: "Unpin service" }),
+  ).toHaveCSS("opacity", "1");
+
+  await grafanaRow.hover();
+  await expect(pinButton).toHaveCSS("opacity", "1");
+});
+
+test.describe("services with several categories", () => {
+  test.use({
+    services: [
+      richerServices.map((service) =>
+        service.name === "MLflow"
+          ? { ...service, category: ["Machine Learning", "Monitoring", "Platform"] }
+          : service,
+      ),
+      { scope: "test" },
+    ],
+  });
+
+  test("show the first category and a +N count on cards and rows", async ({ page }) => {
+    await page.goto("/");
+
+    const card = page
+      .getByRole("region", { name: /^All services/ })
+      .locator('[data-slot="card"]', { hasText: "MLflow" });
+    await expect(card.getByText("Machine Learning")).toBeVisible();
+    await expect(card.getByText("+2")).toBeVisible();
+    await expect(card.getByText("Monitoring", { exact: true })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Table" }).click();
+    const row = page.getByRole("table", { name: "Services" }).getByRole("row", { name: /MLflow/ });
+    await expect(row.getByText("+2")).toBeVisible();
+  });
 });

@@ -2,7 +2,7 @@ import { ExternalLink } from "lucide-react";
 import type { Service } from "../api/listServices";
 import { useStatusView } from "../hooks/status-view";
 import { cn } from "../lib/utils";
-import { CategoryBadge } from "./CategoryBadge";
+import { CategoryBadges } from "./CategoryBadge";
 import { PinButton } from "./PinButton";
 import { ServiceDetailsButton } from "./ServiceDetailsButton";
 import { ServiceIcon } from "./ServiceIcon";
@@ -69,7 +69,7 @@ export function ServiceGridCard({ service, onTogglePin, onShowDetails }: Service
                 "relative z-20",
                 // Unpinned cards reveal the pin on hover or focus; touch screens always show it.
                 !service.pinned &&
-                  "pointer-fine:opacity-0 pointer-fine:group-focus-within/service:opacity-100 pointer-fine:group-hover/service:opacity-100 motion-safe:transition-opacity motion-safe:duration-(--duration-fast)",
+                  "pointer-fine:opacity-0 pointer-fine:group-focus-within/service:opacity-100 pointer-fine:group-hover/service:opacity-100",
               )}
               onToggle={(nextPinned) => void onTogglePin(service.id, nextPinned)}
             />
@@ -90,9 +90,7 @@ export function ServiceGridCard({ service, onTogglePin, onShowDetails }: Service
 
         <CardFooter className="mt-auto min-w-0 gap-2 px-0">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 overflow-hidden">
-            {service.category.map((item) => (
-              <CategoryBadge key={item} category={item} muted={unavailable} />
-            ))}
+            <CategoryBadges categories={service.category} muted={unavailable} />
             <StatusBadge
               status={service.status}
               health={service.health}

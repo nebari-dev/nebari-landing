@@ -14,7 +14,7 @@ type ServicesAccordionProps = {
   onShowDetails?: (serviceId: string) => void;
 };
 
-/** Richer-layout grid view: collapsible Pinned and All services sections. */
+/** Richer-layout grid view: collapsible Pinned and All services sections; empty sections are omitted once loaded. */
 export function ServicesAccordion({
   pinnedServices,
   otherServices,
@@ -24,34 +24,39 @@ export function ServicesAccordion({
 }: ServicesAccordionProps) {
   return (
     <Accordion multiple defaultValue={["pinned-services", "all-services"]} className="gap-6">
-      <AccordionItem value="pinned-services" className="border-b-0">
-        <ServiceSectionTrigger title="Pinned" count={loading ? undefined : pinnedServices.length} />
-        <AccordionContent className="text-foreground" contentClassName="px-0 pt-3 pb-0">
-          <ServicesGrid
-            services={pinnedServices}
-            emptyMessage="No pinned services yet."
-            onTogglePin={onTogglePin}
-            skeletonCount={loading ? 2 : undefined}
-            onShowDetails={onShowDetails}
+      {(loading || pinnedServices.length > 0) && (
+        <AccordionItem value="pinned-services" className="border-b-0">
+          <ServiceSectionTrigger
+            title="Pinned"
+            count={loading ? undefined : pinnedServices.length}
           />
-        </AccordionContent>
-      </AccordionItem>
+          <AccordionContent className="text-foreground" contentClassName="px-0 pt-3 pb-0">
+            <ServicesGrid
+              services={pinnedServices}
+              onTogglePin={onTogglePin}
+              skeletonCount={loading ? 2 : undefined}
+              onShowDetails={onShowDetails}
+            />
+          </AccordionContent>
+        </AccordionItem>
+      )}
 
-      <AccordionItem value="all-services" className="border-b-0">
-        <ServiceSectionTrigger
-          title="All services"
-          count={loading ? undefined : otherServices.length}
-        />
-        <AccordionContent className="text-foreground" contentClassName="px-0 pt-3 pb-0">
-          <ServicesGrid
-            services={otherServices}
-            emptyMessage="No services found."
-            onTogglePin={onTogglePin}
-            skeletonCount={loading ? 6 : undefined}
-            onShowDetails={onShowDetails}
+      {(loading || otherServices.length > 0) && (
+        <AccordionItem value="all-services" className="border-b-0">
+          <ServiceSectionTrigger
+            title="All services"
+            count={loading ? undefined : otherServices.length}
           />
-        </AccordionContent>
-      </AccordionItem>
+          <AccordionContent className="text-foreground" contentClassName="px-0 pt-3 pb-0">
+            <ServicesGrid
+              services={otherServices}
+              onTogglePin={onTogglePin}
+              skeletonCount={loading ? 6 : undefined}
+              onShowDetails={onShowDetails}
+            />
+          </AccordionContent>
+        </AccordionItem>
+      )}
     </Accordion>
   );
 }

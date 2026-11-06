@@ -2,7 +2,7 @@ import { ExternalLink } from "lucide-react";
 import type { Service } from "../api/listServices";
 import { useStatusView } from "../hooks/status-view";
 import { cn } from "../lib/utils";
-import { CategoryBadge } from "./CategoryBadge";
+import { CategoryBadges } from "./CategoryBadge";
 import { PinButton } from "./PinButton";
 import { ServiceDetailsButton } from "./ServiceDetailsButton";
 import { ServiceIcon } from "./ServiceIcon";
@@ -33,6 +33,10 @@ export function ServiceTableRow({ service, onTogglePin, onShowDetails }: Service
         <div className="flex justify-end">
           <PinButton
             pinned={service.pinned}
+            className={cn(
+              !service.pinned &&
+                "pointer-fine:opacity-0 pointer-fine:group-focus-within/row:opacity-100 pointer-fine:group-hover/row:opacity-100",
+            )}
             onToggle={(nextPinned) => onTogglePin?.(service.id, nextPinned)}
           />
         </div>
@@ -81,14 +85,11 @@ export function ServiceTableRow({ service, onTogglePin, onShowDetails }: Service
 
       <TableCell className="h-14 px-3 whitespace-normal">
         <div className="flex min-w-0 flex-wrap gap-1">
-          {service.category.map((item) => (
-            <CategoryBadge
-              key={item}
-              category={item}
-              muted={unavailable}
-              className="max-w-full whitespace-normal break-words"
-            />
-          ))}
+          <CategoryBadges
+            categories={service.category}
+            muted={unavailable}
+            badgeClassName="max-w-full whitespace-normal break-words"
+          />
         </div>
       </TableCell>
 

@@ -4,7 +4,8 @@ import { ServiceGridCard } from "./ServiceGridCard";
 
 type ServicesGridProps = {
   services: Service[];
-  emptyMessage: string;
+  /** Shown when `services` is empty. */
+  emptyMessage?: string;
   /** Omit to render cards without a pin control. */
   onTogglePin?: (serviceId: string, nextPinned: boolean) => void | Promise<void>;
   /** Renders this many skeleton cards instead of the services. */
@@ -33,7 +34,7 @@ export function ServicesGrid({
   }
 
   if (services.length === 0) {
-    return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
+    return emptyMessage ? <p className="text-sm text-muted-foreground">{emptyMessage}</p> : null;
   }
 
   return (

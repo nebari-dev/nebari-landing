@@ -21,6 +21,12 @@ describe("ServiceIcon", () => {
     expect(screen.getByText("DG")).toBeInTheDocument();
   });
 
+  it("splits camelCase names into words", () => {
+    render(<ServiceIcon name="KeyCloak" />);
+
+    expect(screen.getByText("KC")).toBeInTheDocument();
+  });
+
   it("uses the first two letters of a single-word name", () => {
     render(<ServiceIcon name="keycloak" />);
 
