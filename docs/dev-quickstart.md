@@ -76,9 +76,13 @@ frontend/src/mocks/
 └── generated/handlers.ts — auto-generated from internal/api/docs/swagger.json
 ```
 
-To add fresh mock data, edit `fixtures.ts`. To change how an endpoint
-responds, add an `http.<verb>(...)` to the `overrides` array in
-`handlers.ts` — overrides take precedence over the generated fallback.
+To add fresh mock data, edit `fixtures.ts`. It seeds nine services, so the
+launchpad renders the richer layout (search, filter, sort, and Pinned / All
+services sections); trim `seedServices` below six to see the simple layout.
+
+To change how an endpoint responds, add an `http.<verb>(...)` to the
+`overrides` array in `handlers.ts` — overrides take precedence over the
+generated fallback.
 
 ### When the OpenAPI spec changes
 

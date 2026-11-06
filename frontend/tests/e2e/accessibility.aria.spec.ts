@@ -17,13 +17,15 @@ test("header accessibility tree stays stable", async ({ page }) => {
 test("services controls accessibility tree stays stable", async ({ page }) => {
   await page.goto("/");
 
-  const allServicesRegion = page.getByRole("region", { name: /All services/i });
-  await expect(allServicesRegion).toBeVisible();
-
-  await expect(allServicesRegion.getByRole("textbox", { name: "Search services" })).toBeVisible();
-  await expect(allServicesRegion.getByRole("tablist")).toMatchAriaSnapshot(`
-    - tablist:
-      - tab "Grid View" [selected]
-      - tab "List View"
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Welcome back, Test");
+  await expect(page.getByRole("textbox", { name: "Search services" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Filter by category" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Sort services" })).toContainText("Sort: Name");
+  await expect(page.getByRole("group", { name: "View" })).toMatchAriaSnapshot(`
+    - group "View":
+      - button "Grid" [pressed]
+      - button "Table"
   `);
+  await expect(page.getByRole("button", { name: "Pinned 1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "All services 5" })).toBeVisible();
 });

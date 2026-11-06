@@ -89,10 +89,6 @@
 
   /* App-defined: launchpad surfaces, derived from registry tokens. */
   --scrollbar-thumb: var(--border-strong);
-  --control-muted-foreground: var(--muted-foreground);
-  --text-secondary: var(--muted-foreground-strong);
-  --accordion-trigger-foreground: var(--text-secondary);
-  --accordion-description-foreground: var(--text-secondary);
   --table-row-hover-background: color-mix(in oklab, var(--muted) 50%, transparent);
 
   --status-healthy-bg: var(--success);
@@ -106,9 +102,6 @@
   --status-default-bg: var(--muted);
   --status-default-fg: var(--muted-foreground-strong);
   --status-default-dot: var(--muted-foreground-strong);
-
-  --category-badge-background: var(--secondary);
-  --category-badge-foreground: var(--control-muted-foreground);
 }
 
 .dark {
@@ -181,15 +174,11 @@
 
   /* App-defined: launchpad surfaces, derived from registry tokens. */
   --scrollbar-thumb: var(--border);
-  --control-muted-foreground: var(--muted-foreground-strong);
-  --accordion-description-foreground: var(--muted-foreground);
   --table-row-hover-background: var(--muted);
 
   --status-default-bg: var(--muted);
   --status-default-fg: var(--muted-foreground);
   --status-default-dot: var(--muted-foreground);
-
-  --category-badge-background: var(--muted);
 }
 
 @theme inline {
@@ -247,10 +236,7 @@
   /* App-defined tokens exposed as utilities (bg-header-action-hover, …). */
   --color-header-action-hover: var(--header-action-hover);
   --color-sign-out-foreground: var(--sign-out-foreground);
-  --color-control-muted-foreground: var(--control-muted-foreground);
   --color-table-row-hover-background: var(--table-row-hover-background);
-  --color-category-badge-background: var(--category-badge-background);
-  --color-category-badge-foreground: var(--category-badge-foreground);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);

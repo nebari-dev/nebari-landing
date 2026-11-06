@@ -4,11 +4,10 @@ test("dark table rows expose a visible hover surface", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => document.documentElement.classList.add("dark"));
 
-  const allServices = page.getByRole("region", { name: /All services/i });
-  await allServices.getByRole("tab", { name: /List View/i }).click();
-  const serviceRow = allServices
-    .locator('[data-slot="table-container"]')
-    .getByRole("link", { name: /JupyterHub/i });
+  await page.getByRole("button", { name: "Table" }).click();
+  const serviceRow = page
+    .getByRole("table", { name: "Services" })
+    .getByRole("row", { name: /JupyterHub/i });
   const beforeHover = await serviceRow.evaluate(
     (element) => getComputedStyle(element).backgroundColor,
   );
@@ -22,8 +21,7 @@ test("table header remains visually distinct from the table body in both themes"
 }) => {
   const openTable = async () => {
     await page.goto("/");
-    const allServicesRegion = page.getByRole("region", { name: /All services/i });
-    await allServicesRegion.getByRole("tab", { name: /List View/i }).click();
+    await page.getByRole("button", { name: "Table" }).click();
   };
 
   await page.goto("/");
@@ -67,10 +65,13 @@ test("accordion sections do not add a divider between content groups", async ({ 
 test("pinned service card title is not underlined", async ({ page }) => {
   await page.goto("/");
 
-  const pinnedServices = page.getByRole("region", { name: /Pinned services/i });
+  const pinnedServices = page.getByRole("region", { name: /^Pinned/ });
   const pinnedService = pinnedServices.getByRole("link", { name: /JupyterHub/i });
+  const pinnedTitle = pinnedServices.locator('[data-slot="card-title"]', { hasText: "JupyterHub" });
 
   await expect(pinnedService).toHaveCSS("text-decoration-line", "none");
+  await expect(pinnedTitle).toHaveCSS("text-decoration-line", "none");
   await pinnedService.hover();
   await expect(pinnedService).toHaveCSS("text-decoration-line", "none");
+  await expect(pinnedTitle).toHaveCSS("text-decoration-line", "none");
 });

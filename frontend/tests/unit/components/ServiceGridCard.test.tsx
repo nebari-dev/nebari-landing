@@ -32,6 +32,12 @@ describe("ServiceGridCard", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
+  it("renders the service status", () => {
+    render(<ServiceGridCard service={baseService} onTogglePin={vi.fn()} />);
+
+    expect(screen.getByText("Healthy")).toBeInTheDocument();
+  });
+
   it("calls onTogglePin with the next pinned state", async () => {
     const user = userEvent.setup();
     const onTogglePin = vi.fn();
@@ -55,4 +61,25 @@ describe("ServiceGridCard", () => {
 
     expect(onTogglePin).toHaveBeenCalledWith("svc-1", false);
   });
+
+  it("renders without a pin control when pinning is not offered", () => {
+    render(<ServiceGridCard service={baseService} />);
+
+    expect(screen.queryByRole("button", { name: /pin service/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the first category and counts the rest", () => {
+    render(
+      <ServiceGridCard
+        service={{ ...baseService, category: ["ML", "Monitoring", "Platform"] }}
+        onTogglePin={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("ML")).toBeInTheDocument();
+    expect(screen.queryByText("Monitoring")).not.toBeInTheDocument();
+    expect(screen.getByText("+2")).toBeInTheDocument();
+    expect(screen.getByText("2 more categories: Monitoring, Platform")).toBeInTheDocument();
+  });
+
 });

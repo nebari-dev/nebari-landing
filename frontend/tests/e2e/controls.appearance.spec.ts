@@ -3,8 +3,8 @@ import { expect, test } from "./fixtures/e2e";
 test("active selectors are visually distinct from inactive selectors", async ({ page }) => {
   await page.goto("/");
 
-  const activeView = page.getByRole("tab", { name: /Grid View/i });
-  const inactiveView = page.getByRole("tab", { name: /List View/i });
+  const activeView = page.getByRole("button", { name: "Grid" });
+  const inactiveView = page.getByRole("button", { name: "Table" });
 
   await page.getByRole("button", { name: /account menu/i }).click();
   const activeTheme = page.getByRole("menuitemradio", { name: /system theme/i });
