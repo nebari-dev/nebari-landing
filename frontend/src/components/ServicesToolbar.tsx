@@ -37,7 +37,7 @@ export function ServicesToolbar({
           categories={categories}
           value={selectedCategories}
           onChange={onSelectedCategoriesChange}
-          className="sm:w-auto sm:min-w-55"
+          className="sm:w-auto sm:max-w-80 sm:min-w-55"
         />
         <SortSelect sort={sort} onChange={onSortChange} className="sm:w-auto sm:min-w-39" />
       </div>

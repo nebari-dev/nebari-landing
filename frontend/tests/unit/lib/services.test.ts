@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Service } from "@/api/listServices";
-import { filterServices, getCategories, sortServices, usesRicherLayout } from "@/lib/services";
+import {
+  filterServices,
+  getCategories,
+  selectsAllCategories,
+  sortServices,
+  usesRicherLayout,
+} from "@/lib/services";
 
 function service(overrides: Partial<Service> & Pick<Service, "id" | "name">): Service {
   return {
@@ -110,5 +116,21 @@ describe("getCategories", () => {
       "Monitoring",
       "Platform",
     ]);
+  });
+});
+
+describe("selectsAllCategories", () => {
+  it("is true only when every current category is selected", () => {
+    expect(selectsAllCategories(["a", "b"], ["b", "a"])).toBe(true);
+    expect(selectsAllCategories(["a", "b"], ["a"])).toBe(false);
+  });
+
+  it("ignores stale selections that are no longer categories", () => {
+    expect(selectsAllCategories(["a", "b"], ["a", "stale"])).toBe(false);
+    expect(selectsAllCategories(["a", "b"], ["a", "b", "stale"])).toBe(true);
+  });
+
+  it("is false for a single category", () => {
+    expect(selectsAllCategories(["a"], ["a"])).toBe(false);
   });
 });

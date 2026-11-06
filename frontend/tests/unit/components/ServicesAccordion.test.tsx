@@ -60,9 +60,10 @@ describe("ServicesAccordion", () => {
     expect(within(all).queryByText("JupyterHub")).not.toBeInTheDocument();
   });
 
-  it("explains an empty pinned section", () => {
+  it("leaves out the pinned section when nothing is pinned", () => {
     renderAccordion([]);
 
-    expect(screen.getByText("No pinned services yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Pinned/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All services 1" })).toBeInTheDocument();
   });
 });

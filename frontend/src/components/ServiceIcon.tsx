@@ -19,9 +19,13 @@ function resolveIcon(
   return imageLight || image || imageDark || undefined;
 }
 
-/** "Dask Gateway" → "DG", "Keycloak" → "KE". */
-function getServiceInitials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
+/** "Dask Gateway" → "DG", "KeyCloak" → "KC", "Keycloak" → "KE". */
+export function getServiceInitials(name: string): string {
+  const words = name
+    .trim()
+    .replace(/(\p{Ll})(\p{Lu})/gu, "$1 $2")
+    .split(/\s+/)
+    .filter(Boolean);
   if (words.length >= 2) return `${words[0][0]}${words[1][0]}`.toUpperCase();
   return (words[0] ?? "").slice(0, 2).toUpperCase();
 }

@@ -48,7 +48,7 @@ test.describe("richer layout (6 or more services)", () => {
     await page.getByRole("option", { name: "Monitoring" }).click();
     await page.keyboard.press("Escape");
 
-    await expect(page.getByRole("button", { name: "Pinned 0" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Pinned/ })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "All services 1" })).toBeVisible();
     const allServices = page.getByRole("region", { name: /^All services/ });
     await expect.poll(() => cardNames(allServices)).toEqual(["Grafana"]);
@@ -125,5 +125,45 @@ test.describe("richer layout (6 or more services)", () => {
       "Nebi",
       "Dask Gateway",
     ]);
+  });
+
+  test("category chips stay on one row: menu order, two chips, then +N", async ({ page }) => {
+    await page.goto("/");
+
+    const sort = page.getByRole("combobox", { name: "Sort services" });
+    const sortBefore = await sort.boundingBox();
+
+    await page.getByRole("combobox", { name: "Filter by category" }).click();
+    for (const name of ["Platform", "Monitoring", "Environments"]) {
+      await page.getByRole("option", { name }).click();
+    }
+    await page.keyboard.press("Escape");
+
+    await expect
+      .poll(() =>
+        page
+          .getByRole("button", { name: /^Remove / })
+          .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))),
+      )
+      .toEqual(["Remove Environments", "Remove Monitoring"]);
+    await expect(page.locator('[data-slot="combobox-field"]').getByText("+1")).toBeVisible();
+
+    const field = await page.locator('[data-slot="combobox-field"]').boundingBox();
+    expect(field?.width).toBeLessThanOrEqual(320);
+    expect(field?.height).toBeLessThan((sortBefore?.height ?? 0) * 1.5);
+  });
+
+  test("selecting every category reads as All categories", async ({ page }) => {
+    await page.goto("/");
+
+    await page.getByRole("combobox", { name: "Filter by category" }).click();
+    for (const name of ["Data Science", "Environments", "Machine Learning", "Monitoring", "Platform"]) {
+      await page.getByRole("option", { name }).click();
+    }
+    await page.keyboard.press("Escape");
+
+    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+    await expect(page.locator('[data-slot="combobox-field"]')).toContainText("All categories");
+    await expect(page.getByRole("button", { name: "All services 5" })).toBeVisible();
   });
 });
