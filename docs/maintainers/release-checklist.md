@@ -4,10 +4,10 @@ This document provides step-by-step instructions for creating a new release of n
 
 ## Prerequisites
 
-- [ ] Write access to `nebari-dev/nebari-landing` (to run the **Release prep** workflow and publish GitHub releases)
+- [ ] Write access to `nebari-dev/nebari-landing` (to publish GitHub releases)
 - [ ] `QUAY_USERNAME` / `QUAY_PASSWORD` secrets configured (image push)
 - [ ] `NEBARI_HELM_REPO_TOKEN` secret configured (for helm-repository sync)
-- [ ] All desired changes merged to `main` (release-prep always cuts from the tip of `main`; nothing runs from a local checkout)
+- [ ] All desired changes merged to `main` (create the tag on `main`; nothing runs from a local checkout)
 
 ## Release Steps
 
@@ -32,44 +32,47 @@ The tag format does not change: releases are still `vX.Y.Z`, the SemVer-shaped
 form that GitHub Releases, Helm chart versions and the image tagging in
 `release.yml` expect. Only the meaning of each digit follows EffVer.
 
-The release-prep workflow adds the `v` prefix when creating the git tag. You
-input the version without it (e.g. `0.1.6`, not `v0.1.6`).
+Release candidates use a SemVer pre-release suffix: `v0.2.0-rc.1`,
+`v0.2.0-rc.2`, then `v0.2.0` for the final release.
 
-### 2. Run the Release Prep workflow
-
-Go to **Actions → [Release prep](https://github.com/nebari-dev/nebari-landing/actions/workflows/release-prep.yaml) → Run workflow**.
-
-Enter the version (e.g. `0.2.0`) and click **Run workflow**. The workflow will:
-
-- ✅ Validate the version format (`X.Y.Z` with an optional pre-release suffix, no leading `v`).
-- ✅ Refuse to overwrite an existing tag.
-- ✅ Bump `charts/nebari-landing/Chart.yaml` (`version` + `appVersion`) on a detached HEAD.
-- ✅ Commit `chore: prepare chart for v<version>` on that detached HEAD.
-- ✅ Tag `v<version>` at the bump commit and push only the tag.
-
-Publishing a GitHub Release against the new tag triggers `release.yml`, which
-produces the images, binaries, and chart tarball.
-
-> **Why a tag-only commit?** The `values.yaml` image tags are empty and the deployment templates fall back to `.Chart.AppVersion`. Source-based consumers (e.g. ArgoCD pointing at the git tag) need the bumped `appVersion` to be committed at the tag so the fallback resolves to a real image. The tag carries that commit directly — no branch ref is needed, and `main`'s `appVersion` stays as `"latest"`. See **How It Works** at the bottom of this doc for the full picture.
-
-### 3. Create the GitHub Release
+### 2. Create the GitHub Release
 
 Visit https://github.com/nebari-dev/nebari-landing/releases/new
 
-- **Tag**: Select `v0.2.0` (the tag the workflow created)
+- **Tag**: type the new tag, `v`-prefixed (e.g. `v0.2.0` or `v0.2.0-rc.1`), and
+  choose **Create new tag on publish**, target `main`. Do not bump
+  `Chart.yaml` yourself; the release workflow does it.
 - **Title**: `v0.2.0` or `nebari-landing v0.2.0`
 - **Description**: Click **Generate release notes** (previous releases use the
-  generated "What's Changed" list). For a MESO or MACRO bump, add a short note
-  at the top saying what upgraders need to change.
+  generated "What's Changed" list). Set **Previous tag** to the last release
+  so the list starts in the right place. For a MESO or MACRO bump, add a short
+  note at the top saying what upgraders need to change.
+- **Set as a pre-release**: tick it for an `-rc.N` tag. If you forget, the
+  workflow flags any tag with a `-` suffix as a pre-release for you.
 - Click **Publish release**
 
-### 4. Monitor Release Workflow
+The CLI equivalent:
+
+```bash
+gh release create v0.2.0-rc.1 --target main --prerelease \
+  --generate-notes --notes-start-tag v0.1.5
+```
+
+Publishing is the only manual step. It triggers `release.yml`, which pins the
+chart, builds everything, and syncs helm-repository.
+
+> **Why does the tag move?** The `values.yaml` image tags are empty and the deployment templates fall back to `.Chart.AppVersion`. Source-based consumers (e.g. ArgoCD pointing at the git tag) need the bumped `appVersion` to be committed at the tag so the fallback resolves to a real image. The workflow's first job commits that bump on top of the commit you tagged and moves the tag onto it. The bump commit is reachable only through the tag, no branch ref is created, and `main`'s `appVersion` stays as `"latest"`. See **How It Works** at the bottom of this doc for the full picture.
+
+### 3. Monitor Release Workflow
 
 The GitHub Actions workflow will automatically:
 
-1. **Verify** `Chart.yaml` is pinned to the release tag (the release-prep
-   workflow does this for you; the verification step catches the case where a
-   maintainer tagged manually without running release-prep).
+1. **Pin** the chart (`prepare` job): validate the tag format, commit
+   `chore: prepare chart for v<version>` setting `Chart.yaml`'s `version` and
+   `appVersion` to the tag's version, move the tag onto that commit, and flag
+   `-rc`/`-alpha`/... tags as pre-releases. Every later job builds from that
+   commit. If the tag already carries the pin (e.g. a re-run), nothing is
+   pushed.
 2. **Build** multi-arch Docker images:
    - `quay.io/nebari/nebari-webapi:0.2.0`
    - `quay.io/nebari/nebari-landing:0.2.0`
@@ -86,7 +89,7 @@ https://github.com/nebari-dev/nebari-landing/actions/workflows/release.yml
 Expected duration: ~10 minutes (the webapi image build and GoReleaser are the
 long poles).
 
-### 5. Verify Release Artifacts
+### 4. Verify Release Artifacts
 
 Check that the following were created:
 
@@ -110,7 +113,7 @@ docker pull quay.io/nebari/nebari-landing:0.2.0
   check comes back fully green. If the PR is still open, read the validation
   comment on it: a warning or blocking issue needs a human to resolve and merge.
 
-### 6. Test the Release
+### 5. Test the Release
 
 **Via Helm repository** (after helm-repository PR is merged):
 ```bash
@@ -126,7 +129,7 @@ helm install nebari-landing \
   https://github.com/nebari-dev/nebari-landing/releases/download/v0.2.0/nebari-landing-0.2.0.tgz
 ```
 
-### 7. Update Documentation (if needed)
+### 6. Update Documentation (if needed)
 
 For a MESO or MACRO release (new options, changed behavior, or anything
 upgraders must act on):
@@ -202,9 +205,8 @@ After a successful release:
 
 ## Release Checklist Summary
 
-- [ ] Ran **Release prep** workflow with the new version.
-- [ ] Verified the workflow pushed the `v<version>` tag (no release branch is created).
-- [ ] Published GitHub release at the new tag.
+- [ ] Published the GitHub release, creating the `v<version>` tag on `main`.
+- [ ] `prepare` job moved the tag onto a `chore: prepare chart for v<version>` commit (no release branch is created).
 - [ ] Verified images built successfully (`:0.2.0` exists on Quay).
 - [ ] Verified Helm chart `.tgz` attached to release with the right `appVersion`.
 - [ ] helm-repository sync PR merged (automatically or by hand).
@@ -240,4 +242,6 @@ Same files in both states; only `Chart.yaml` differs:
 
 The first two scenarios share the same code path — both rely on the `AppVersion` fallback. The third bypasses the fallback because `.tag` is non-empty (used for testing PR builds or pinning to a specific main commit; available tags come from `webapi.yml`'s per-PR and per-SHA builds).
 
-**Why no release branch.** Tags carry commits independently of branches, and no part of the build pipeline triggers on `release/*` (image builds fire on push-to-main and on `release: published`). `release-prep` makes the bump commit on a detached HEAD and pushes only the tag; git's push protocol bundles the otherwise-unreachable commit along with it. The branch list stays clean and there's no post-release cleanup step.
+**Why no release branch.** Tags carry commits independently of branches, and no part of the build pipeline triggers on `release/*` (image builds fire on push-to-main and on `release: published`). The `prepare` job in `release.yml` makes the bump commit on a detached HEAD and force-pushes only the tag; git's push protocol bundles the otherwise-unreachable commit along with it. The branch list stays clean and there's no post-release cleanup step.
+
+**Why moving the tag is safe.** The tag only exists from the moment you publish, and `prepare` moves it before any artifact is built, so nothing has consumed the pre-bump commit. This depends on the repository's *immutable releases* setting staying off: with it on, a published release's tag cannot be moved and `prepare` fails at the push.

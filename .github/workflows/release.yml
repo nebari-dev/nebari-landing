@@ -1,9 +1,12 @@
 # Release — Build and publish nebari-landing images + Helm chart
 #
-# Triggered on: GitHub release published
+# Triggered on: GitHub release published (from the Releases UI or `gh release
+# create`). Nothing has to run beforehand: the prepare job pins the chart.
 #
 # Jobs:
-#   validate-webapi  — go vet + unit tests
+#   prepare           — pin Chart.yaml to the tag's version, move the tag onto
+#                       that commit, mark -rc/-alpha/... tags as pre-releases
+#   validate-webapi   — go vet + unit tests
 #   validate-frontend — Biome lint + Vite build
 #   docker-webapi     — multi-arch build of quay.io/nebari/nebari-webapi
 #   docker-frontend   — multi-arch build of quay.io/nebari/nebari-landing
@@ -35,12 +38,101 @@ env:
   FRONTEND_IMAGE: nebari/nebari-landing
 
 jobs:
+  # ── Pin the chart to the release tag ──────────────────────────────────────
+  # Publishing a release from the UI tags a commit on main, where Chart.yaml
+  # carries `version: 0.1.0` / `appVersion: "latest"`. Source consumers (NIC's
+  # Argo CD points targetRevision at the git tag) resolve the image tag from
+  # appVersion, so the pin has to live in git at the tag, not only in the
+  # packaged .tgz.
+  #
+  # This job commits the bump on top of the tagged commit (detached HEAD, so
+  # main is never touched and no branch is created), force-moves the tag onto
+  # that commit, and hands the commit SHA to every later job. Every job checks
+  # out that SHA rather than github.sha, which still names the pre-bump commit.
+  #
+  # Idempotent: when the tag already carries the pin (a re-run, or a tag made
+  # by hand with the bump in it) nothing is pushed.
+  prepare:
+    name: Pin chart to release tag
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.pin.outputs.sha }}
+    steps:
+      - name: Validate tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+            echo "::error::Release tag '$TAG' must look like v0.2.0 or v0.2.0-rc.1 (leading v, SemVer after it)."
+            exit 1
+          fi
+          echo "✔ tag $TAG is valid"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: refs/tags/${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Bump Chart.yaml and move the tag
+        id: pin
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          CHART=charts/nebari-landing/Chart.yaml
+
+          # The `^` anchor is load-bearing: Chart.yaml's `dependencies:` block
+          # has indented `    version: 23.1.1` entries for the Redis subchart.
+          # Without the anchor, awk would pick up that line. Do not
+          # "simplify" to a grep.
+          pinned() {
+            local v a
+            v=$(awk '/^version:/ {print $2}' "$CHART")
+            a=$(awk '/^appVersion:/ {gsub(/"/, "", $2); print $2}' "$CHART")
+            echo "version=$v  appVersion=$a  expected=$VERSION"
+            [[ "$v" == "$VERSION" && "$a" == "$VERSION" ]]
+          }
+
+          if pinned; then
+            echo "✔ $TAG already carries the pinned Chart.yaml; nothing to push"
+          else
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            sed -i -E "s/^version: .*/version: ${VERSION}/" "$CHART"
+            sed -i -E "s/^appVersion: .*/appVersion: \"${VERSION}\"/" "$CHART"
+            pinned || { echo "::error::sed did not pin $CHART"; exit 1; }
+
+            git add "$CHART"
+            git commit -m "chore: prepare chart for ${TAG}"
+            git tag -f -a "$TAG" -m "Release ${VERSION}"
+            # Pushing the tag carries the otherwise-unreachable bump commit
+            # with it; no branch push needed.
+            git push --force origin "refs/tags/${TAG}"
+            echo "✔ moved $TAG to $(git rev-parse --short HEAD)"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # A tag with a SemVer pre-release suffix (v0.2.0-rc.1) is a pre-release
+      # whether or not the box was ticked in the UI. Flagging it keeps it from
+      # being shown as the repo's latest release.
+      - name: Mark pre-release
+        if: contains(github.event.release.tag_name, '-') && !github.event.release.prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease
+
   # ── Validate webapi ────────────────────────────────────────────────────────
   validate-webapi:
     name: Validate webapi
     runs-on: ubuntu-latest
+    needs: prepare
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
@@ -57,11 +149,14 @@ jobs:
   validate-frontend:
     name: Validate frontend
     runs-on: ubuntu-latest
+    needs: prepare
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -82,7 +177,7 @@ jobs:
   docker-webapi:
     name: Build webapi (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    needs: validate-webapi
+    needs: [prepare, validate-webapi]
     strategy:
       fail-fast: false
       matrix:
@@ -94,6 +189,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
+          ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
 
       - name: Set up Docker Buildx
@@ -138,7 +234,7 @@ jobs:
   docker-frontend:
     name: Build frontend (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    needs: validate-frontend
+    needs: [prepare, validate-frontend]
     strategy:
       fail-fast: false
       matrix:
@@ -150,6 +246,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
+          ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
 
       - name: Set up Docker Buildx
@@ -298,10 +395,11 @@ jobs:
   goreleaser:
     name: Release Go binary (GoReleaser)
     runs-on: ubuntu-latest
-    needs: validate-webapi
+    needs: [prepare, validate-webapi]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
+          ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0  # GoReleaser needs full history for changelog
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -317,29 +415,32 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The prepare job may have moved the tag; name it explicitly so
+          # GoReleaser does not have to infer it from the checkout.
+          GORELEASER_CURRENT_TAG: ${{ github.event.release.tag_name }}
 
   # ── Package and attach Helm chart to the GitHub release ───────────────────
   publish-chart:
     name: Publish Helm chart
     runs-on: ubuntu-latest
-    needs: [manifest-webapi, manifest-frontend]
+    needs: [prepare, manifest-webapi, manifest-frontend]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
       - name: Verify chart is pinned to release tag
         run: |
-          # release-prep (.github/workflows/release-prep.yaml) produces the
-          # tag with a single commit that bumps Chart.yaml's version and
-          # appVersion to match. If the source at this tag does not match
-          # the tag's version, the release was not produced through
-          # release-prep and the packaged chart would float on whatever
-          # appVersion main has. Fail loudly rather than ship a broken artifact.
+          # The prepare job pins Chart.yaml's version and appVersion to the
+          # tag and builds every job from that commit. This re-check is a
+          # tripwire: if it fails, prepare is broken, and packaging would
+          # ship a chart floating on main's appVersion "latest".
           #
           # Note: this check assumes Chart.yaml's `version` and `appVersion`
-          # move together (release-prep always writes both). If the project
+          # move together (prepare always writes both). If the project
           # ever decouples them, update this check accordingly.
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
@@ -352,7 +453,7 @@ jobs:
           echo "tag=$TAG  expected version=$VERSION  chart version=$CHART_VERSION  appVersion=$APP_VERSION"
           if [[ "$CHART_VERSION" != "$VERSION" || "$APP_VERSION" != "$VERSION" ]]; then
             echo "✗ Chart.yaml is not pinned to the release tag."
-            echo "  Run release-prep workflow (.github/workflows/release-prep.yaml) instead of tagging manually."
+            echo "  The prepare job should have pinned it; check its log in this run."
             exit 1
           fi
           echo "✔ Chart.yaml matches the release tag"

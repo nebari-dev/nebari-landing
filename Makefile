@@ -138,5 +138,5 @@ helm-package: ## Package the Helm chart (requires Helm).
 	helm package $(CHART_DIR) --destination dist/
 	@echo "✅ Chart packaged to dist/"
 
-# Releases are produced by the release-prep GitHub Actions workflow
-# (.github/workflows/release-prep.yaml). See docs/maintainers/release-checklist.md.
+# Releases are produced by publishing a GitHub release, which runs
+# .github/workflows/release.yml. See docs/maintainers/release-checklist.md.
