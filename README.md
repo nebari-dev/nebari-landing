@@ -341,8 +341,8 @@ make pf
 make helm-package
 ```
 
-> Releases are produced by the [Release prep](.github/workflows/release-prep.yaml)
-> workflow — see [docs/maintainers/release-checklist.md](docs/maintainers/release-checklist.md).
+> Releases are produced by publishing a GitHub release, which runs the
+> [Release](.github/workflows/release.yml) workflow — see [docs/maintainers/release-checklist.md](docs/maintainers/release-checklist.md).
 > There are no local `make` targets for cutting a release.
 
 ### Run the frontend in watch mode

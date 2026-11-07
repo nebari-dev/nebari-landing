@@ -10,7 +10,7 @@ version: 0.1.0
 # at a non-release commit) resolve to the floating :latest image tag, which
 # always points at main's most recent webapi/frontend build on Quay.
 #
-# At release time, release-prep (.github/workflows/release-prep.yaml) bumps
+# At release time, the prepare job in .github/workflows/release.yml bumps
 # this to the real version (e.g. "0.1.0-alpha.6") in the commit the release
 # tag points at, so consumers checking out the tag see appVersion pinned to
 # a matching image tag. Image tags themselves are left empty in values.yaml

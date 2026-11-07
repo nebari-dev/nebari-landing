@@ -4,7 +4,7 @@
 #
 #   1. Checks out the release tag and verifies Chart.yaml is already pinned to
 #      it (version and appVersion both equal the tag minus its leading 'v').
-#      release-prep.yaml writes that pin at tag time, so the chart is synced
+#      release.yml's prepare job writes that pin at tag time, so the chart is synced
 #      exactly as tagged: no rewriting here. values.yaml image tags stay
 #      empty and the deployment templates fall back to .Chart.AppVersion.
 #   2. Opens a PR in nebari-dev/helm-repository via the sync-chart composite
@@ -72,7 +72,7 @@ jobs:
           echo "value=${TAG}" >> "$GITHUB_OUTPUT"
 
       # Check out the tag itself, not the dispatching ref: only the tag carries
-      # the release-prep commit that pins Chart.yaml. A manual run dispatched
+      # the prepare-job commit that pins Chart.yaml. A manual run dispatched
       # from main would otherwise sync main's `appVersion: "latest"`.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
@@ -92,7 +92,7 @@ jobs:
           APP_VERSION=$(awk '/^appVersion:/ {gsub(/"/, "", $2); print $2}' charts/nebari-landing/Chart.yaml)
           echo "tag=$TAG  expected=$VERSION  version=$CHART_VERSION  appVersion=$APP_VERSION"
           if [[ "$CHART_VERSION" != "$VERSION" || "$APP_VERSION" != "$VERSION" ]]; then
-            echo "::error::Chart.yaml at $TAG is not pinned to $VERSION. Cut the tag with the release-prep workflow."
+            echo "::error::Chart.yaml at $TAG is not pinned to $VERSION. Publish the release so release.yml's prepare job pins it."
             exit 1
           fi
 
