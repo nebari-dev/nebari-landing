@@ -51,8 +51,13 @@ changelog:
 
 release:
   # Update the existing GitHub release (created by the release event trigger)
-  # instead of creating a new one.  draft / prerelease are inherited from the
-  # existing release object so we don't set them here.
+  # instead of creating a new one.
   github:
     owner: nebari-dev
     name: nebari-landing
+  # GoReleaser writes `prerelease` onto the existing release rather than
+  # inheriting it, and its default is false: v0.1.6-rc.2 was published as a
+  # pre-release and came out of this job as a full release. `auto` derives it
+  # from the tag (v0.2.0-rc.1 -> pre-release, v0.2.0 -> release), matching
+  # what release.yml's prepare job sets.
+  prerelease: auto
