@@ -31,31 +31,32 @@ test("Ctrl+K focuses the search input", async ({ page }) => {
   await expect(page.getByPlaceholder("Search")).toBeFocused();
 });
 
-test("view tabs use arrow-key focus and manual activation", async ({ page }) => {
+test("view toggle switches views from the keyboard", async ({ page }) => {
   await page.goto("/");
 
-  const allServices = page.getByRole("region", { name: /All services/i });
-  const gridView = allServices.getByRole("tab", { name: /Grid View/i });
-  const listView = allServices.getByRole("tab", { name: /List View/i });
+  const gridView = page.getByRole("button", { name: "Grid" });
+  const tableView = page.getByRole("button", { name: "Table" });
 
   await gridView.focus();
-  await expect(gridView).toBeFocused();
-
-  await page.keyboard.press("ArrowRight");
-  await expect(listView).toBeFocused();
-  await expect(gridView).toHaveAttribute("aria-selected", "true");
-  await expect(listView).toHaveAttribute("aria-selected", "false");
+  await page.keyboard.press("Tab");
+  await expect(tableView).toBeFocused();
+  await expect(gridView).toHaveAttribute("aria-pressed", "true");
+  await expect(tableView).toHaveAttribute("aria-pressed", "false");
 
   await page.keyboard.press("Enter");
-  await expect(listView).toHaveAttribute("aria-selected", "true");
+  await expect(tableView).toHaveAttribute("aria-pressed", "true");
 
-  // The table's scroll container is only a tab stop when it overflows
-  // horizontally. At the default viewport it fits, so Tab moves straight from
-  // the tab list to the first service row.
-  const tableContainer = allServices.locator('[data-slot="table-container"]');
+  const tableContainer = page.locator('[data-slot="table-container"]');
   await expect(tableContainer).toBeVisible();
   await expect(tableContainer).not.toHaveAttribute("tabindex");
 
+  for (const header of ["Service", "Category", "Status"]) {
+    await page.keyboard.press("Tab");
+    await expect(tableContainer.getByRole("button", { name: header, exact: true })).toBeFocused();
+  }
+
+  await page.keyboard.press("Tab");
+  await expect(tableContainer.getByRole("button", { name: "Unpin service" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(tableContainer.getByRole("link", { name: /JupyterHub/i })).toBeFocused();
 });
@@ -63,7 +64,7 @@ test("view tabs use arrow-key focus and manual activation", async ({ page }) => 
 test("accordion trigger can be toggled with keyboard", async ({ page }) => {
   await page.goto("/");
 
-  const pinnedTrigger = page.getByRole("button", { name: /Pinned services/i });
+  const pinnedTrigger = page.getByRole("button", { name: /^Pinned/ });
 
   await expect(pinnedTrigger).toBeVisible();
 
@@ -78,12 +79,27 @@ test("accordion trigger can be toggled with keyboard", async ({ page }) => {
   await expect(pinnedTrigger).toHaveAttribute("aria-expanded", "true");
 });
 
+test("service cards are reachable from the keyboard", async ({ page }) => {
+  await page.goto("/");
+
+  const pinnedTrigger = page.getByRole("button", { name: /^Pinned/ });
+  const pinnedSection = page.getByRole("region", { name: /^Pinned/ });
+
+  await pinnedTrigger.focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    pinnedSection.getByRole("link", { name: "JupyterHub (opens in a new tab)" }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(pinnedSection.getByRole("button", { name: "Unpin service" })).toBeFocused();
+});
+
 test("header and accordion controls expose visible focus rings", async ({ page }) => {
   await page.goto("/");
 
   const readFocusShadow = (element: HTMLElement) => getComputedStyle(element).boxShadow;
   const accountMenu = page.getByRole("button", { name: /account menu/i });
-  const pinnedTrigger = page.getByRole("button", { name: /Pinned services/i });
+  const pinnedTrigger = page.getByRole("button", { name: /^Pinned/ });
 
   await accountMenu.focus();
   const buttonFocusShadow = await accountMenu.evaluate(readFocusShadow);
@@ -96,10 +112,12 @@ test("header and accordion controls expose visible focus rings", async ({ page }
 test("service card exposes a visible focus indicator", async ({ page }) => {
   await page.goto("/");
 
-  const serviceCard = page.getByRole("link", { name: /JupyterHub/i }).first();
+  // The card's link is a full-size overlay; its focus ring is drawn on the card beside it.
+  const pinnedSection = page.getByRole("region", { name: /^Pinned/ });
+  const serviceCard = pinnedSection.getByRole("link", { name: /JupyterHub/i });
   await serviceCard.focus();
   await expect(serviceCard).toBeFocused();
-  const cardSurface = serviceCard.locator('[data-slot="card"]');
+  const cardSurface = pinnedSection.locator('[data-slot="card"]', { hasText: "JupyterHub" });
   expect(await cardSurface.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe(
     "none",
   );
