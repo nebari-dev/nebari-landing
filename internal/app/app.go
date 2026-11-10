@@ -59,6 +59,13 @@ type App struct {
 	LandingPage *LandingPage
 }
 
+// MaxVersionLength and MaxDocsURLLength are the longest version and docs URL a
+// service may set.
+const (
+	MaxVersionLength = 64
+	MaxDocsURLLength = 2048
+)
+
 // LandingPage holds the resolved settings for an App that is listed on the
 // Nebari landing page.
 type LandingPage struct {
@@ -101,6 +108,14 @@ type LandingPage struct {
 
 	// ExternalURL overrides the URL derived from Hostname.
 	ExternalURL string
+
+	// Version is the service's version: status.serviceDiscovery.version, else
+	// spec.landingPage.version, else the app.kubernetes.io/version label.
+	Version string
+
+	// DocsURL links to the service's documentation: status.serviceDiscovery.docsUrl,
+	// else spec.landingPage.docsUrl.
+	DocsURL string
 
 	// HealthCheck holds the health-probe configuration for this service.
 	// When nil or Enabled is false, health status remains "unknown".

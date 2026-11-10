@@ -56,6 +56,45 @@ per WS connection.
 Non-browser clients can skip the ticket exchange and send the Bearer token
 directly on the upgrade. The `/ws` endpoint accepts either mechanism.
 
+## Service fields
+
+`GET /services` and `GET /services/{id}` return each service with the fields
+below, alongside `id`, `name`, `description`, `category`, `pinned`, the image
+URLs, and `url`. A service comes from a `NebariApp` or from a static entry
+(`webapi.staticServices` in the chart). Where both `status.serviceDiscovery`
+and `spec.landingPage` set a field, the status value wins; the operator
+writes it once it has reconciled the `NebariApp`.
+
+| Field | `NebariApp` source | Static entry | When absent |
+|---|---|---|---|
+| `status` | Health probe, configured by `spec.landingPage.healthCheck` | `healthCheck.url` | Always sent: `healthy`, `unhealthy`, or `unknown` |
+| `health` | Same probe as `status` | Same probe as `status` | Always sent: `healthy`, `degraded`, `down`, or `unknown` |
+| `version` | `status.serviceDiscovery.version`, else `spec.landingPage.version`, else the `app.kubernetes.io/version` label | `version` | Omitted when unset or longer than 64 characters |
+| `docsUrl` | `status.serviceDiscovery.docsUrl`, else `spec.landingPage.docsUrl` | `docsUrl` | Omitted unless it is an absolute `http(s)` URL of at most 2048 characters. A static entry with an invalid value fails to load |
+| `sessionCount` | None yet | None yet | Always omitted. Reserved for the signed-in user's running sessions |
+
+`health` splits an `unhealthy` `status` in two:
+
+- `healthy`: the probe got a `2xx` response.
+- `degraded`: the service answered, but not with a `2xx`. Redirects count,
+  since the probe does not follow them.
+- `down`: the probe could not reach the service (connection refused,
+  timeout, DNS or TLS failure).
+- `unknown`: the service has no health check, has not been probed yet, or the
+  probe runner could not run the probe.
+
+`spec.landingPage.version`, `spec.landingPage.docsUrl`, and their
+`status.serviceDiscovery` counterparts need a nebari-operator release that
+adds them to the `NebariApp` CRD. Until then, `version` comes from the
+`app.kubernetes.io/version` label and both fields can be set on static
+entries.
+
+WebSocket service events carry the same data in their `service` object:
+`health.state` holds the value of `health`, `health.status` keeps the
+`status` values, and `version` and `docsUrl` appear when set.
+`sessionCount` is never part of a WebSocket event, because events go to
+every connected client.
+
 ---
 
 <!-- gendocs:api -->

@@ -410,6 +410,39 @@ func TestHandleCallerIdentity_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestHandleCallerIdentity_ReportsAdminMembership(t *testing.T) {
+	tests := []struct {
+		name   string
+		groups []string
+		want   bool
+	}{
+		{"admin by short name", []string{"admin"}, true},
+		{"admin by full path", []string{"/users", "/admin"}, true},
+		{"regular user", []string{"/users"}, false},
+		{"no groups", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := NewHandler(cache.NewServiceCache(), nil, false, nil, nil,
+				WithClaimsExtractor(func(_ *http.Request) (*auth.Claims, bool) {
+					return &auth.Claims{PreferredUsername: "alice", Groups: tt.groups}, true
+				}),
+			)
+			rr := doGet(t, h.Routes(), "/api/v1/caller-identity")
+			if rr.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d", rr.Code)
+			}
+			var resp CallerIdentityResponse
+			if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+				t.Fatal(err)
+			}
+			if !resp.Authenticated || resp.IsAdmin != tt.want {
+				t.Errorf("Authenticated/IsAdmin = %v/%v, want true/%v", resp.Authenticated, resp.IsAdmin, tt.want)
+			}
+		})
+	}
+}
+
 // --- Auth header extraction ---
 
 func TestHandleGetServices_InvalidAuthHeader_TreatedAsUnauthenticated(t *testing.T) {
@@ -669,5 +702,66 @@ func TestHandleDebug_AuthenticatedUser_ShowsClaims(t *testing.T) {
 	// shows up in Services.Private (any-authenticated-user private service).
 	if body.Services.Private != 1 {
 		t.Errorf("expected 1 private (open) service, got %d", body.Services.Private)
+	}
+}
+
+func TestHandleGetServices_ServiceView_HealthVersionAndDocs(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID:        "uid-meta",
+		Name:       "grafana",
+		Namespace:  "default",
+		Hostname:   "grafana.example.com",
+		TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled:    true,
+			Visibility: "public",
+			Version:    "11.4.0",
+			DocsURL:    "https://grafana.com/docs/",
+		},
+	})
+	sc.UpdateHealth("uid-meta", cache.NewHealthStatus(cache.HealthDegraded, "HTTP 503", nil))
+
+	rr := doGet(t, newTestHandler(sc).Routes(), "/api/v1/services")
+	var resp ServiceResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(resp.Services))
+	}
+	svc := resp.Services[0]
+	if svc.Status != "unhealthy" || svc.Health != "degraded" {
+		t.Errorf("status/health = %q/%q, want unhealthy/degraded", svc.Status, svc.Health)
+	}
+	if svc.Version != "11.4.0" || svc.DocsURL != "https://grafana.com/docs/" {
+		t.Errorf("version/docsUrl = %q/%q", svc.Version, svc.DocsURL)
+	}
+	if svc.SessionCount != nil {
+		t.Errorf("sessionCount = %d, want absent", *svc.SessionCount)
+	}
+}
+
+func TestHandleGetServices_ServiceView_OmitsAbsentMetadata(t *testing.T) {
+	sc := buildCache(entry{"uid-1", "grafana", "public", "Monitoring", 0})
+	rr := doGet(t, newTestHandler(sc).Routes(), "/api/v1/services")
+
+	var resp struct {
+		Services []map[string]any `json:"services"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(resp.Services))
+	}
+	svc := resp.Services[0]
+	if svc["status"] != "unknown" || svc["health"] != "unknown" {
+		t.Errorf("status/health = %v/%v, want unknown/unknown", svc["status"], svc["health"])
+	}
+	for _, key := range []string{"version", "docsUrl", "sessionCount"} {
+		if _, ok := svc[key]; ok {
+			t.Errorf("expected %q to be omitted, got %v", key, svc[key])
+		}
 	}
 }
