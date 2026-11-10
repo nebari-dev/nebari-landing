@@ -316,7 +316,7 @@ func (h *HealthChecker) probeIfCurrent(ctx context.Context, uid string, cfg *cac
 		h.forgetRunningProbe(uid, cfg)
 		return false
 	}
-	h.afterHealthUpdate(uid, prevStatus, result.status)
+	h.afterHealthUpdate(uid, prevStatus, result.healthStatus().Status)
 	return true
 }
 
@@ -343,18 +343,14 @@ func (h *HealthChecker) probe(ctx context.Context, uid, probeURL string, client 
 }
 
 type probeResult struct {
-	status    string
+	state     string // one of the cache.Health* states
 	message   string
 	checkedAt time.Time
 }
 
 func (r probeResult) healthStatus() *cache.HealthStatus {
 	checkedAt := r.checkedAt
-	return &cache.HealthStatus{
-		Status:    r.status,
-		LastCheck: &checkedAt,
-		Message:   r.message,
-	}
+	return cache.NewHealthStatus(r.state, r.message, &checkedAt)
 }
 
 func performProbeRequest(ctx context.Context, uid, probeURL string, client *http.Client) probeResult {
@@ -362,13 +358,13 @@ func performProbeRequest(ctx context.Context, uid, probeURL string, client *http
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
 	if err != nil {
 		log.Info("Health probe request error", "uid", uid, "url", probeURL, "err", err)
-		return probeResult{status: "unknown", checkedAt: now, message: fmt.Sprintf("failed to build request: %v", err)}
+		return probeResult{state: cache.HealthUnknown, checkedAt: now, message: fmt.Sprintf("failed to build request: %v", err)}
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Info("Health probe failed", "uid", uid, "url", probeURL, "err", err)
-		return probeResult{status: "unhealthy", checkedAt: now, message: fmt.Sprintf("probe error: %v", err)}
+		return probeResult{state: cache.HealthDown, checkedAt: now, message: fmt.Sprintf("probe error: %v", err)}
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
@@ -378,10 +374,10 @@ func performProbeRequest(ctx context.Context, uid, probeURL string, client *http
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		log.Info("Health probe ok", "uid", uid, "url", probeURL, "status", resp.StatusCode)
-		return probeResult{status: "healthy", checkedAt: now, message: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+		return probeResult{state: cache.HealthHealthy, checkedAt: now, message: fmt.Sprintf("HTTP %d", resp.StatusCode)}
 	}
 	log.Info("Health probe unhealthy", "uid", uid, "url", probeURL, "status", resp.StatusCode)
-	return probeResult{status: "unhealthy", checkedAt: now, message: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+	return probeResult{state: cache.HealthDegraded, checkedAt: now, message: fmt.Sprintf("HTTP %d", resp.StatusCode)}
 }
 
 type remoteProbeRequester struct {
@@ -396,6 +392,7 @@ type remoteProbeRequest struct {
 
 type remoteProbeResponse struct {
 	Status    string    `json:"status"`
+	State     string    `json:"state,omitempty"`
 	Message   string    `json:"message"`
 	CheckedAt time.Time `json:"checkedAt"`
 }
@@ -426,7 +423,7 @@ func (r *remoteProbeRequester) Probe(ctx context.Context, uid string, cfg *cache
 		TimeoutSeconds: cfg.TimeoutSeconds,
 	})
 	if err != nil {
-		return probeResult{status: "unknown", checkedAt: now, message: fmt.Sprintf("failed to build probe request: %v", err)}
+		return probeResult{state: cache.HealthUnknown, checkedAt: now, message: fmt.Sprintf("failed to build probe request: %v", err)}
 	}
 
 	timeout := time.Duration(cfg.TimeoutSeconds)*time.Second + time.Second
@@ -438,7 +435,7 @@ func (r *remoteProbeRequester) Probe(ctx context.Context, uid string, cfg *cache
 
 	req, err := http.NewRequestWithContext(probeCtx, http.MethodPost, r.endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return probeResult{status: "unknown", checkedAt: now, message: fmt.Sprintf("failed to build probe runner request: %v", err)}
+		return probeResult{state: cache.HealthUnknown, checkedAt: now, message: fmt.Sprintf("failed to build probe runner request: %v", err)}
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -449,7 +446,7 @@ func (r *remoteProbeRequester) Probe(ctx context.Context, uid string, cfg *cache
 	// measured can be "unhealthy".
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return probeResult{status: "unknown", checkedAt: now, message: fmt.Sprintf("probe runner unavailable: %v", err)}
+		return probeResult{state: cache.HealthUnknown, checkedAt: now, message: fmt.Sprintf("probe runner unavailable: %v", err)}
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
@@ -465,25 +462,40 @@ func (r *remoteProbeRequester) Probe(ctx context.Context, uid string, cfg *cache
 			message = fmt.Sprintf("probe runner rejected target: %s", reason)
 		}
 		log.Info("Health probe not run by probe runner", "uid", uid, "url", cfg.ProbeURL, "status", resp.StatusCode, "reason", reason)
-		return probeResult{status: "unknown", checkedAt: now, message: message}
+		return probeResult{state: cache.HealthUnknown, checkedAt: now, message: message}
 	}
 
 	var out remoteProbeResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return probeResult{status: "unknown", checkedAt: now, message: fmt.Sprintf("failed to decode probe runner response: %v", err)}
+		return probeResult{state: cache.HealthUnknown, checkedAt: now, message: fmt.Sprintf("failed to decode probe runner response: %v", err)}
 	}
 	if out.CheckedAt.IsZero() {
 		out.CheckedAt = now
 	}
-	if out.Status == "" {
-		out.Status = "unknown"
+	return probeResult{state: runnerState(out), checkedAt: out.CheckedAt, message: out.Message}
+}
+
+// runnerState reads the state from a probe runner response. Responses from an
+// earlier runner release carry only the two-value status; their "unhealthy"
+// maps to down.
+func runnerState(out remoteProbeResponse) string {
+	if out.State != "" {
+		return cache.NewHealthStatus(out.State, "", nil).State
 	}
-	return probeResult{status: out.Status, checkedAt: out.CheckedAt, message: out.Message}
+	switch out.Status {
+	case "healthy":
+		return cache.HealthHealthy
+	case "unhealthy":
+		return cache.HealthDown
+	default:
+		return cache.HealthUnknown
+	}
 }
 
 func (h *HealthChecker) applyProbeResult(uid, prevStatus string, result probeResult) {
-	h.cache.UpdateHealth(uid, result.healthStatus())
-	h.afterHealthUpdate(uid, prevStatus, result.status)
+	status := result.healthStatus()
+	h.cache.UpdateHealth(uid, status)
+	h.afterHealthUpdate(uid, prevStatus, status.Status)
 }
 
 // afterHealthUpdate posts the "back online" notification when a service

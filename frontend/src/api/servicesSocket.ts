@@ -1,3 +1,4 @@
+import type { HealthState } from "./listServices";
 import { createWebSocketClient } from "./ws";
 
 export type BackendSocketService = {
@@ -11,10 +12,13 @@ export type BackendSocketService = {
   iconLight?: string;
   iconDark?: string;
   category: string;
+  version?: string;
+  docsUrl?: string;
   priority: number;
   visibility: string;
   health: {
     status: string;
+    state?: HealthState;
     lastCheck: string;
     message?: string;
   };
