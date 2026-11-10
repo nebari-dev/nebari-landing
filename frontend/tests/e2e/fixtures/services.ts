@@ -7,6 +7,7 @@ export type MockService = {
   pinned: boolean;
   image: string;
   url: string;
+  priority: number;
 };
 
 function mockService(
@@ -19,6 +20,7 @@ function mockService(
     pinned: false,
     image: "",
     url: `https://example.com/${overrides.id}`,
+    priority: 100,
     ...overrides,
   };
 }
@@ -32,7 +34,10 @@ const jupyterHub = mockService({
   url: "https://example.com/jupyterhub",
 });
 
-/** Six services, the minimum for the richer layout, listed out of name order. */
+/**
+ * Six services, the minimum for the richer layout, listed out of name order
+ * and in priority order, as the webapi sends them.
+ */
 export const richerServices: MockService[] = [
   jupyterHub,
   mockService({
@@ -66,7 +71,7 @@ export const richerServices: MockService[] = [
     category: ["Data Science"],
     status: "Unhealthy",
   }),
-];
+].map((service, index) => ({ ...service, priority: (index + 1) * 10 }));
 
 /** Five services: one short of the richer layout. */
 export const simpleServices: MockService[] = richerServices.slice(0, 5);

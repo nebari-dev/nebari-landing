@@ -1,10 +1,11 @@
 import type { Service } from "../api/listServices";
 
-export type SortKey = "name" | "category" | "status";
+/** `default` orders by the operator's `spec.landingPage.priority`. */
+export type SortKey = "default" | "name" | "category" | "status";
 export type SortDirection = "asc" | "desc";
 export type ServiceSort = { key: SortKey; direction: SortDirection };
 
-export const DEFAULT_SORT: ServiceSort = { key: "name", direction: "asc" };
+export const DEFAULT_SORT: ServiceSort = { key: "default", direction: "asc" };
 
 /** Fewer services than this get the simple layout: no toolbar, sections, or pinning. */
 export const RICHER_LAYOUT_MIN_SERVICES = 6;
@@ -26,6 +27,8 @@ function statusRank(status: string) {
 
 function compareBy(key: SortKey, a: Service, b: Service) {
   switch (key) {
+    case "default":
+      return a.priority - b.priority;
     case "name":
       return collator.compare(a.name, b.name);
     case "category":
@@ -35,7 +38,7 @@ function compareBy(key: SortKey, a: Service, b: Service) {
   }
 }
 
-/** Sorts a copy of `services`; ties on category or status fall back to name A–Z. */
+/** Sorts a copy of `services`; ties on priority, category, or status fall back to name A–Z. */
 export function sortServices(services: Service[], { key, direction }: ServiceSort): Service[] {
   const sign = direction === "asc" ? 1 : -1;
 

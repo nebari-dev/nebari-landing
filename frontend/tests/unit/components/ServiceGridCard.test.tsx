@@ -13,6 +13,7 @@ const baseService = {
   pinned: false,
   image: "",
   url: "https://example.com/jupyterhub",
+  priority: 100,
 };
 
 describe("ServiceGridCard", () => {

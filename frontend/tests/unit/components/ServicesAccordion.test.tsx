@@ -13,6 +13,7 @@ const services = [
     pinned: true,
     image: "",
     url: "https://example.com/jupyterhub",
+    priority: 100,
   },
   {
     id: "svc-2",
@@ -23,6 +24,7 @@ const services = [
     pinned: false,
     image: "",
     url: "https://example.com/grafana",
+    priority: 100,
   },
 ];
 

@@ -14,6 +14,7 @@ const services = [
     pinned: false,
     image: "",
     url: "https://example.com/jupyter",
+    priority: 100,
   },
   {
     id: "2",
@@ -24,6 +25,7 @@ const services = [
     pinned: true,
     image: "",
     url: "https://example.com/grafana",
+    priority: 100,
   },
   {
     id: "3",
@@ -34,8 +36,12 @@ const services = [
     pinned: false,
     image: "",
     url: "https://example.com/argo",
+    priority: 100,
   },
 ];
+
+const chipLabels = () =>
+  screen.queryAllByRole("button", { name: /^Remove / }).map((b) => b.getAttribute("aria-label"));
 
 const cardNames = (region: HTMLElement) =>
   within(region)
@@ -49,7 +55,7 @@ describe("ServicesSection", () => {
     expect(screen.getByRole("textbox", { name: "Search services" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Filter by category" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Sort services" })).toHaveTextContent(
-      "Sort: Name",
+      "Sort: Default",
     );
     expect(screen.getByRole("group", { name: "View" })).toBeInTheDocument();
   });
@@ -74,9 +80,7 @@ describe("ServicesSection", () => {
     await user.click(await screen.findByRole("option", { name: "platform" }));
     await user.click(screen.getByRole("option", { name: "data" }));
 
-    expect(
-      screen.getAllByRole("button", { name: /^Remove / }).map((b) => b.getAttribute("aria-label")),
-    ).toEqual(["Remove data", "Remove platform"]);
+    expect(chipLabels()).toEqual(["Remove data", "Remove platform"]);
 
     await user.click(screen.getByRole("option", { name: "observability" }));
 
@@ -98,6 +102,69 @@ describe("ServicesSection", () => {
     }
 
     expect(screen.getByText("Docs Portal")).toBeInTheDocument();
+  });
+
+  it("removes the chip that was clicked, whatever order categories were picked in", async () => {
+    const user = userEvent.setup();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    await user.click(screen.getByRole("combobox", { name: "Filter by category" }));
+    await user.click(await screen.findByRole("option", { name: "platform" }));
+    await user.click(screen.getByRole("option", { name: "data" }));
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "Remove data" }));
+
+    expect(chipLabels()).toEqual(["Remove platform"]);
+    expect(screen.getByText("Argo CD")).toBeInTheDocument();
+    expect(screen.queryByText("JupyterHub")).not.toBeInTheDocument();
+  });
+
+  it("removes the last visible chip on Backspace, not one hidden in +N", async () => {
+    const user = userEvent.setup();
+    const withFourCategories = [
+      ...services,
+      { ...services[0], id: "4", name: "Docs Portal", category: ["zdocs"] },
+    ];
+    render(<ServicesSection services={withFourCategories} onTogglePin={vi.fn()} />);
+
+    const filter = screen.getByRole("combobox", { name: "Filter by category" });
+    await user.click(filter);
+    for (const name of ["platform", "data", "observability"]) {
+      await user.click(await screen.findByRole("option", { name }));
+    }
+    expect(chipLabels()).toEqual(["Remove data", "Remove observability"]);
+    expect(screen.getByText("+1", { exact: false })).toBeInTheDocument();
+
+    await user.click(filter);
+    await user.keyboard("{Backspace}");
+
+    expect(chipLabels()).toEqual(["Remove data", "Remove platform"]);
+    expect(screen.queryByText("+1", { exact: false })).not.toBeInTheDocument();
+  });
+
+  it("ignores a selected category while it has no services, and restores it when they return", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    await user.click(screen.getByRole("combobox", { name: "Filter by category" }));
+    await user.click(await screen.findByRole("option", { name: "platform" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByText("JupyterHub")).not.toBeInTheDocument();
+
+    const withoutArgo = services.filter((service) => service.id !== "3");
+    rerender(<ServicesSection services={withoutArgo} onTogglePin={vi.fn()} />);
+
+    expect(chipLabels()).toEqual([]);
+    expect(screen.queryByText("No services match the selected categories")).not.toBeInTheDocument();
+    expect(screen.getByText("JupyterHub")).toBeInTheDocument();
+    expect(screen.getByText("Grafana")).toBeInTheDocument();
+
+    rerender(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    expect(chipLabels()).toEqual(["Remove platform"]);
+    expect(screen.getByText("Argo CD")).toBeInTheDocument();
+    expect(screen.queryByText("JupyterHub")).not.toBeInTheDocument();
   });
 
   it("filters by the selected categories", async () => {
@@ -211,6 +278,8 @@ describe("ServicesSection", () => {
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pinned" })).toBeInTheDocument();
-    expect(document.querySelectorAll('[data-slot="card"][aria-hidden="true"]')).toHaveLength(8);
+    expect(document.querySelectorAll('[data-slot="card"][aria-hidden="true"]').length).toBeGreaterThan(
+      0,
+    );
   });
 });

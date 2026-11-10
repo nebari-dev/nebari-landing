@@ -1,16 +1,24 @@
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/e2e";
 
-test("dark table rows expose a visible hover surface", async ({ page }) => {
-  await page.goto("/");
-  await page.evaluate(() => document.documentElement.classList.add("dark"));
+type ThemeMode = "light" | "dark";
 
+/** Opens the table view with the theme set through the app's own preference. */
+async function openTable(page: Page, theme: ThemeMode) {
+  await page.goto("/");
+  await page.evaluate((mode) => window.localStorage.setItem("launchpad:themeMode", mode), theme);
+  await page.goto("/");
   await page.getByRole("button", { name: "Table" }).click();
-  const serviceRow = page
-    .getByRole("table", { name: "Services" })
-    .getByRole("row", { name: /JupyterHub/i });
-  const beforeHover = await serviceRow.evaluate(
-    (element) => getComputedStyle(element).backgroundColor,
-  );
+  return page.getByRole("table", { name: "Services" });
+}
+
+const backgroundOf = (locator: Locator) =>
+  locator.evaluate((element) => getComputedStyle(element).backgroundColor);
+
+test("dark table rows expose a visible hover surface", async ({ page }) => {
+  const table = await openTable(page, "dark");
+  const serviceRow = table.getByRole("row", { name: /JupyterHub/i });
+  const beforeHover = await backgroundOf(serviceRow);
 
   await serviceRow.hover();
   await expect(serviceRow).not.toHaveCSS("background-color", beforeHover);
@@ -19,35 +27,18 @@ test("dark table rows expose a visible hover surface", async ({ page }) => {
 test("table header remains visually distinct from the table body in both themes", async ({
   page,
 }) => {
-  const openTable = async () => {
-    await page.goto("/");
-    await page.getByRole("button", { name: "Table" }).click();
-  };
+  const pageBackground = {} as Record<ThemeMode, string>;
 
-  await page.goto("/");
-  await page.evaluate(() => {
-    window.localStorage.setItem("launchpad:themeMode", "light");
-  });
-  await openTable();
+  for (const theme of ["light", "dark"] as const) {
+    const table = await openTable(page, theme);
+    const headerCell = table.getByRole("columnheader").first();
 
-  const table = page.locator('[data-slot="table"]');
-  const headerCell = page.locator('[data-slot="table-head"]').first();
-  const readBackground = (element: HTMLElement | SVGElement) =>
-    getComputedStyle(element).backgroundColor;
+    pageBackground[theme] = await backgroundOf(page.locator("body"));
+    expect(await backgroundOf(headerCell), theme).not.toBe(await backgroundOf(table));
+  }
 
-  const lightHeader = await headerCell.evaluate(readBackground);
-  const lightBody = await table.evaluate(readBackground);
-  expect(lightHeader).not.toBe(lightBody);
-
-  await page.evaluate(() => {
-    window.localStorage.setItem("launchpad:themeMode", "dark");
-  });
-  await openTable();
-  await expect(page.locator("html")).toHaveClass(/dark/);
-
-  const darkHeader = await headerCell.evaluate(readBackground);
-  const darkBody = await table.evaluate(readBackground);
-  expect(darkHeader).not.toBe(darkBody);
+  // Guards against the dark pass silently rendering the light theme.
+  expect(pageBackground.dark).not.toBe(pageBackground.light);
 });
 
 test("accordion sections do not add a divider between content groups", async ({ page }) => {

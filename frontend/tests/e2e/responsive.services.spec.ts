@@ -12,6 +12,7 @@ const longService = {
   pinned: true,
   image: "",
   url: "https://example.com/analytics",
+  priority: 100,
 };
 
 test.use({
@@ -122,7 +123,6 @@ test("services table keeps headers and rows in bounds while resizing", async ({ 
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
 
-    // Grid is the default view, so switch to the table view this test exercises.
     await page.getByRole("button", { name: "Table" }).click();
 
     const tableContainer = page.locator('[data-slot="table-container"]').first();
@@ -131,12 +131,8 @@ test("services table keeps headers and rows in bounds while resizing", async ({ 
       .getByRole("table", { name: "Services" })
       .getByRole("row", { name: /Long Running Analytics Workspace/ });
     const pinButton = longServiceRow.getByRole("button", { name: /^Unpin service$/ });
-    // Service cell: an icon beside the name and description.
-    const serviceIcon = longServiceRow
-      .getByRole("cell")
-      .nth(1)
-      .locator(":scope > div > div")
-      .first();
+    // No image is configured, so the icon shows the service's initials.
+    const serviceIcon = longServiceRow.getByText("LR", { exact: true });
     const serviceTitle = longServiceRow.getByRole("link", {
       name: /Long Running Analytics Workspace/,
     });

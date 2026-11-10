@@ -6,6 +6,7 @@ type SortValue = `${SortKey}-${SortDirection}`;
 
 /** `label` is shown in the menu, `triggerLabel` on the closed trigger. */
 const SORT_OPTIONS: { value: SortValue; label: string; triggerLabel: string }[] = [
+  { value: "default-asc", label: "Default", triggerLabel: "Default" },
   { value: "name-asc", label: "Name (A–Z)", triggerLabel: "Name" },
   { value: "name-desc", label: "Name (Z–A)", triggerLabel: "Name (Z–A)" },
   { value: "category-asc", label: "Category (A–Z)", triggerLabel: "Category" },

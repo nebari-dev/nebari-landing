@@ -28,9 +28,8 @@ test("active selectors are visually distinct from inactive selectors", async ({ 
       inactive.evaluate(readSurface),
     ]);
 
-    expect(activeSurface.background).not.toBe(inactiveSurface.background);
-    expect(activeSurface.border).not.toBe(inactiveSurface.border);
-    expect(activeSurface.foreground).not.toBe(inactiveSurface.foreground);
+    // Any one of the three may carry the active state.
+    expect(activeSurface).not.toEqual(inactiveSurface);
   }
 });
 

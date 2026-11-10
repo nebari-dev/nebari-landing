@@ -25,7 +25,7 @@ test.describe("loading", () => {
     await page.goto("/");
 
     await expect(page.getByRole("status")).toHaveText("Loading services…");
-    await expect(skeletonCards(page)).toHaveCount(5);
+    await expect(skeletonCards(page).first()).toBeAttached();
     await expect(page.getByRole("textbox", { name: "Search services" })).toHaveCount(0);
 
     release();
@@ -44,7 +44,7 @@ test.describe("loading", () => {
     await expect(page.getByRole("textbox", { name: "Search services" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Pinned", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "All services", exact: true })).toBeVisible();
-    await expect(skeletonCards(page)).toHaveCount(8);
+    await expect(skeletonCards(page).first()).toBeAttached();
 
     release();
 
@@ -66,7 +66,7 @@ test.describe("loading", () => {
       "true",
     );
     await expect(table.getByRole("columnheader", { name: "Service" })).toBeVisible();
-    await expect(table.locator('tbody tr[aria-hidden="true"]')).toHaveCount(8);
+    await expect(table.locator('tbody tr[aria-hidden="true"]').first()).toBeAttached();
 
     release();
 

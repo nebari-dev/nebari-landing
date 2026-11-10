@@ -26,12 +26,20 @@ type CategoryFilterProps = {
  * Multi-select category filter; an empty selection shows every category.
  * Chips follow menu order on a single row, at most two before a "+N" count,
  * and a selection of every category reads as "All categories".
+ * The value is kept in menu order because Base UI removes chips by index.
  */
 export function CategoryFilter({ categories, value, onChange, className }: CategoryFilterProps) {
   const allSelected = selectsAllCategories(categories, value);
 
   return (
-    <Combobox multiple items={categories} value={value} onValueChange={onChange}>
+    <Combobox
+      multiple
+      items={categories}
+      value={value}
+      onValueChange={(next: string[]) =>
+        onChange(categories.filter((category) => next.includes(category)))
+      }
+    >
       <ComboboxChips
         className={cn(
           "flex-nowrap overflow-hidden",
@@ -45,11 +53,10 @@ export function CategoryFilter({ categories, value, onChange, className }: Categ
               return <span className="truncate text-sm text-foreground">All categories</span>;
             }
 
-            const ordered = categories.filter((category) => selected.includes(category));
-            const hidden = ordered.slice(MAX_VISIBLE_CHIPS);
+            const hidden = selected.slice(MAX_VISIBLE_CHIPS);
             return (
               <>
-                {ordered.slice(0, MAX_VISIBLE_CHIPS).map((category) => (
+                {selected.slice(0, MAX_VISIBLE_CHIPS).map((category) => (
                   <ComboboxChip key={category}>{category}</ComboboxChip>
                 ))}
                 {hidden.length > 0 && (

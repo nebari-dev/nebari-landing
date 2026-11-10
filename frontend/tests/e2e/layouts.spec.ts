@@ -63,16 +63,21 @@ test.describe("richer layout (6 or more services)", () => {
     await expect.poll(() => cardNames(allServices)).toEqual(["Argo CD"]);
   });
 
-  test("sort dropdown reorders the cards", async ({ page }) => {
+  test("cards default to the operator's priority order; the sort dropdown reorders them", async ({
+    page,
+  }) => {
     await page.goto("/");
 
     const allServices = page.getByRole("region", { name: /^All services/ });
+    await expect(page.getByRole("combobox", { name: "Sort services" })).toContainText(
+      "Sort: Default",
+    );
     await expect.poll(() => cardNames(allServices)).toEqual([
+      "Nebi",
+      "MLflow",
+      "Grafana",
       "Argo CD",
       "Dask Gateway",
-      "Grafana",
-      "MLflow",
-      "Nebi",
     ]);
 
     await page.getByRole("combobox", { name: "Sort services" }).click();
@@ -103,12 +108,13 @@ test.describe("richer layout (6 or more services)", () => {
 
     await expect.poll(() => rowNames()).toEqual([
       "JupyterHub",
+      "Nebi",
+      "MLflow",
+      "Grafana",
       "Argo CD",
       "Dask Gateway",
-      "Grafana",
-      "MLflow",
-      "Nebi",
     ]);
+    await expect(categoryHeader).toHaveAttribute("aria-sort", "none");
 
     await categoryHeader.getByRole("button").click();
     await expect(sortSelect).toContainText("Sort: Category");
@@ -148,9 +154,37 @@ test.describe("richer layout (6 or more services)", () => {
       .toEqual(["Remove Environments", "Remove Monitoring"]);
     await expect(page.locator('[data-slot="combobox-field"]').getByText("+1")).toBeVisible();
 
+    // Chips neither wrap the field onto a second line nor push the sort control to the next one.
     const field = await page.locator('[data-slot="combobox-field"]').boundingBox();
-    expect(field?.width).toBeLessThanOrEqual(320);
     expect(field?.height).toBeLessThan((sortBefore?.height ?? 0) * 1.5);
+    const sortAfter = await sort.boundingBox();
+    expect(Math.abs((sortAfter?.y ?? 0) - (sortBefore?.y ?? 0))).toBeLessThan(
+      (sortBefore?.height ?? 0) / 2,
+    );
+  });
+
+  test("removing a chip removes that category, whatever order they were picked in", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    await page.getByRole("combobox", { name: "Filter by category" }).click();
+    for (const name of ["Platform", "Monitoring"]) {
+      await page.getByRole("option", { name }).click();
+    }
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: "Remove Monitoring" }).click();
+
+    await expect
+      .poll(() =>
+        page
+          .getByRole("button", { name: /^Remove / })
+          .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))),
+      )
+      .toEqual(["Remove Platform"]);
+    const allServices = page.getByRole("region", { name: /^All services/ });
+    await expect.poll(() => cardNames(allServices)).toEqual(["Argo CD"]);
   });
 
   test("selecting every category reads as All categories", async ({ page }) => {

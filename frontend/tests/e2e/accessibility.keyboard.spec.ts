@@ -1,3 +1,4 @@
+import type { Locator } from "@playwright/test";
 import { expect, test } from "./fixtures/e2e";
 
 test("header controls are reachable by keyboard", async ({ page }) => {
@@ -94,31 +95,36 @@ test("service cards are reachable from the keyboard", async ({ page }) => {
   await expect(pinnedSection.getByRole("button", { name: "Unpin service" })).toBeFocused();
 });
 
-test("header and accordion controls expose visible focus rings", async ({ page }) => {
+/** Outline and shadow together, so any focus ring changes it whatever its color or mechanism. */
+const readFocusIndicator = (locator: Locator) =>
+  locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return [style.outlineStyle, style.outlineWidth, style.boxShadow].join(" ");
+  });
+
+test("header and accordion controls show a focus indicator", async ({ page }) => {
   await page.goto("/");
 
-  const readFocusShadow = (element: HTMLElement) => getComputedStyle(element).boxShadow;
-  const accountMenu = page.getByRole("button", { name: /account menu/i });
-  const pinnedTrigger = page.getByRole("button", { name: /^Pinned/ });
-
-  await accountMenu.focus();
-  const buttonFocusShadow = await accountMenu.evaluate(readFocusShadow);
-  expect(buttonFocusShadow).not.toBe("none");
-
-  await pinnedTrigger.focus();
-  expect(await pinnedTrigger.evaluate(readFocusShadow)).not.toBe("none");
+  for (const control of [
+    page.getByRole("button", { name: /account menu/i }),
+    page.getByRole("button", { name: /^Pinned/ }),
+  ]) {
+    const unfocused = await readFocusIndicator(control);
+    await control.focus();
+    expect(await readFocusIndicator(control)).not.toBe(unfocused);
+  }
 });
 
-test("service card exposes a visible focus indicator", async ({ page }) => {
+test("service card shows a focus indicator", async ({ page }) => {
   await page.goto("/");
 
   // The card's link is a full-size overlay; its focus ring is drawn on the card beside it.
   const pinnedSection = page.getByRole("region", { name: /^Pinned/ });
-  const serviceCard = pinnedSection.getByRole("link", { name: /JupyterHub/i });
-  await serviceCard.focus();
-  await expect(serviceCard).toBeFocused();
+  const serviceLink = pinnedSection.getByRole("link", { name: /JupyterHub/i });
   const cardSurface = pinnedSection.locator('[data-slot="card"]', { hasText: "JupyterHub" });
-  expect(await cardSurface.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe(
-    "none",
-  );
+
+  const unfocused = await readFocusIndicator(cardSurface);
+  await serviceLink.focus();
+  await expect(serviceLink).toBeFocused();
+  expect(await readFocusIndicator(cardSurface)).not.toBe(unfocused);
 });

@@ -403,6 +403,8 @@ type ServiceView struct {
 	ImageLight  string   `json:"imageLight,omitempty"`
 	ImageDark   string   `json:"imageDark,omitempty"`
 	URL         string   `json:"url"`
+	// Priority is spec.landingPage.priority: lower first, 100 when unset.
+	Priority int `json:"priority"`
 }
 
 // ServiceResponse is the response format for GET /api/v1/services.
@@ -435,6 +437,7 @@ func toServiceView(svc *cache.ServiceInfo, pinned bool) *ServiceView {
 		ImageLight:  svc.IconLight,
 		ImageDark:   svc.IconDark,
 		URL:         svc.URL,
+		Priority:    svc.Priority,
 	}
 }
 

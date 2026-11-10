@@ -33,12 +33,18 @@ export function ServicesSection({ services, onTogglePin, loading = false }: Serv
 
   const categories = useMemo(() => getCategories(services), [services]);
 
+  // A selected category with no services left has no chip, so it must not filter.
+  const activeSelection = useMemo(
+    () => selectedCategories.filter((category) => categories.includes(category)),
+    [selectedCategories, categories],
+  );
+
   const visibleServices = useMemo(() => {
-    const activeCategories = selectsAllCategories(categories, selectedCategories)
+    const activeCategories = selectsAllCategories(categories, activeSelection)
       ? []
-      : selectedCategories;
+      : activeSelection;
     return sortServices(filterServices(services, query, activeCategories), sort);
-  }, [services, categories, query, selectedCategories, sort]);
+  }, [services, categories, query, activeSelection, sort]);
 
   const changeView = (nextView: ServicesView) => {
     setView(nextView);
@@ -58,7 +64,7 @@ export function ServicesSection({ services, onTogglePin, loading = false }: Serv
         query={query}
         onQueryChange={setQuery}
         categories={categories}
-        selectedCategories={selectedCategories}
+        selectedCategories={activeSelection}
         onSelectedCategoriesChange={setSelectedCategories}
         sort={sort}
         onSortChange={setSort}

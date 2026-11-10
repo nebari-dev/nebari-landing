@@ -243,6 +243,28 @@ func TestHandleGetServices_ServiceView_HasRequiredFields(t *testing.T) {
 	}
 }
 
+func TestHandleGetServices_ServiceView_IncludesPriority(t *testing.T) {
+	sc := buildCache(
+		entry{"u1", "zeppelin", "public", "", 1},
+		entry{"u2", "argo", "public", "", 0},
+	)
+	rr := doGet(t, newTestHandler(sc).Routes(), "/api/v1/services")
+	var resp ServiceResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Services) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(resp.Services))
+	}
+	// An unset priority defaults to 100, so the priority-1 service comes first.
+	if resp.Services[0].ID != "u1" || resp.Services[0].Priority != 1 {
+		t.Errorf("expected u1 with priority 1 first, got %q (%d)", resp.Services[0].ID, resp.Services[0].Priority)
+	}
+	if resp.Services[1].Priority != 100 {
+		t.Errorf("expected default priority 100, got %d", resp.Services[1].Priority)
+	}
+}
+
 // --- /api/v1/services/{id} ---
 
 func TestHandleGetServiceByUID_NotFound(t *testing.T) {

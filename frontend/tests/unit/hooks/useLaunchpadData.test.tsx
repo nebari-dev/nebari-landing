@@ -120,6 +120,7 @@ describe("useLaunchpadData services status", () => {
     category: [],
     pinned: false,
     url: "https://example.com/jupyterhub",
+    priority: 100,
   };
 
   beforeEach(() => {

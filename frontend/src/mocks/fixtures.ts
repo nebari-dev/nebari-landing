@@ -27,6 +27,7 @@ export const seedServices: Service[] = [
     pinned: true,
     image: "",
     url: "https://jupyter.example.com",
+    priority: 10,
   },
   {
     id: "svc-vscode",
@@ -37,6 +38,7 @@ export const seedServices: Service[] = [
     pinned: false,
     image: "",
     url: "https://code.example.com",
+    priority: 20,
   },
   {
     id: "svc-grafana",
@@ -47,6 +49,7 @@ export const seedServices: Service[] = [
     pinned: false,
     image: "",
     url: "https://grafana.example.com",
+    priority: 30,
   },
   {
     id: "svc-mlflow",
@@ -57,6 +60,7 @@ export const seedServices: Service[] = [
     pinned: true,
     image: "",
     url: "https://mlflow.example.com",
+    priority: 40,
   },
   {
     id: "svc-nebi",
@@ -67,6 +71,7 @@ export const seedServices: Service[] = [
     pinned: false,
     image: "",
     url: "https://nebi.example.com",
+    priority: 50,
   },
   {
     id: "svc-argocd",
@@ -77,6 +82,7 @@ export const seedServices: Service[] = [
     pinned: false,
     image: "",
     url: "https://argocd.example.com",
+    priority: 60,
   },
   {
     id: "svc-dask",
@@ -87,6 +93,7 @@ export const seedServices: Service[] = [
     pinned: false,
     image: "",
     url: "https://dask.example.com",
+    priority: 70,
   },
   {
     id: "svc-keycloak",
@@ -97,6 +104,7 @@ export const seedServices: Service[] = [
     pinned: false,
     image: "",
     url: "https://keycloak.example.com",
+    priority: 80,
   },
   {
     id: "svc-prometheus",
@@ -107,6 +115,7 @@ export const seedServices: Service[] = [
     pinned: false,
     image: "",
     url: "https://prometheus.example.com",
+    priority: 90,
   },
 ];
 

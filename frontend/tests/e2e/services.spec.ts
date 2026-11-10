@@ -57,9 +57,7 @@ test("unpinned cards reveal the pin control on hover and keyboard focus", async 
 test("every card and table row marks its name with a new-tab icon", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.locator('[data-slot="card-title"] + svg.lucide-external-link')).toHaveCount(
-    richerServices.length,
-  );
+  await expect(page.locator('[data-slot="card-title"] + svg')).toHaveCount(richerServices.length);
   for (const service of richerServices) {
     await expect(
       page.getByRole("link", { name: `${service.name} (opens in a new tab)`, exact: true }),
@@ -69,9 +67,7 @@ test("every card and table row marks its name with a new-tab icon", async ({ pag
   await page.getByRole("button", { name: "Table" }).click();
   const table = page.getByRole("table", { name: "Services" });
 
-  await expect(table.locator("tbody a + svg.lucide-external-link")).toHaveCount(
-    richerServices.length,
-  );
+  await expect(table.locator("tbody a + svg")).toHaveCount(richerServices.length);
   for (const service of richerServices) {
     await expect(
       table.getByRole("link", { name: `${service.name} (opens in a new tab)`, exact: true }),

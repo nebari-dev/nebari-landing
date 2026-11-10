@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Service } from "@/api/listServices";
 import {
+  DEFAULT_SORT,
   filterServices,
   getCategories,
   selectsAllCategories,
@@ -15,6 +16,7 @@ function service(overrides: Partial<Service> & Pick<Service, "id" | "name">): Se
     category: [],
     pinned: false,
     url: `https://example.com/${overrides.id}`,
+    priority: 100,
     ...overrides,
   };
 }
@@ -37,6 +39,15 @@ const dask = service({ id: "dask", name: "Dask Gateway", category: ["Data scienc
 const names = (services: Service[]) => services.map((item) => item.name);
 
 describe("sortServices", () => {
+  it("defaults to priority order, breaking ties by name", () => {
+    const sorted = sortServices(
+      [argo, jupyter, { ...grafana, priority: 1 }, { ...dask, priority: 100 }],
+      DEFAULT_SORT,
+    );
+
+    expect(names(sorted)).toEqual(["grafana", "Argo CD", "Dask Gateway", "JupyterHub"]);
+  });
+
   it("sorts by name in either direction, ignoring case", () => {
     const services = [jupyter, grafana, argo, dask];
 
