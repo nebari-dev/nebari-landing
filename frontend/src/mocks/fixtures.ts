@@ -16,6 +16,7 @@ export type AccessRequest = {
   resolvedBy: string;
 };
 
+// Six or more services render the richer layout; fewer than six render the simple layout.
 export const seedServices: Service[] = [
   {
     id: "svc-jupyter",
@@ -26,6 +27,7 @@ export const seedServices: Service[] = [
     pinned: true,
     image: "",
     url: "https://jupyter.example.com",
+    priority: 10,
   },
   {
     id: "svc-vscode",
@@ -36,6 +38,7 @@ export const seedServices: Service[] = [
     pinned: false,
     image: "",
     url: "https://code.example.com",
+    priority: 20,
   },
   {
     id: "svc-grafana",
@@ -46,16 +49,73 @@ export const seedServices: Service[] = [
     pinned: false,
     image: "",
     url: "https://grafana.example.com",
+    priority: 30,
   },
   {
     id: "svc-mlflow",
     name: "MLflow",
     status: "Unknown",
     description: "Track experiments, package and deploy models.",
-    category: ["ML"],
-    pinned: false,
+    category: ["ML", "Monitoring"],
+    pinned: true,
     image: "",
     url: "https://mlflow.example.com",
+    priority: 40,
+  },
+  {
+    id: "svc-nebi",
+    name: "Nebi",
+    status: "Healthy",
+    description: "Create, share and reuse reproducible Python environments.",
+    category: ["Environments"],
+    pinned: false,
+    image: "",
+    url: "https://nebi.example.com",
+    priority: 50,
+  },
+  {
+    id: "svc-argocd",
+    name: "Argo CD",
+    status: "Healthy",
+    description: "Keeps the apps on this platform in sync with Git.",
+    category: ["Platform"],
+    pinned: false,
+    image: "",
+    url: "https://argocd.example.com",
+    priority: 60,
+  },
+  {
+    id: "svc-dask",
+    name: "Dask Gateway",
+    status: "Healthy",
+    description: "Spin up Dask clusters for large, parallel computations.",
+    category: ["Notebooks"],
+    pinned: false,
+    image: "",
+    url: "https://dask.example.com",
+    priority: 70,
+  },
+  {
+    id: "svc-keycloak",
+    name: "Keycloak",
+    status: "Healthy",
+    description: "Single sign-on, users and groups for the whole platform.",
+    category: ["Platform"],
+    pinned: false,
+    image: "",
+    url: "https://keycloak.example.com",
+    priority: 80,
+  },
+  {
+    id: "svc-prometheus",
+    name: "Prometheus",
+    status: "Unhealthy",
+    description: "Collects cluster metrics and sends alerts when something breaks.",
+    category: ["Monitoring"],
+    pinned: false,
+    image: "",
+    url: "https://prometheus.example.com",
+    priority: 90,
   },
 ];
 
@@ -79,4 +139,6 @@ export const seedCategories: Record<string, string> = {
   IDE: "Code editing",
   Monitoring: "Observability",
   ML: "Machine learning",
+  Environments: "Software environments",
+  Platform: "Platform operations",
 };

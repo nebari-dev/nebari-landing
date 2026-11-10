@@ -75,6 +75,7 @@ export const generatedHandlers = [
       imageLight: "",
       name: "",
       pinned: false,
+      priority: 0,
       status: "",
       url: "",
     }),

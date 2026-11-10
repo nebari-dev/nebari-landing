@@ -11,7 +11,7 @@ import { getAppConfig } from "./config";
 export default function App() {
   const { themeMode, isDarkMode, setThemeMode } = useTheme();
   const { user } = useUser();
-  const { services, onTogglePin } = useLaunchpadData(user);
+  const { services, status, retry, onTogglePin } = useLaunchpadData(user);
 
   const config = getAppConfig();
 
@@ -28,7 +28,13 @@ export default function App() {
         logoSrcDark={config?.logoUrlDark || undefined}
       />
 
-      <Content services={services} onTogglePin={onTogglePin} />
+      <Content
+        services={services}
+        status={status}
+        onRetry={retry}
+        userName={user?.name.split(/\s+/)[0]}
+        onTogglePin={onTogglePin}
+      />
       <Banner position="bottom" config={config?.banners?.bottom} />
     </main>
   );

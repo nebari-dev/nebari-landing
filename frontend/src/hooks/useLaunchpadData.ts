@@ -6,12 +6,35 @@ import { deletePin, putPin } from "../api/pin";
 import type { ServiceSocketMessage } from "../api/servicesSocket";
 import { createWebSocketClient } from "../api/ws";
 
+/** `error` only when the services never loaded; a failed refresh keeps the last list. */
+export type ServicesStatus = "loading" | "ready" | "error";
+
 export function useLaunchpadData(user: unknown) {
   const [services, setServices] = useState<Service[]>([]);
+  const [status, setStatus] = useState<ServicesStatus>("loading");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    listServices().then(setServices).catch(console.error);
-  }, [user]);
+    let cancelled = false;
+    setStatus((prev) => (prev === "ready" ? prev : "loading"));
+
+    listServices()
+      .then((next) => {
+        if (cancelled) return;
+        setServices(next);
+        setStatus("ready");
+      })
+      .catch((err) => {
+        console.error(err);
+        if (!cancelled) setStatus((prev) => (prev === "ready" ? prev : "error"));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, attempt]);
+
+  const retry = useCallback(() => setAttempt((prev) => prev + 1), []);
 
   const onTogglePin = useCallback(async (serviceId: string, nextPinned: boolean) => {
     let previousPinned: boolean | undefined;
@@ -132,6 +155,8 @@ export function useLaunchpadData(user: unknown) {
 
   return {
     services,
+    status,
+    retry,
     onTogglePin,
   };
 }

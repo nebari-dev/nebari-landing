@@ -11,6 +11,8 @@ export type Service = {
   imageLight?: string;
   imageDark?: string;
   url: string;
+  /** `spec.landingPage.priority`, lower first; the webapi sends 100 when unset. */
+  priority: number;
 };
 
 /**
