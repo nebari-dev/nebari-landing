@@ -13,7 +13,7 @@ COPY frontend/ .
 RUN npm run build
 
 # ── Stage 2: serve ────────────────────────────────────────────────────────────
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.31.9-alpine AS runtime
 
 # envsubst is part of gettext — needed to render ${WEBAPI_URL} in the template.
 RUN apk add --no-cache gettext
