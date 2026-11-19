@@ -13,7 +13,7 @@ RUN npm run build
 # Vite outputs to /app/dist by default.
 
 # ─── Stage 2: serve ──────────────────────────────────────────────────────────
-FROM nginx:alpine AS final
+FROM nginx:1.31.9-alpine AS final
 
 # Remove the default nginx welcome page.
 RUN rm -rf /usr/share/nginx/html/*
