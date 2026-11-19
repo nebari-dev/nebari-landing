@@ -13,6 +13,7 @@ const baseService = {
   pinned: false,
   image: "",
   url: "https://example.com/jupyterhub",
+  priority: 100,
 };
 
 describe("ServiceGridCard", () => {
@@ -30,6 +31,12 @@ describe("ServiceGridCard", () => {
     const link = screen.getByRole("link");
     expect(link).toHaveAttribute("href", "https://example.com/jupyterhub");
     expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("renders the service status", () => {
+    render(<ServiceGridCard service={baseService} onTogglePin={vi.fn()} />);
+
+    expect(screen.getByText("Healthy")).toBeInTheDocument();
   });
 
   it("calls onTogglePin with the next pinned state", async () => {
@@ -55,4 +62,25 @@ describe("ServiceGridCard", () => {
 
     expect(onTogglePin).toHaveBeenCalledWith("svc-1", false);
   });
+
+  it("renders without a pin control when pinning is not offered", () => {
+    render(<ServiceGridCard service={baseService} />);
+
+    expect(screen.queryByRole("button", { name: /pin service/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the first category and counts the rest", () => {
+    render(
+      <ServiceGridCard
+        service={{ ...baseService, category: ["ML", "Monitoring", "Platform"] }}
+        onTogglePin={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("ML")).toBeInTheDocument();
+    expect(screen.queryByText("Monitoring")).not.toBeInTheDocument();
+    expect(screen.getByText("+2")).toBeInTheDocument();
+    expect(screen.getByText("2 more categories: Monitoring, Platform")).toBeInTheDocument();
+  });
+
 });

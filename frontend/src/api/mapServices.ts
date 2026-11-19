@@ -18,5 +18,6 @@ export function mapService(service: BackendSocketService): Service {
     imageLight: service.iconLight,
     imageDark: service.iconDark,
     url: service.url,
+    priority: service.priority,
   };
 }
