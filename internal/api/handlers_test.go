@@ -671,3 +671,64 @@ func TestHandleDebug_AuthenticatedUser_ShowsClaims(t *testing.T) {
 		t.Errorf("expected 1 private (open) service, got %d", body.Services.Private)
 	}
 }
+
+func TestHandleGetServices_ServiceView_HealthVersionAndDocs(t *testing.T) {
+	sc := cache.NewServiceCache()
+	sc.Add(&sdapp.App{
+		UID:        "uid-meta",
+		Name:       "grafana",
+		Namespace:  "default",
+		Hostname:   "grafana.example.com",
+		TLSEnabled: true,
+		LandingPage: &sdapp.LandingPage{
+			Enabled:    true,
+			Visibility: "public",
+			Version:    "11.4.0",
+			DocsURL:    "https://grafana.com/docs/",
+		},
+	})
+	sc.UpdateHealth("uid-meta", cache.NewHealthStatus(cache.HealthDegraded, "HTTP 503", nil))
+
+	rr := doGet(t, newTestHandler(sc).Routes(), "/api/v1/services")
+	var resp ServiceResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(resp.Services))
+	}
+	svc := resp.Services[0]
+	if svc.Status != "unhealthy" || svc.Health != "degraded" {
+		t.Errorf("status/health = %q/%q, want unhealthy/degraded", svc.Status, svc.Health)
+	}
+	if svc.Version != "11.4.0" || svc.DocsURL != "https://grafana.com/docs/" {
+		t.Errorf("version/docsUrl = %q/%q", svc.Version, svc.DocsURL)
+	}
+	if svc.SessionCount != nil {
+		t.Errorf("sessionCount = %d, want absent", *svc.SessionCount)
+	}
+}
+
+func TestHandleGetServices_ServiceView_OmitsAbsentMetadata(t *testing.T) {
+	sc := buildCache(entry{"uid-1", "grafana", "public", "Monitoring", 0})
+	rr := doGet(t, newTestHandler(sc).Routes(), "/api/v1/services")
+
+	var resp struct {
+		Services []map[string]any `json:"services"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(resp.Services))
+	}
+	svc := resp.Services[0]
+	if svc["status"] != "unknown" || svc["health"] != "unknown" {
+		t.Errorf("status/health = %v/%v, want unknown/unknown", svc["status"], svc["health"])
+	}
+	for _, key := range []string{"version", "docsUrl", "sessionCount"} {
+		if _, ok := svc[key]; ok {
+			t.Errorf("expected %q to be omitted, got %v", key, svc[key])
+		}
+	}
+}

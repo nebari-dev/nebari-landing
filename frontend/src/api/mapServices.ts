@@ -11,6 +11,7 @@ export function mapService(service: BackendSocketService): Service {
         : service.health.status.toLowerCase() === "unhealthy"
           ? "Unhealthy"
           : "Unknown",
+    health: service.health.state,
     description: service.description,
     category: service.category ? [service.category] : [],
     pinned: false,
@@ -18,5 +19,7 @@ export function mapService(service: BackendSocketService): Service {
     imageLight: service.iconLight,
     imageDark: service.iconDark,
     url: service.url,
+    version: service.version,
+    docsUrl: service.docsUrl,
   };
 }

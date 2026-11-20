@@ -548,6 +548,8 @@ func toApp(u *unstructured.Unstructured) *sdapp.App {
 	iconDark, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "iconDark")
 	category, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "category")
 	externalURL, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "externalUrl")
+	version, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "version")
+	docsURL, _, _ := unstructured.NestedString(u.Object, "spec", "landingPage", "docsUrl")
 	// spec.landingPage no longer carries visibility or requiredGroups (removed from
 	// LandingPageConfig in the operator). The operator's controller derives them from
 	// spec.auth and writes the result to status.serviceDiscovery. Mirror the same
@@ -597,6 +599,8 @@ func toApp(u *unstructured.Unstructured) *sdapp.App {
 		Visibility:     visibility,
 		RequiredGroups: requiredGroups,
 		ExternalURL:    externalURL,
+		Version:        version,
+		DocsURL:        docsURL,
 		HealthCheck:    healthCheck,
 	}
 
@@ -626,6 +630,16 @@ func toApp(u *unstructured.Unstructured) *sdapp.App {
 		if v, found, _ := unstructured.NestedStringSlice(u.Object, "status", "serviceDiscovery", "requiredGroups"); found {
 			page.RequiredGroups = v
 		}
+		if v, _, _ := unstructured.NestedString(u.Object, "status", "serviceDiscovery", "version"); v != "" {
+			page.Version = v
+		}
+		if v, _, _ := unstructured.NestedString(u.Object, "status", "serviceDiscovery", "docsUrl"); v != "" {
+			page.DocsURL = v
+		}
+	}
+
+	if page.Version == "" {
+		page.Version = u.GetLabels()["app.kubernetes.io/version"]
 	}
 
 	a.LandingPage = page

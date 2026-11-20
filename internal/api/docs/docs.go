@@ -190,6 +190,20 @@ const docTemplate = `{
                     "description": {
                         "type": "string"
                     },
+                    "docsUrl": {
+                        "description": "DocsURL links to the service's documentation, when provided. Always an absolute http(s) URL.",
+                        "type": "string"
+                    },
+                    "health": {
+                        "description": "Health is the latest probe result: healthy, degraded (the service answered with a non-2xx), down (the probe could not reach it), or unknown.",
+                        "enum": [
+                            "healthy",
+                            "degraded",
+                            "down",
+                            "unknown"
+                        ],
+                        "type": "string"
+                    },
                     "id": {
                         "type": "string"
                     },
@@ -208,10 +222,24 @@ const docTemplate = `{
                     "pinned": {
                         "type": "boolean"
                     },
+                    "sessionCount": {
+                        "description": "SessionCount is reserved for the signed-in user's running sessions on the service. Not provided yet.",
+                        "type": "integer"
+                    },
                     "status": {
+                        "description": "Status is healthy, unhealthy, or unknown. Health splits unhealthy into degraded and down.",
+                        "enum": [
+                            "healthy",
+                            "unhealthy",
+                            "unknown"
+                        ],
                         "type": "string"
                     },
                     "url": {
+                        "type": "string"
+                    },
+                    "version": {
+                        "description": "Version of the service, when its NebariApp or static entry provides one.",
                         "type": "string"
                     }
                 },
@@ -233,6 +261,10 @@ const docTemplate = `{
                     "message": {
                         "type": "string"
                     },
+                    "state": {
+                        "description": "healthy, degraded, down, unknown",
+                        "type": "string"
+                    },
                     "status": {
                         "description": "healthy, unhealthy, unknown",
                         "type": "string"
@@ -249,6 +281,9 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "displayName": {
+                        "type": "string"
+                    },
+                    "docsUrl": {
                         "type": "string"
                     },
                     "health": {
@@ -283,6 +318,9 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "url": {
+                        "type": "string"
+                    },
+                    "version": {
                         "type": "string"
                     },
                     "visibility": {
