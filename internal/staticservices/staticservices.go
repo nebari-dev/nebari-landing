@@ -41,6 +41,8 @@ type Service struct {
 	IconLight      string       `json:"iconLight,omitempty"`
 	IconDark       string       `json:"iconDark,omitempty"`
 	Category       string       `json:"category,omitempty"`
+	Version        string       `json:"version,omitempty"`
+	DocsURL        string       `json:"docsUrl,omitempty"`
 	Priority       int          `json:"priority,omitempty"`
 	Visibility     string       `json:"visibility,omitempty"`
 	RequiredGroups []string     `json:"requiredGroups,omitempty"`
@@ -95,6 +97,17 @@ func (s *Service) validate() error {
 	}
 	if err := validateHTTPURL(s.URL); err != nil {
 		return fmt.Errorf("url: %w", err)
+	}
+	if len(s.Version) > sdapp.MaxVersionLength {
+		return fmt.Errorf("version must be at most %d characters", sdapp.MaxVersionLength)
+	}
+	if s.DocsURL != "" {
+		if len(s.DocsURL) > sdapp.MaxDocsURLLength {
+			return fmt.Errorf("docsUrl must be at most %d characters", sdapp.MaxDocsURLLength)
+		}
+		if err := validateHTTPURL(s.DocsURL); err != nil {
+			return fmt.Errorf("docsUrl: %w", err)
+		}
 	}
 	switch s.Visibility {
 	case "":
@@ -158,6 +171,8 @@ func (s Service) App() *sdapp.App {
 			IconLight:      s.IconLight,
 			IconDark:       s.IconDark,
 			Category:       s.Category,
+			Version:        s.Version,
+			DocsURL:        s.DocsURL,
 			Priority:       s.Priority,
 			Visibility:     s.Visibility,
 			RequiredGroups: s.RequiredGroups,

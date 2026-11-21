@@ -397,9 +397,12 @@ func (h *Handler) handleWSTicket(w http.ResponseWriter, r *http.Request) {
 
 // ServiceView is the client-facing representation of a service.
 type ServiceView struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Status      string   `json:"status"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Status is healthy, unhealthy, or unknown. Health splits unhealthy into degraded and down.
+	Status string `json:"status" enums:"healthy,unhealthy,unknown"`
+	// Health is the latest probe result: healthy, degraded (the service answered with a non-2xx), down (the probe could not reach it), or unknown.
+	Health      string   `json:"health" enums:"healthy,degraded,down,unknown"`
 	Description string   `json:"description"`
 	Category    []string `json:"category"`
 	Pinned      bool     `json:"pinned"`
@@ -407,6 +410,12 @@ type ServiceView struct {
 	ImageLight  string   `json:"imageLight,omitempty"`
 	ImageDark   string   `json:"imageDark,omitempty"`
 	URL         string   `json:"url"`
+	// Version of the service, when its NebariApp or static entry provides one.
+	Version string `json:"version,omitempty"`
+	// DocsURL links to the service's documentation, when provided. Always an absolute http(s) URL.
+	DocsURL string `json:"docsUrl,omitempty"`
+	// SessionCount is reserved for the signed-in user's running sessions on the service. Not provided yet.
+	SessionCount *int `json:"sessionCount,omitempty"`
 }
 
 // ServiceResponse is the response format for GET /api/v1/services.
@@ -421,8 +430,12 @@ func toServiceView(svc *cache.ServiceInfo, pinned bool) *ServiceView {
 		name = svc.Name
 	}
 	status := "unknown"
+	health := cache.HealthUnknown
 	if svc.Health != nil {
 		status = svc.Health.Status
+		if svc.Health.State != "" {
+			health = svc.Health.State
+		}
 	}
 	category := []string{}
 	if svc.Category != "" {
@@ -432,6 +445,7 @@ func toServiceView(svc *cache.ServiceInfo, pinned bool) *ServiceView {
 		ID:          svc.UID,
 		Name:        name,
 		Status:      status,
+		Health:      health,
 		Description: svc.Description,
 		Category:    category,
 		Pinned:      pinned,
@@ -439,6 +453,8 @@ func toServiceView(svc *cache.ServiceInfo, pinned bool) *ServiceView {
 		ImageLight:  svc.IconLight,
 		ImageDark:   svc.IconDark,
 		URL:         svc.URL,
+		Version:     svc.Version,
+		DocsURL:     svc.DocsURL,
 	}
 }
 
@@ -461,6 +477,8 @@ type CallerIdentityResponse struct {
 	Email         string   `json:"email,omitempty"`
 	Name          string   `json:"name,omitempty"`
 	Groups        []string `json:"groups,omitempty"`
+	// IsAdmin reports whether the caller belongs to the configured admin group.
+	IsAdmin bool `json:"isAdmin"`
 }
 
 // callerPinnedUIDs returns the set of UIDs pinned by the authenticated caller.
@@ -1339,6 +1357,7 @@ func (h *Handler) handleCallerIdentity(w http.ResponseWriter, r *http.Request) {
 			Email:         claims.Email,
 			Name:          claims.Name,
 			Groups:        claims.Groups,
+			IsAdmin:       h.isAdmin(claims),
 		}
 	}
 

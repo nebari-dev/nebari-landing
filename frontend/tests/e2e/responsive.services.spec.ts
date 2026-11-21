@@ -1,42 +1,30 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/e2e";
+import { richerServices } from "./fixtures/services";
 
-const responsiveServices = [
-  {
-    id: "svc-long",
-    name: "Long Running Analytics Workspace",
-    status: "Healthy",
-    description:
-      "Notebook workspace for collaborative data analysis with shared compute environments and a description that is intentionally long enough to wrap across two lines.",
-    category: ["Data Science"],
-    pinned: true,
-    image: "",
-    url: "https://example.com/analytics",
-  },
-  {
-    id: "svc-monitoring",
-    name: "Grafana",
-    status: "Unknown",
-    description: "Metrics dashboards for platform health.",
-    category: ["Observability"],
-    pinned: false,
-    image: "",
-    url: "https://example.com/grafana",
-  },
-];
+const longService = {
+  id: "svc-long",
+  name: "Long Running Analytics Workspace",
+  status: "Healthy",
+  description:
+    "Notebook workspace for collaborative data analysis with shared compute environments and a description that is long enough to wrap.",
+  category: ["Data Science"],
+  pinned: true,
+  image: "",
+  url: "https://example.com/analytics",
+};
 
-async function mockResponsiveServices(page: Page) {
-  await page.route(
-    /^https?:\/\/[^/]+\/api\/v1\/services\/?(?:\?.*)?$/,
-    async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(responsiveServices),
-      });
-    },
-  );
-}
+test.use({
+  services: [
+    [longService, ...richerServices.filter((service) => !service.pinned)],
+    { scope: "test" },
+  ],
+});
+
+const widths = [390, 560, 768, 1024, 1440];
+
+const hasHorizontalScroll = (page: Page) =>
+  page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
 
 async function getBox(locator: Locator) {
   const box = await locator.boundingBox();
@@ -46,39 +34,75 @@ async function getBox(locator: Locator) {
   return box;
 }
 
-test("service controls preserve their responsive order and stay in bounds", async ({ page }) => {
-  await mockResponsiveServices(page);
-
-  const widths = [560, 768, 1024];
-
+test("service controls stay on screen at every width", async ({ page }) => {
   for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
 
-    const allServicesRegion = page.getByRole("region", {
-      name: /All services/i,
-    });
-    await expect(allServicesRegion).toBeVisible();
+    for (const control of [
+      page.getByRole("textbox", { name: "Search services" }),
+      page.getByRole("combobox", { name: "Filter by category" }),
+      page.getByRole("combobox", { name: "Sort services" }),
+      page.getByRole("button", { name: "Grid" }),
+      page.getByRole("button", { name: "Table" }),
+      page.getByRole("link", { name: "Long Running Analytics Workspace (opens in a new tab)" }),
+    ]) {
+      await expect(control, `at ${width}px`).toBeInViewport();
+    }
+    expect(await hasHorizontalScroll(page), `at ${width}px`).toBe(false);
+  }
+});
 
-    const searchInput = allServicesRegion.getByPlaceholder("Search");
-    const viewToggle = allServicesRegion.getByRole("tablist");
-    const firstCard = allServicesRegion.getByRole("link", {
+test("table row controls stay reachable at every width", async ({ page }) => {
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Table" }).click();
+
+    const table = page.getByRole("table", { name: "Services" });
+    const row = table.getByRole("row", { name: /Long Running Analytics Workspace/ });
+
+    for (const control of [
+      row.getByRole("button", { name: "Unpin service" }),
+      row.getByRole("link", { name: /Long Running Analytics Workspace/ }),
+      row.getByRole("button", { name: "Long Running Analytics Workspace details" }),
+    ]) {
+      await control.scrollIntoViewIfNeeded();
+      await expect(control, `at ${width}px`).toBeInViewport();
+    }
+    expect(await hasHorizontalScroll(page), `at ${width}px`).toBe(false);
+  }
+});
+
+test("service controls preserve their responsive order and stay in bounds", async ({ page }) => {
+  for (const width of [560, 768, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+
+    const content = page.getByRole("heading", { level: 1 }).locator("..");
+    const searchInput = page.getByRole("textbox", { name: "Search services" });
+    const categoryFilter = page.getByRole("combobox", { name: "Filter by category" });
+    const sortSelect = page.getByRole("combobox", { name: "Sort services" });
+    const viewToggle = page.getByRole("group", { name: "View" });
+    const firstCard = page.getByRole("link", {
       name: /Long Running Analytics Workspace.*opens in a new tab/i,
     });
 
     const inputBox = await getBox(searchInput);
+    const filterBox = await getBox(categoryFilter);
+    const sortBox = await getBox(sortSelect);
     const toggleBox = await getBox(viewToggle);
     const cardBox = await getBox(firstCard);
-    const regionBox = await getBox(allServicesRegion);
-    const regionRight = regionBox.x + regionBox.width;
+    const contentBox = await getBox(content);
+    const contentRight = contentBox.x + contentBox.width;
 
-    for (const box of [inputBox, toggleBox, cardBox]) {
-      expect(box.x).toBeGreaterThanOrEqual(Math.floor(regionBox.x));
-      expect(box.x + box.width).toBeLessThanOrEqual(Math.ceil(regionRight));
+    for (const box of [inputBox, filterBox, sortBox, toggleBox, cardBox]) {
+      expect(box.x, `at ${width}px`).toBeGreaterThanOrEqual(Math.floor(contentBox.x));
+      expect(box.x + box.width, `at ${width}px`).toBeLessThanOrEqual(Math.ceil(contentRight));
     }
 
-    expect(cardBox.y).toBeGreaterThanOrEqual(
-      Math.max(inputBox.y + inputBox.height, toggleBox.y + toggleBox.height),
+    expect(cardBox.y, `at ${width}px`).toBeGreaterThanOrEqual(
+      Math.max(...[inputBox, filterBox, sortBox, toggleBox].map((box) => box.y + box.height)),
     );
 
     if (width >= 640) {
@@ -87,45 +111,41 @@ test("service controls preserve their responsive order and stay in bounds", asyn
         inputBox.y + inputBox.height,
         toggleBox.y + toggleBox.height,
       );
-      expect(controlsOverlapStart).toBeLessThan(controlsOverlapEnd);
+      expect(controlsOverlapStart, `at ${width}px`).toBeLessThan(controlsOverlapEnd);
     } else {
-      expect(toggleBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
+      expect(toggleBox.y, `at ${width}px`).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
     }
   }
 });
 
 test("services table keeps headers and rows in bounds while resizing", async ({ page }) => {
-  await mockResponsiveServices(page);
-
-  const widths = [700, 767, 816, 1024];
-
-  for (const width of widths) {
+  for (const width of [700, 767, 816, 1024]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
 
-    const allServicesRegion = page.getByRole("region", {
-      name: /All services/i,
-    });
-    await expect(allServicesRegion).toBeVisible();
-
     // Grid is the default view, so switch to the table view this test exercises.
-    await allServicesRegion.getByRole("tab", { name: /List View/i }).click();
+    await page.getByRole("button", { name: "Table" }).click();
 
     const tableContainer = page.locator('[data-slot="table-container"]').first();
-    const actionsHeader = page.getByRole("columnheader", { name: /Actions/i }).getByText("Actions");
-    const pinButton = allServicesRegion.getByRole("button", {
-      name: /^Unpin service$/,
+    const statusHeader = page.getByRole("columnheader", { name: "Status" });
+    const longServiceRow = page
+      .getByRole("table", { name: "Services" })
+      .getByRole("row", { name: /Long Running Analytics Workspace/ });
+    const pinButton = longServiceRow.getByRole("button", { name: /^Unpin service$/ });
+    // Service cell: an icon beside the name and description.
+    const serviceIcon = longServiceRow
+      .getByRole("cell")
+      .nth(1)
+      .locator(":scope > div > div")
+      .first();
+    const serviceTitle = longServiceRow.getByRole("link", {
+      name: /Long Running Analytics Workspace/,
     });
-    const longServiceRow = allServicesRegion.getByRole("link", {
-      name: /Long Running Analytics Workspace.*opens in a new tab/i,
-    });
-    const serviceIcon = longServiceRow.locator("img").first().locator("..");
-    const serviceTitle = longServiceRow.getByText("Long Running Analytics Workspace");
     const longDescription = longServiceRow.getByText(
       /Notebook workspace for collaborative data analysis/,
     );
 
-    await expect(actionsHeader).toBeVisible();
+    await expect(statusHeader).toBeVisible();
     await expect(pinButton).toBeVisible();
     await expect(longDescription).toBeVisible();
     // The scroll container is a tab stop only while its content overflows.
@@ -147,12 +167,13 @@ test("services table keeps headers and rows in bounds while resizing", async ({ 
     const textBlockTop = titleBox.y;
     const textBlockBottom = descriptionBox.y + descriptionBox.height;
     const iconCenter = iconBox.y + iconBox.height / 2;
-    expect(descriptionBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
-    expect(iconCenter).toBeGreaterThanOrEqual(textBlockTop);
-    expect(iconCenter).toBeLessThanOrEqual(textBlockBottom);
+    expect(descriptionBox.y, `at ${width}px`).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
+    expect(iconCenter, `at ${width}px`).toBeGreaterThanOrEqual(textBlockTop);
+    expect(iconCenter, `at ${width}px`).toBeLessThanOrEqual(textBlockBottom);
 
     expect(
       await tableContainer.evaluate((element) => element.scrollWidth > element.clientWidth),
+      `at ${width}px`,
     ).toBe(false);
   }
 });

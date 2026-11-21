@@ -160,7 +160,7 @@ func TestNebariAppProbeOfKeycloakIsStillRejected(t *testing.T) {
 	if targetHits.Load() != 0 {
 		t.Fatal("untrusted probe reached the Keycloak target")
 	}
-	if got.status != "unknown" {
+	if got.state != "unknown" {
 		t.Fatalf("result = %+v, want unknown (runner rejection)", got)
 	}
 }

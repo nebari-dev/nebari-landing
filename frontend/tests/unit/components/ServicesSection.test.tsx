@@ -1,5 +1,5 @@
 import { renderWithProviders as render } from "@/test/render";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ServicesSection } from "@/components/ServicesSection";
@@ -25,40 +25,192 @@ const services = [
     image: "",
     url: "https://example.com/grafana",
   },
+  {
+    id: "3",
+    name: "Argo CD",
+    status: "Healthy",
+    description: "GitOps deployments",
+    category: ["platform"],
+    pinned: false,
+    image: "",
+    url: "https://example.com/argo",
+  },
 ];
 
+const cardNames = (region: HTMLElement) =>
+  within(region)
+    .getAllByRole("link")
+    .map((link) => link.getAttribute("aria-label")?.replace(" (opens in a new tab)", ""));
+
 describe("ServicesSection", () => {
-  it("renders search input", () => {
+  it("renders the search, filter, sort, and view controls", () => {
     render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
-    expect(screen.getByPlaceholderText(/search/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^search$/i })).not.toBeInTheDocument();
+
+    expect(screen.getByRole("textbox", { name: "Search services" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Filter by category" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Sort services" })).toHaveTextContent(
+      "Sort: Name",
+    );
+    expect(screen.getByRole("group", { name: "View" })).toBeInTheDocument();
   });
 
-  it("filters services by query", async () => {
+  it("filters both sections by query", async () => {
     const user = userEvent.setup();
     render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
 
-    await user.type(screen.getByPlaceholderText(/search/i), "grafana");
+    await user.type(screen.getByPlaceholderText(/search/i), "jupyter");
 
-    expect(screen.getByText("Grafana")).toBeInTheDocument();
+    expect(screen.getByText("JupyterHub")).toBeInTheDocument();
+    expect(screen.queryByText("Grafana")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Pinned/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps category chips in menu order, collapses extras into +N, and reads all as All categories", async () => {
+    const user = userEvent.setup();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    const filter = screen.getByRole("combobox", { name: "Filter by category" });
+    await user.click(filter);
+    await user.click(await screen.findByRole("option", { name: "platform" }));
+    await user.click(screen.getByRole("option", { name: "data" }));
+
+    expect(
+      screen.getAllByRole("button", { name: /^Remove / }).map((b) => b.getAttribute("aria-label")),
+    ).toEqual(["Remove data", "Remove platform"]);
+
+    await user.click(screen.getByRole("option", { name: "observability" }));
+
+    expect(screen.queryAllByRole("button", { name: /^Remove / })).toHaveLength(0);
+    expect(screen.getByText("All categories")).toBeInTheDocument();
+  });
+
+  it("keeps uncategorized services visible when every category is selected", async () => {
+    const user = userEvent.setup();
+    const withUncategorized = [
+      ...services,
+      { ...services[0], id: "4", name: "Docs Portal", category: [], pinned: false },
+    ];
+    render(<ServicesSection services={withUncategorized} onTogglePin={vi.fn()} />);
+
+    await user.click(screen.getByRole("combobox", { name: "Filter by category" }));
+    for (const name of ["data", "observability", "platform"]) {
+      await user.click(await screen.findByRole("option", { name }));
+    }
+
+    expect(screen.getByText("Docs Portal")).toBeInTheDocument();
+  });
+
+  it("filters by the selected categories", async () => {
+    const user = userEvent.setup();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    await user.click(screen.getByRole("combobox", { name: "Filter by category" }));
+    await user.click(await screen.findByRole("option", { name: "platform" }));
+
+    expect(screen.getByText("Argo CD")).toBeInTheDocument();
     expect(screen.queryByText("JupyterHub")).not.toBeInTheDocument();
+    expect(screen.queryByText("Grafana")).not.toBeInTheDocument();
   });
 
-  it("defaults to grid view and switches to list view", async () => {
+  it("shows each service once, with pinned services only in the pinned section", () => {
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Pinned 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All services 2" })).toBeInTheDocument();
+    expect(cardNames(screen.getByRole("region", { name: /^All services/ }))).toEqual([
+      "Argo CD",
+      "JupyterHub",
+    ]);
+  });
+
+  it("sorts the cards from the sort dropdown", async () => {
     const user = userEvent.setup();
     render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
 
-    expect(screen.getByRole("tab", { name: /grid view/i })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    await user.click(screen.getByRole("combobox", { name: "Sort services" }));
+    await user.click(await screen.findByRole("option", { name: "Name (Z–A)" }));
 
-    await user.click(screen.getByRole("tab", { name: /list view/i }));
-
-    expect(screen.getByText("Grafana")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /list view/i })).toHaveAttribute(
-      "aria-selected",
-      "true",
+    expect(screen.getByRole("combobox", { name: "Sort services" })).toHaveTextContent(
+      "Sort: Name (Z–A)",
     );
+    expect(cardNames(screen.getByRole("region", { name: /^All services/ }))).toEqual([
+      "JupyterHub",
+      "Argo CD",
+    ]);
+  });
+
+  it("defaults to grid view and switches to table view", async () => {
+    const user = userEvent.setup();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Grid" })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "Table" }));
+
+    expect(screen.getByRole("button", { name: "Table" })).toHaveAttribute("aria-pressed", "true");
+    const table = screen.getByRole("table", { name: "Services" });
+    expect(within(table).getByText("Grafana")).toBeInTheDocument();
+  });
+
+  it("updates the sort dropdown when a table header is clicked", async () => {
+    const user = userEvent.setup();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Table" }));
+    await user.click(screen.getByRole("button", { name: "Category" }));
+
+    expect(screen.getByRole("combobox", { name: "Sort services" })).toHaveTextContent(
+      "Sort: Category",
+    );
+    expect(screen.getByRole("columnheader", { name: "Category" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+  });
+
+  it("explains a search with no results and clears it", async () => {
+    const user = userEvent.setup();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Search services" }), "kubeflow");
+
+    expect(screen.getByRole("status")).toHaveTextContent('No services match "kubeflow"');
+    expect(screen.queryByRole("button", { name: /^Pinned/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+
+    expect(screen.getByRole("textbox", { name: "Search services" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "All services 2" })).toBeInTheDocument();
+  });
+
+  it("shows the no-results state in the table view too", async () => {
+    const user = userEvent.setup();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Table" }));
+    await user.type(screen.getByRole("textbox", { name: "Search services" }), "kubeflow");
+
+    expect(screen.queryByRole("table", { name: "Services" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent('No services match "kubeflow"');
+  });
+
+  it("remembers the Grid / Table choice", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Table" }));
+    unmount();
+    render(<ServicesSection services={services} onTogglePin={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Table" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("table", { name: "Services" })).toBeInTheDocument();
+  });
+
+  it("shows skeletons instead of the no-results state while loading", () => {
+    render(<ServicesSection services={[]} onTogglePin={vi.fn()} loading />);
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pinned" })).toBeInTheDocument();
+    expect(document.querySelectorAll('[data-slot="card"][aria-hidden="true"]')).toHaveLength(8);
   });
 });

@@ -1,95 +1,109 @@
+import { ExternalLink } from "lucide-react";
 import type { Service } from "../api/listServices";
-import { PinIcon, UnpinIcon } from "./PinIcon";
+import { useStatusView } from "../hooks/status-view";
+import { cn } from "../lib/utils";
+import { CategoryBadges } from "./CategoryBadge";
+import { PinButton } from "./PinButton";
+import { ServiceDetailsButton } from "./ServiceDetailsButton";
 import { ServiceIcon } from "./ServiceIcon";
-import { StatusBadge } from "./StatusBadge";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "./ui/card";
+import { isUnavailable, StatusBadge } from "./StatusBadge";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card";
 
 type ServiceGridCardProps = {
   service: Service;
-  onTogglePin: (serviceId: string, nextPinned: boolean) => void | Promise<void>;
+  /** Omit to render the card without a pin control. */
+  onTogglePin?: (serviceId: string, nextPinned: boolean) => void | Promise<void>;
+  /** Opens the details drawer for a service. */
+  onShowDetails?: (serviceId: string) => void;
 };
 
-export function ServiceGridCard({ service, onTogglePin }: ServiceGridCardProps) {
+/** Service card; the whole card opens the service in a new tab. */
+export function ServiceGridCard({ service, onTogglePin, onShowDetails }: ServiceGridCardProps) {
+  const view = useStatusView();
+  const unavailable = isUnavailable(service, view);
+
   return (
-    <div className="group/card relative h-56 overflow-visible rounded-md">
+    <div className="group/service relative h-full rounded-md">
       <a
         href={service.url}
         target="_blank"
         rel="noreferrer"
         aria-label={`${service.name} (opens in a new tab)`}
-        className="peer absolute inset-0 z-10 rounded-md outline-none"
+        className="peer absolute inset-0 z-10 rounded-md no-underline! outline-none"
       >
         <span className="sr-only">Open {service.name}</span>
       </a>
       <Card
         size="sm"
-        className="h-full shadow-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-inset group-hover/card:bg-black/[0.02] dark:group-hover/card:bg-white/[0.03]"
+        className="h-full gap-3 rounded-md p-4 shadow-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-inset group-hover/service:border-border-strong group-hover/service:bg-background group-hover/service:shadow-[0_4px_6px_rgb(0_0_0/0.08)] motion-safe:transition-[background-color,border-color,box-shadow] motion-safe:duration-(--duration-fast)"
       >
-        <CardHeader>
+        <CardHeader className="flex items-center gap-3 px-0">
           <ServiceIcon
+            name={service.name}
             image={service.image}
             imageLight={service.imageLight}
             imageDark={service.imageDark}
+            className={cn(unavailable && "opacity-50")}
           />
-          <CardAction>
-            <StatusBadge status={service.status} />
-          </CardAction>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <CardTitle
+              className={cn(
+                "truncate text-sm font-medium leading-5 text-foreground",
+                unavailable && "opacity-70",
+              )}
+            >
+              {service.name}
+            </CardTitle>
+            {!unavailable && (
+              <ExternalLink
+                aria-hidden="true"
+                strokeWidth={1.5}
+                className="size-3.5 shrink-0 text-muted-foreground-strong"
+              />
+            )}
+          </div>
+          {onTogglePin && (
+            <PinButton
+              pinned={service.pinned}
+              className={cn(
+                "relative z-20",
+                // Unpinned cards reveal the pin on hover or focus; touch screens always show it.
+                !service.pinned &&
+                  "pointer-fine:opacity-0 pointer-fine:group-focus-within/service:opacity-100 pointer-fine:group-hover/service:opacity-100",
+              )}
+              onToggle={(nextPinned) => void onTogglePin(service.id, nextPinned)}
+            />
+          )}
         </CardHeader>
 
-        <CardContent className="min-h-0">
-          <CardTitle className="text-sm font-medium leading-5 text-foreground">
-            {service.name}
-          </CardTitle>
-          <CardDescription className="mt-1 line-clamp-2" title={service.description}>
+        <CardContent className="px-0">
+          <CardDescription
+            className={cn(
+              "line-clamp-2 h-10 text-muted-foreground-strong",
+              unavailable && "opacity-60",
+            )}
+            title={service.description}
+          >
             {service.description}
           </CardDescription>
         </CardContent>
 
-        <CardFooter className="relative mt-auto justify-between pt-(--card-spacing)">
-          <div
-            aria-hidden="true"
-            className="absolute top-0 right-(--card-spacing) left-(--card-spacing) border-t"
-          />
-          <div className="flex min-w-0 flex-wrap gap-2 overflow-hidden">
-            {service.category.map((item) => (
-              <Badge
-                key={item}
-                variant="secondary"
-                className="rounded-sm bg-category-badge-background text-category-badge-foreground capitalize"
-              >
-                {item}
-              </Badge>
-            ))}
+        <CardFooter className="mt-auto min-w-0 gap-2 px-0">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 overflow-hidden">
+            <CategoryBadges categories={service.category} muted={unavailable} />
+            <StatusBadge
+              status={service.status}
+              health={service.health}
+              view={view}
+              sessionCount={service.sessionCount}
+            />
           </div>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative z-20 focus-visible:ring-offset-0"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              void onTogglePin(service.id, !service.pinned);
-            }}
-            title={service.pinned ? "Unpin service" : "Pin service"}
-            aria-label={service.pinned ? "Unpin service" : "Pin service"}
-          >
-            {service.pinned ? (
-              <UnpinIcon className="text-primary" />
-            ) : (
-              <PinIcon className="text-muted-foreground" />
-            )}
-          </Button>
+          <ServiceDetailsButton
+            serviceName={service.name}
+            muted={unavailable}
+            className="relative z-20"
+            onClick={() => onShowDetails?.(service.id)}
+          />
         </CardFooter>
       </Card>
     </div>
