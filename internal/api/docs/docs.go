@@ -208,6 +208,10 @@ const docTemplate = `{
                     "pinned": {
                         "type": "boolean"
                     },
+                    "priority": {
+                        "description": "Priority is spec.landingPage.priority: lower first, 100 when unset.",
+                        "type": "integer"
+                    },
                     "status": {
                         "type": "string"
                     },

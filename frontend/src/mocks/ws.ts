@@ -27,7 +27,7 @@ export const wsHandlers = [
             url: svc.url,
             icon: svc.image,
             category: svc.category[0] ?? "",
-            priority: 0,
+            priority: 100,
             visibility: "public",
             health: {
               status: svc.status,

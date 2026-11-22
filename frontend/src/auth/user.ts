@@ -4,6 +4,8 @@ import { getKeycloakInstance } from "./keycloak";
 export type User = {
   name: string;
   email: string;
+  /** From the name claims only; undefined when the user has no name set. */
+  firstName?: string;
 };
 
 /**
@@ -17,8 +19,9 @@ export function useUser(): { user: User | null; loading: boolean } {
     const parsed = kc.idTokenParsed as Record<string, string>;
     const name = parsed.name || parsed.preferred_username || parsed.sub || "User";
     const email = parsed.email || "";
+    const firstName = parsed.given_name || parsed.name?.split(/\s+/)[0] || undefined;
 
-    return { name, email };
+    return { name, email, firstName };
   }, []);
 
   return { user, loading: false };
