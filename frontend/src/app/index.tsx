@@ -32,7 +32,7 @@ export default function App() {
         services={services}
         status={status}
         onRetry={retry}
-        userName={user?.name.split(/\s+/)[0]}
+        userName={user?.firstName}
         onTogglePin={onTogglePin}
       />
       <Banner position="bottom" config={config?.banners?.bottom} />

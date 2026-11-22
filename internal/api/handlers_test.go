@@ -256,7 +256,6 @@ func TestHandleGetServices_ServiceView_IncludesPriority(t *testing.T) {
 	if len(resp.Services) != 2 {
 		t.Fatalf("expected 2 services, got %d", len(resp.Services))
 	}
-	// An unset priority defaults to 100, so the priority-1 service comes first.
 	if resp.Services[0].ID != "u1" || resp.Services[0].Priority != 1 {
 		t.Errorf("expected u1 with priority 1 first, got %q (%d)", resp.Services[0].ID, resp.Services[0].Priority)
 	}

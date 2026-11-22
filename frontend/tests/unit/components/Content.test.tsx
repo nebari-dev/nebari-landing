@@ -56,12 +56,18 @@ describe("Content", () => {
     expect(screen.getAllByRole("link", { name: /opens in a new tab/ })).toHaveLength(5);
   });
 
+  it("greets without a name when the user has none", () => {
+    renderContent({ services: makeServices(5) });
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Welcome back$/);
+  });
+
   it("orders the simple layout by priority, whatever order the services arrive in", () => {
     const [first, second, third] = makeServices(3);
     renderContent({
       services: [
         { ...first, priority: 50 },
-        second, // 100, the webapi's default
+        second,
         { ...third, priority: 1 },
       ],
     });

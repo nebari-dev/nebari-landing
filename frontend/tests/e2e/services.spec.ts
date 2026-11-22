@@ -41,7 +41,6 @@ test("unpinned cards reveal the pin control on hover and keyboard focus", async 
     "1",
   );
 
-  // The card's full-size link sits on top, so that is what the pointer hovers.
   await grafanaLink.hover();
   await expect(pinButton).toHaveCSS("opacity", "1");
 

@@ -37,7 +37,6 @@ test("table header remains visually distinct from the table body in both themes"
     expect(await backgroundOf(headerCell), theme).not.toBe(await backgroundOf(table));
   }
 
-  // Guards against the dark pass silently rendering the light theme.
   expect(pageBackground.dark).not.toBe(pageBackground.light);
 });
 

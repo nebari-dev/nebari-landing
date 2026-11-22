@@ -131,7 +131,6 @@ test("services table keeps headers and rows in bounds while resizing", async ({ 
       .getByRole("table", { name: "Services" })
       .getByRole("row", { name: /Long Running Analytics Workspace/ });
     const pinButton = longServiceRow.getByRole("button", { name: /^Unpin service$/ });
-    // No image is configured, so the icon shows the service's initials.
     const serviceIcon = longServiceRow.getByText("LR", { exact: true });
     const serviceTitle = longServiceRow.getByRole("link", {
       name: /Long Running Analytics Workspace/,

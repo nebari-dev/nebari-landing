@@ -33,7 +33,6 @@ export function ServicesSection({ services, onTogglePin, loading = false }: Serv
 
   const categories = useMemo(() => getCategories(services), [services]);
 
-  // A selected category with no services left has no chip, so it must not filter.
   const activeSelection = useMemo(
     () => selectedCategories.filter((category) => categories.includes(category)),
     [selectedCategories, categories],

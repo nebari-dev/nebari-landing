@@ -95,7 +95,6 @@ test("service cards are reachable from the keyboard", async ({ page }) => {
   await expect(pinnedSection.getByRole("button", { name: "Unpin service" })).toBeFocused();
 });
 
-/** Outline and shadow together, so any focus ring changes it whatever its color or mechanism. */
 const readFocusIndicator = (locator: Locator) =>
   locator.evaluate((element) => {
     const style = getComputedStyle(element);
@@ -118,7 +117,6 @@ test("header and accordion controls show a focus indicator", async ({ page }) =>
 test("service card shows a focus indicator", async ({ page }) => {
   await page.goto("/");
 
-  // The card's link is a full-size overlay; its focus ring is drawn on the card beside it.
   const pinnedSection = page.getByRole("region", { name: /^Pinned/ });
   const serviceLink = pinnedSection.getByRole("link", { name: /JupyterHub/i });
   const cardSurface = pinnedSection.locator('[data-slot="card"]', { hasText: "JupyterHub" });

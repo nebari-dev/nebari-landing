@@ -26,7 +26,6 @@ type CategoryFilterProps = {
  * Multi-select category filter; an empty selection shows every category.
  * Chips follow menu order on a single row, at most two before a "+N" count,
  * and a selection of every category reads as "All categories".
- * The value is kept in menu order because Base UI removes chips by index.
  */
 export function CategoryFilter({ categories, value, onChange, className }: CategoryFilterProps) {
   const allSelected = selectsAllCategories(categories, value);
